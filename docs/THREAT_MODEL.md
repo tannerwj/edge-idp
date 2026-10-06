@@ -32,8 +32,12 @@ Single-use, 60-second TTL, stored as SHA-256 hashes, and bound to the
 (client, redirect_uri, PKCE challenge) triple that created them. `redirect_uri`
 is compared with exact string equality against the admin-registered list —
 prefix matching would let `https://app.example.com.evil.com` steal codes.
-PKCE S256 is **required** on every flow, not just public clients: it's cheap
-defense in depth and matches the Access "PKCE on every login" toggle.
+PKCE S256 is **required by default** on every flow: it's cheap defense in
+depth. Confidential server-side clients that cannot send a code challenge
+(e.g. Cloudflare Access) may opt out per-client (`require_pkce = 0`); the
+code remains bound to the exact redirect URI and the client must still prove
+possession of its 256-bit secret at the token endpoint, which preserves the
+anti-interception property PKCE provides for public clients.
 
 ## Client authentication
 
