@@ -1,0 +1,59 @@
+{
+  "$schema": "./node_modules/@tjohnson/abacus/configs/abacus.schema.json",
+  "preset": "cloudflare-worker",
+  "check": {
+    "gates": [
+      "lint",
+      "abc",
+      "tsc",
+      "deadcode",
+      "secrets",
+      "cycles",
+      "dupes",
+      "todos",
+      "ratchet"
+    ]
+  },
+  "roots": [
+    "src",
+    "scripts"
+  ],
+  "tsc": {
+    "projects": [
+      "tsconfig.json"
+    ]
+  },
+  "exclude": [
+    "\\.d\\.ts$",
+    "\\.test\\.tsx?$",
+    "/components/ui/"
+  ],
+  "abc": {
+    "budget": 60,
+    "allow": {}
+  },
+  "size": {
+    "worker": {
+      "max": 409600
+    }
+  },
+  "ratchet": {
+    "file": "abacus.ratchet.json",
+    "metrics": {
+      "loc": {
+        "roots": [
+          "src"
+        ],
+        "slack": 0.02
+      },
+      "oxlintWarnings": true,
+      "abcMax": true,
+      "comments": {
+        "roots": [
+          "src"
+        ],
+        "max": 0.3
+      }
+    }
+  }
+}

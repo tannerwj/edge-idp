@@ -1,0 +1,49 @@
+{
+  "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.2",
+    "hono": "^4.7.0",
+    "jose": "^6.0.0"
+  },
+  "description": "Personal passkey-only OIDC identity provider on Cloudflare Workers + D1",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.0",
+    "@tjohnson/abacus": "github:tannerwj/abacus",
+    "esbuild": "^0.25.0",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.0.0"
+  },
+  "license": "MIT",
+  "name": "@johnson/identity",
+  "private": true,
+  "scripts": {
+    "build:client": "node scripts/build-client.mjs",
+    "db:migrate": "wrangler d1 migrations apply identity --remote",
+    "db:migrate:local": "wrangler d1 migrations apply identity --local",
+    "deploy": "npm run build:client && wrangler deploy",
+    "dev": "npm run build:client && wrangler dev",
+    "fmt": "abacus fmt",
+    "fmt:check": "abacus fmt --check",
+    "gates": "abacus check",
+    "seed:admin": "node scripts/seed-admin.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware",
+    "abc": "abacus abc",
+    "size": "abacus size",
+    "ratchet": "abacus ratchet",
+    "tsc": "abacus tsc",
+    "deadcode": "abacus deadcode",
+    "secrets": "abacus secrets",
+    "cycles": "abacus cycles",
+    "dupes": "abacus dupes",
+    "todos": "abacus todos",
+    "check": "abacus check"
+  },
+  "type": "module",
+  "version": "0.1.0"
+}

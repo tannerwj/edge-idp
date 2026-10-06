@@ -1,0 +1,34 @@
+# Identity provider — Cloudflare Workers + D1.
+#
+# PORTABILITY: every instance-specific value in this file is marked REPLACE_.
+# To run your own instance: clone, create a D1 database, fill in the three
+# REPLACE_ values below, set the secrets (see DEPLOY.md), apply migrations,
+# and `wrangler deploy`.
+
+name = "identity"
+main = "src/index.tsx"
+compatibility_date = "2026-10-06"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Public base URL of this instance. No trailing slash.
+# Must exactly match the origin users visit (WebAuthn RP ID is derived from it).
+ISSUER = "https://auth.REPLACE_YOUR_DOMAIN"
+# Human name shown on the sign-in and enrollment pages.
+RP_NAME = "REPLACE_RP_NAME"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "identity"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# Custom domain route (uncomment and fill in for production):
+# Workers custom domains are attached as a zone-level route plus a proxied DNS
+# record (see DEPLOY.md). Example:
+# [[routes]]
+# zone_id = "REPLACE_WITH_ZONE_ID"
+# pattern = "auth.REPLACE_YOUR_DOMAIN/*"
+
+# Secrets (set via `wrangler secret put`, never committed):
+#   SIGNING_KEY_JWK  — RS256 private key as JSON JWK (generate: node scripts/gen-key.mjs)
+#   ADMIN_SETUP_TOKEN — one-time token that bootstraps the first admin (seed-admin)

@@ -1,0 +1,1 @@
+{"$schema":"https://github.com/kucherenko/jscpd/blob/master/apps/jscpd/config-schema.json","ignore":["**/*.test.*","**/*.spec.*","**/fixtures/**"],"minLines":5,"minTokens":50,"threshold":5}

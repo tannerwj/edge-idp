@@ -1,0 +1,167 @@
+/** Server-rendered pages. No inline <script> anywhere — the CSP forbids it;
+ *  all behavior lives in /webauthn.js and reads data-* attributes. */
+
+export function Layout(props: {
+  title: string;
+  rpName: string;
+  children: unknown;
+  page?: string;
+}) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <title>{props.title}</title>
+        <link rel="stylesheet" href="/styles.css" />
+        <script src="/webauthn.js" defer></script>
+      </head>
+      <body data-page={props.page ?? ""}>
+        <main class="shell">
+          <div class="card">
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true">
+                ◆
+              </span>
+              <span class="brand-name">{props.rpName}</span>
+            </div>
+            {props.children}
+          </div>
+          <p class="foot">Protected by passkeys — no passwords, nothing to phish.</p>
+        </main>
+      </body>
+    </html>
+  );
+}
+
+export function LoginPage(props: { rpName: string; next: string }) {
+  return (
+    <Layout title={`Sign in — ${props.rpName}`} rpName={props.rpName} page="login">
+      <h1>Welcome back</h1>
+      <p class="muted">Sign in with your passkey — Face ID, Touch ID, or your security key.</p>
+      <div id="login-box" data-next={props.next}>
+        <label class="field">
+          <span>Email</span>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autocomplete="username webauthn"
+            placeholder="you@example.com"
+          />
+        </label>
+        <button id="passkey-btn" class="btn primary" type="button">
+          Continue with passkey
+        </button>
+        <p id="login-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </Layout>
+  );
+}
+
+export function EnrollPage(props: {
+  rpName: string;
+  name: string;
+  token: string;
+}) {
+  return (
+    <Layout
+      title={`Set up your passkey — ${props.rpName}`}
+      rpName={props.rpName}
+      page="enroll"
+    >
+      <h1>Hi {props.name}</h1>
+      <p class="muted">
+        Let's set up your passkey. Your device will ask for Face ID, Touch ID,
+        or a fingerprint — that's the whole setup.
+      </p>
+      <div id="enroll-box" data-enrollment-token={props.token}>
+        <button id="enroll-btn" class="btn primary" type="button">
+          Set up my passkey
+        </button>
+        <p id="enroll-status" class="status" role="status" aria-live="polite"></p>
+        <p class="muted small">
+          Tip: add a second passkey afterwards (for example on your phone and
+          your laptop) so you're never locked out.
+        </p>
+      </div>
+    </Layout>
+  );
+}
+
+export function AccountPage(props: {
+  rpName: string;
+  name: string;
+  email: string;
+  credentials: { id: string; name: string; created: string; lastUsed: string }[];
+}) {
+  return (
+    <Layout title={`Your account — ${props.rpName}`} rpName={props.rpName} page="account">
+      <h1>{props.name}</h1>
+      <p class="muted">{props.email}</p>
+      <h2>Passkeys</h2>
+      {props.credentials.length === 0 ? (
+        <p class="muted">No passkeys yet.</p>
+      ) : (
+        <ul class="key-list">
+          {props.credentials.map((k) => (
+            <li key={k.id}>
+              <span class="key-name">{k.name}</span>
+              <span class="muted small">
+                added {k.created}
+                {k.lastUsed ? ` · used ${k.lastUsed}` : ""}
+              </span>
+              <button
+                class="btn danger ghost"
+                data-remove-key={k.id}
+                type="button"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div id="account-box">
+        <button id="add-key-btn" class="btn" type="button">
+          Add another passkey
+        </button>
+        <p id="account-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+      <form method="post" action="/logout" class="row">
+        <button class="btn ghost" type="submit">
+          Sign out
+        </button>
+      </form>
+    </Layout>
+  );
+}
+
+export function DonePage(props: { rpName: string; title: string; body: string }) {
+  return (
+    <Layout title={props.title} rpName={props.rpName}>
+      <h1>{props.title}</h1>
+      <p class="muted">{props.body}</p>
+      <p>
+        <a class="btn primary" href="/">
+          Continue
+        </a>
+      </p>
+    </Layout>
+  );
+}
+
+export function ErrorPage(props: { rpName: string; message: string }) {
+  return (
+    <Layout title={`Error — ${props.rpName}`} rpName={props.rpName}>
+      <h1>Something went wrong</h1>
+      <p class="muted">{props.message}</p>
+      <p>
+        <a class="btn" href="/">
+          Back to sign in
+        </a>
+      </p>
+    </Layout>
+  );
+}

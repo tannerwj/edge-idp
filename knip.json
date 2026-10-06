@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/index.tsx",
+    "**/*.test.{ts,tsx}",
+    "**/*.spec.{ts,tsx}",
+    "**/*.e2e.{ts,tsx,js,mjs}",
+    "*.config.{ts,js,mjs}",
+    ".dependency-cruiser.{js,cjs,mjs}",
+    "scripts/**/*.{ts,js,mjs}",
+    "src/client/webauthn.ts",
+    "tests/e2e/**/*.mjs"
+  ],
+  "ignore": [
+    "dist/**",
+    ".next/**",
+    ".open-next/**",
+    ".wrangler/**",
+    "public/webauthn.js"
+  ],
+  "ignoreExportsUsedInFile": true
+}
