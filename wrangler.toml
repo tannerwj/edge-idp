@@ -1,9 +1,10 @@
 # Identity provider — Cloudflare Workers + D1.
 #
-# PORTABILITY: every instance-specific value in this file is marked REPLACE_.
-# To run your own instance: clone, create a D1 database, fill in the three
-# REPLACE_ values below, set the secrets (see DEPLOY.md), apply migrations,
-# and `wrangler deploy`.
+# PORTABILITY: ISSUER, RP_NAME, and database_id below are this instance's own
+# values. To run your own instance: clone, create a D1 database, fill in your
+# own three values, set the secrets (see DEPLOY.md), apply migrations,
+# and `wrangler deploy`. The commented [[routes]] example below uses REPLACE_
+# placeholders to show the shape.
 
 name = "identity"
 main = "src/index.tsx"
