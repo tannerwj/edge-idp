@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
 import { audit, getClient, getUser, getUserGroups } from "./db";
+import type { OidcClient } from "./db";
 import {
   getSigningKey,
   jwksDocument,
@@ -105,7 +106,16 @@ oidc.get("/authorize", async (c) => {
   };
 
   if (q.response_type !== "code") return redirectError("unsupported_response_type");
-  if (q.code_challenge_method !== "S256" || !q.code_challenge) {
+  // PKCE is required by default; clients that can't send it (e.g. Cloudflare
+  // Access) opt out per-client and authenticate with their secret instead.
+  // Threat note: skipping PKCE is safe here because the code is bound to the
+  // exact redirect_uri and the confidential client proves possession of its
+  // secret at the token endpoint.
+  if (client.require_pkce) {
+    if (q.code_challenge_method !== "S256" || !q.code_challenge) {
+      return redirectError("invalid_request");
+    }
+  } else if (q.code_challenge && q.code_challenge_method !== "S256") {
     return redirectError("invalid_request");
   }
   const scope = (q.scope ?? "openid profile email").trim() || "openid";
@@ -141,7 +151,7 @@ oidc.get("/authorize", async (c) => {
       client.id,
       user.id,
       redirectUri,
-      q.code_challenge,
+      q.code_challenge ?? "",
       scope,
       q.nonce ?? null,
       now + CODE_TTL,
@@ -172,7 +182,7 @@ async function authenticateClient(
   c: { req: { header: (n: string) => string | undefined } },
   db: D1Database,
   body: TokenBody,
-): Promise<{ id: string; name: string } | null> {
+): Promise<OidcClient | null> {
   let clientId = body.client_id ?? "";
   let clientSecret = body.client_secret ?? "";
   const auth = c.req.header("authorization");
@@ -214,7 +224,11 @@ oidc.post("/token", async (c) => {
   if (body.grant_type !== "authorization_code") {
     return invalid("unsupported_grant_type");
   }
-  if (!body.code || !body.redirect_uri || !body.code_verifier) {
+  if (!body.code || !body.redirect_uri) {
+    return invalid("invalid_request");
+  }
+  // code_verifier is required only when the client enforces PKCE.
+  if (client.require_pkce && !body.code_verifier) {
     return invalid("invalid_request");
   }
 
@@ -242,11 +256,15 @@ oidc.post("/token", async (c) => {
     return invalid("invalid_grant");
   }
 
-  // PKCE S256 verification: challenge == base64url(sha256(verifier)).
-  const verifierBytes = new TextEncoder().encode(body.code_verifier);
-  const digest = await crypto.subtle.digest("SHA-256", verifierBytes);
-  if (base64url(digest) !== row.code_challenge) {
-    return invalid("invalid_grant");
+  // PKCE S256 verification, when a challenge was issued. Clients that opted
+  // out of PKCE (confidential clients authenticating with a secret) store an
+  // empty challenge and skip this check.
+  if (row.code_challenge) {
+    const verifierBytes = new TextEncoder().encode(body.code_verifier ?? "");
+    const digest = await crypto.subtle.digest("SHA-256", verifierBytes);
+    if (base64url(digest) !== row.code_challenge) {
+      return invalid("invalid_grant");
+    }
   }
 
   await c.env.DB.prepare("UPDATE auth_codes SET used = 1 WHERE code_hash = ?1")
