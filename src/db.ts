@@ -132,6 +132,27 @@ export async function getUserGroups(
   return results.map((r) => r.name);
 }
 
+/**
+ * D1 BLOB columns don't come back as a single type: local miniflare returns
+ * ArrayBuffer while production D1 returns a plain Array of byte values.
+ * Normalize either (or a view) to a fresh Uint8Array; anything else is a
+ * schema violation, not an empty credential.
+ */
+function blobBytes(v: unknown, column: string): Uint8Array<ArrayBuffer> {
+  if (v instanceof Uint8Array) return v.slice();
+  if (v instanceof ArrayBuffer) return new Uint8Array(v.slice(0));
+  if (Array.isArray(v)) return Uint8Array.from(v as number[]);
+  if (ArrayBuffer.isView(v)) {
+    const view = v as Uint8Array;
+    return new Uint8Array(
+      view.buffer as ArrayBuffer,
+      view.byteOffset,
+      view.byteLength,
+    ).slice();
+  }
+  throw new Error(`db: expected BLOB column ${column}`);
+}
+
 export async function getCredentialsForUser(
   db: D1Database,
   userId: string,
@@ -143,13 +164,8 @@ export async function getCredentialsForUser(
   return results.map((r) => ({
     id: str(r.id),
     user_id: str(r.user_id),
-    credential_id:
-      r.credential_id instanceof ArrayBuffer
-        ? r.credential_id.slice(0)
-        : new ArrayBuffer(0),
-    public_key: new Uint8Array(
-      r.public_key instanceof ArrayBuffer ? r.public_key : new ArrayBuffer(0),
-    ),
+    credential_id: blobBytes(r.credential_id, "credential_id").buffer as ArrayBuffer,
+    public_key: blobBytes(r.public_key, "public_key"),
     counter: num(r.counter),
     transports:
       typeof r.transports === "string" ? strArray(r.transports) : undefined,
