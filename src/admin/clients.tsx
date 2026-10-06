@@ -37,6 +37,13 @@ clientsAdmin.get("/", async (c) => {
           <span>Allowed groups (comma-separated, blank = everyone)</span>
           <input name="allowedGroups" maxLength={200} placeholder="family, finance" />
         </label>
+        <label class="check">
+          <input type="checkbox" name="requirePkce" value="1" checked />
+          <span>
+            Require PKCE S256 <span class="muted small">(uncheck for server-side
+            clients like Cloudflare Access that can't send a code challenge)</span>
+          </span>
+        </label>
         <div>
           <button class="btn primary" type="submit">
             Register app
@@ -49,6 +56,7 @@ clientsAdmin.get("/", async (c) => {
             <th>App</th>
             <th>Client ID</th>
             <th>Groups</th>
+            <th>PKCE</th>
             <th></th>
           </tr>
         </thead>
@@ -61,6 +69,19 @@ clientsAdmin.get("/", async (c) => {
                 {cl.allowed_groups?.length
                   ? cl.allowed_groups.join(", ")
                   : "everyone"}
+              </td>
+              <td class="muted small">
+                <form method="post" action={`/admin/clients/${cl.id}/pkce`}>
+                  <button
+                    class="btn ghost small"
+                    type="submit"
+                    title={cl.require_pkce
+                      ? "PKCE required — click to allow non-PKCE flows"
+                      : "PKCE optional — click to require it"}
+                  >
+                    {cl.require_pkce ? "Required" : "Optional"}
+                  </button>
+                </form>
               </td>
               <td class="actions">
                 <form method="post" action={`/admin/clients/${cl.id}/rotate`}>
@@ -157,10 +178,11 @@ clientsAdmin.post("/clients", async (c) => {
   }
   const id = randomToken(18);
   const secret = randomToken(32);
+  const requirePkce = field(form, "requirePkce") === "1" ? 1 : 0;
   await c.env.DB.prepare(
     `INSERT INTO oidc_clients
-       (id, name, redirect_uris, secret_hash, secret_prefix, allowed_groups, created_at, created_by)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+       (id, name, redirect_uris, secret_hash, secret_prefix, allowed_groups, require_pkce, created_at, created_by)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
   )
     .bind(
       id,
@@ -169,6 +191,7 @@ clientsAdmin.post("/clients", async (c) => {
       await sha256Hex(secret),
       secret.slice(0, 6),
       groups.length ? JSON.stringify(groups) : null,
+      requirePkce,
       nowSec(),
       c.get("admin").id,
     )
@@ -192,6 +215,20 @@ clientsAdmin.post("/clients/:id/rotate", async (c) => {
     detail: { by: c.get("admin").id },
   });
   return showSecretOnce(c, c.req.param("id"), secret, true);
+});
+
+clientsAdmin.post("/clients/:id/pkce", async (c) => {
+  const id = c.req.param("id");
+  await c.env.DB.prepare(
+    "UPDATE oidc_clients SET require_pkce = 1 - require_pkce WHERE id = ?1",
+  )
+    .bind(id)
+    .run();
+  await audit(c.env.DB, "CLIENT_PKCE_TOGGLED", {
+    clientId: id,
+    detail: { by: c.get("admin").id },
+  });
+  return c.redirect("/admin/clients", 303);
 });
 
 clientsAdmin.post("/clients/:id/delete", async (c) => {
