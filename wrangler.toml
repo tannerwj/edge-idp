@@ -13,14 +13,14 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # Public base URL of this instance. No trailing slash.
 # Must exactly match the origin users visit (WebAuthn RP ID is derived from it).
-ISSUER = "https://auth.REPLACE_YOUR_DOMAIN"
+ISSUER = "https://auth.johnson.network"
 # Human name shown on the sign-in and enrollment pages.
-RP_NAME = "REPLACE_RP_NAME"
+RP_NAME = "Sign in with Johnson"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "identity"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "832a3094-2375-47b8-aa06-7f146c56eb25"
 
 # Custom domain route (uncomment and fill in for production):
 # Workers custom domains are attached as a zone-level route plus a proxied DNS
