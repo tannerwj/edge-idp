@@ -23,7 +23,6 @@ tokensAdmin.get("/", async (c) => {
     "tokens",
     "API Tokens",
     <>
-      <h1>API Tokens</h1>
       <p class="muted">
         Tokens for MCP and programmatic access. They have full admin power —
         guard them like passwords. Only the hash is stored.

@@ -60,7 +60,6 @@ auditAdmin.get("/", async (c) => {
     "audit",
     "Audit log",
     <>
-      <h1>Audit log</h1>
       <p class="muted small">
         {total} events{eventFilter || userFilter ? " (filtered)" : ""} · Page {page} of {totalPages}
       </p>

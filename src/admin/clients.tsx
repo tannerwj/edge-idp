@@ -96,7 +96,6 @@ clientsAdmin.get("/", async (c) => {
     "clients",
     "Apps",
     <>
-      <h1>Apps</h1>
       <p class="muted">
         Register an app to let it use this server for sign-in. Redirect URIs
         must match <em>exactly</em> — that is what stops another app from

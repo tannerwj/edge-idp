@@ -62,7 +62,6 @@ mcpMetricsAdmin.get("/", async (c) => {
     "mcp",
     "MCP Metrics",
     <>
-      <h1>MCP Metrics</h1>
       <p class="muted small">Last 24 hours.</p>
       <div class="stat-grid">
         <div class="stat-card">
