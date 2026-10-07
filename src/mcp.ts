@@ -327,8 +327,11 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-/** Validate a Bearer API token; returns the admin user ID or null. */
-async function authToken(db: D1Database, req: Request): Promise<string | null> {
+/** Validate a Bearer API token; returns {tokenId, adminId} or null. */
+async function authToken(
+  db: D1Database,
+  req: Request,
+): Promise<{ tokenId: string; adminId: string } | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const raw = header.slice(7);
@@ -341,17 +344,42 @@ async function authToken(db: D1Database, req: Request): Promise<string | null> {
   await db.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2")
     .bind(nowSec(), row.id)
     .run();
-  return row.created_by;
+  return { tokenId: row.id, adminId: row.created_by };
+}
+
+/** Record an MCP tool call for metrics. Fire-and-forget. */
+function trackCall(
+  db: D1Database,
+  tool: string,
+  startedAt: number,
+  success: boolean,
+  error: string | null,
+  tokenId: string,
+): void {
+  const duration = Date.now() - startedAt;
+  db.prepare(
+    "INSERT INTO mcp_calls (tool_name, started_at, duration_ms, success, error, token_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+  )
+    .bind(tool, Math.floor(startedAt / 1000), duration, success ? 1 : 0, error, tokenId)
+    .run()
+    .catch(() => {});
+  // Keep the table bounded.
+  db.prepare(
+    "DELETE FROM mcp_calls WHERE id NOT IN (SELECT id FROM mcp_calls ORDER BY id DESC LIMIT 10000)",
+  )
+    .run()
+    .catch(() => {});
 }
 
 mcp.post("/", async (c) => {
-  const adminId = await authToken(c.env.DB, c.req.raw);
-  if (!adminId) {
+  const auth = await authToken(c.env.DB, c.req.raw);
+  if (!auth) {
     return c.json(
       { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: valid Bearer API token required." } },
       401,
     );
   }
+  const { tokenId, adminId } = auth;
   let body: { jsonrpc?: string; id?: unknown; method?: string; params?: Record<string, unknown> };
   try {
     body = await c.req.json();
@@ -387,18 +415,22 @@ mcp.post("/", async (c) => {
     const name = str(params.name);
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) return err(-32602, `Unknown tool: ${name}`);
+    const started = Date.now();
     try {
       const result = await tool.handler(
         c.env.DB,
         (params.arguments as Record<string, unknown>) ?? {},
         adminId,
       );
+      trackCall(c.env.DB, name, started, true, null, tokenId);
       return ok({
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       });
     } catch (e) {
+      const msg = (e as Error).message;
+      trackCall(c.env.DB, name, started, false, msg.slice(0, 200), tokenId);
       return ok({
-        content: [{ type: "text", text: `Error: ${(e as Error).message}` }],
+        content: [{ type: "text", text: `Error: ${msg}` }],
         isError: true,
       });
     }

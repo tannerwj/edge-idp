@@ -31,6 +31,7 @@ const TABS: [string, string][] = [
   ["audit", "Audit log"],
   ["theme", "Theme"],
   ["tokens", "API Tokens"],
+  ["mcp", "MCP"],
 ];
 
 export function page(
