@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import { sessionUser } from "../session";
 import type { AdminVars } from "./shell";
 import { usersAdmin } from "./users";
+import { userDetailAdmin } from "./user-detail";
 import { groupsAdmin } from "./groups";
 import { clientsAdmin } from "./clients";
 import { auditAdmin } from "./audit";
+import { themeAdmin } from "./theme";
 
 /**
  * Admin router. The middleware is the entire authorization story: an
@@ -23,6 +25,8 @@ admin.use("*", async (c, next) => {
 });
 
 admin.route("/", usersAdmin);
+admin.route("/users/:id", userDetailAdmin);
 admin.route("/groups", groupsAdmin);
 admin.route("/clients", clientsAdmin);
 admin.route("/audit", auditAdmin);
+admin.route("/theme", themeAdmin);

@@ -17,7 +17,7 @@ auditAdmin.get("/", async (c) => {
     client_id: string | null;
     detail: string | null;
   }>();
-  return p(
+  return await p(
     c,
     "audit",
     "Audit log",

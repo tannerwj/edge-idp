@@ -19,7 +19,7 @@ usersAdmin.get("/", async (c) => {
       keys: (await getCredentialsForUser(c.env.DB, u.id)).length,
     })),
   );
-  return p(
+  return await p(
     c,
     "users",
     "Users",
@@ -52,7 +52,7 @@ usersAdmin.get("/", async (c) => {
           {rows.map(({ u, keys }) => (
             <tr key={u.id}>
               <td>
-                {u.name}
+                <a href={`/admin/users/${u.id}`}>{u.name}</a>
                 {u.is_admin ? <span class="pill">admin</span> : null}
               </td>
               <td class="muted">{u.email}</td>
@@ -99,7 +99,7 @@ usersAdmin.post("/users", async (c) => {
   const name = field(form, "name").trim().slice(0, 120);
   const email = field(form, "email").trim().slice(0, 254);
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return p(
+    return await p(
       c,
       "users",
       "Users",
@@ -107,7 +107,7 @@ usersAdmin.post("/users", async (c) => {
     );
   }
   if (await getUserByEmail(c.env.DB, email)) {
-    return p(
+    return await p(
       c,
       "users",
       "Users",
@@ -126,7 +126,7 @@ usersAdmin.post("/users", async (c) => {
     userId: id,
     detail: { by: c.get("admin").id },
   });
-  return p(
+  return await p(
     c,
     "users",
     "User created",
@@ -149,6 +149,75 @@ usersAdmin.post("/users", async (c) => {
   );
 });
 
+
+usersAdmin.post("/users/:id/profile", async (c) => {
+  const id = c.req.param("id");
+  const form = await c.req.parseBody();
+  const name = field(form, "name").trim().slice(0, 120);
+  const email = field(form, "email").trim().slice(0, 254);
+  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return c.text("Name and a valid email are required.", 400);
+  }
+  const clash = await c.env.DB.prepare(
+    "SELECT id FROM users WHERE lower(email) = lower(?1) AND id != ?2",
+  )
+    .bind(email, id)
+    .first();
+  if (clash) return c.text("That email is already in use.", 400);
+  await c.env.DB.prepare(
+    "UPDATE users SET name = ?1, email = ?2, updated_at = ?3 WHERE id = ?4",
+  )
+    .bind(name, email, nowSec(), id)
+    .run();
+  await audit(c.env.DB, "USER_PROFILE_UPDATED", {
+    userId: id,
+    detail: { by: c.get("admin").id },
+  });
+  return c.redirect(`/admin/users/${id}`, 303);
+});
+
+usersAdmin.post("/users/:id/groups", async (c) => {
+  const id = c.req.param("id");
+  const form = await c.req.parseBody();
+  const raw = form.groups;
+  const ids = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(
+    (v): v is string => typeof v === "string",
+  );
+  // Replace membership wholesale: delete all, insert selected.
+  await c.env.DB.prepare("DELETE FROM group_members WHERE user_id = ?1")
+    .bind(id)
+    .run();
+  for (const gid of ids) {
+    await c.env.DB.prepare(
+      "INSERT INTO group_members (group_id, user_id, created_at) VALUES (?1, ?2, ?3)",
+    )
+      .bind(gid, id, nowSec())
+      .run();
+  }
+  await audit(c.env.DB, "USER_GROUPS_UPDATED", {
+    userId: id,
+    detail: { by: c.get("admin").id, groups: ids.length },
+  });
+  return c.redirect(`/admin/users/${id}`, 303);
+});
+
+usersAdmin.post("/users/:id/role", async (c) => {
+  const id = c.req.param("id");
+  if (id === c.get("admin").id) return c.text("Cannot change your own role", 400);
+  const form = await c.req.parseBody();
+  const isAdmin = field(form, "isAdmin") === "1" ? 1 : 0;
+  await c.env.DB.prepare(
+    "UPDATE users SET is_admin = ?1, updated_at = ?2 WHERE id = ?3",
+  )
+    .bind(isAdmin, nowSec(), id)
+    .run();
+  await audit(c.env.DB, isAdmin ? "ADMIN_GRANTED" : "ADMIN_REVOKED", {
+    userId: id,
+    detail: { by: c.get("admin").id },
+  });
+  return c.redirect(`/admin/users/${id}`, 303);
+});
+
 usersAdmin.post("/users/:id/enrollment", async (c) => {
   const id = c.req.param("id");
   const link = await mintEnrollmentLink(c.env.DB, id, c.env.ISSUER);
@@ -156,7 +225,7 @@ usersAdmin.post("/users/:id/enrollment", async (c) => {
     userId: id,
     detail: { by: c.get("admin").id },
   });
-  return p(
+  return await p(
     c,
     "users",
     "Enrollment link",
@@ -177,6 +246,19 @@ usersAdmin.post("/users/:id/enrollment", async (c) => {
       </p>
     </>,
   );
+});
+
+usersAdmin.post("/users/:id/sessions/:sid/revoke", async (c) => {
+  const id = c.req.param("id");
+  const sid = c.req.param("sid");
+  await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?1 AND user_id = ?2")
+    .bind(sid, id)
+    .run();
+  await audit(c.env.DB, "SESSION_REVOKED", {
+    userId: id,
+    detail: { by: c.get("admin").id, session: sid.slice(0, 8) },
+  });
+  return c.redirect(`/admin/users/${id}`, 303);
 });
 
 usersAdmin.post("/users/:id/revoke-keys", async (c) => {

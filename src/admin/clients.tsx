@@ -6,9 +6,84 @@ import { field, p } from "./shell";
 
 export const clientsAdmin = new Hono<AdminVars>();
 
+type ClientRow = Awaited<ReturnType<typeof listClients>>[number];
+
+/** How many users can reach an app: everyone, or members of allowed groups. */
+async function accessCounts(db: D1Database) {
+  const { results: groupCounts } = await db
+    .prepare(
+      `SELECT g.name, COUNT(m.user_id) AS n FROM groups g
+       LEFT JOIN group_members m ON m.group_id = g.id
+       GROUP BY g.id`,
+    )
+    .all<{ name: string; n: number }>();
+  const countByGroup = new Map(groupCounts.map((r) => [r.name, r.n]));
+  const { count: totalUsers } =
+    (await db
+      .prepare("SELECT COUNT(*) AS count FROM users WHERE disabled = 0")
+      .first<{ count: number }>()) ?? { count: 0 };
+  return (cl: ClientRow) => {
+    if (!cl.allowed_groups?.length) return totalUsers;
+    return cl.allowed_groups.reduce(
+      (sum, g) => sum + (countByGroup.get(g) ?? 0),
+      0,
+    );
+  };
+}
+
+function clientRow(cl: ClientRow, canAccess: number) {
+  return (
+    <tr key={cl.id}>
+      <td>{cl.name}</td>
+      <td class="muted small mono">{cl.id}</td>
+      <td class="muted small">
+        {cl.redirect_uris.map((u) => (
+          <div key={u} class="mono">
+            {new URL(u).host}
+          </div>
+        ))}
+      </td>
+      <td class="muted small">
+        {cl.allowed_groups?.length ? cl.allowed_groups.join(", ") : "everyone"}{" "}
+        ({canAccess} {canAccess === 1 ? "user" : "users"})
+      </td>
+      <td class="muted small">
+        <form method="post" action={`/admin/clients/${cl.id}/pkce`}>
+          <button
+            class="btn ghost small"
+            type="submit"
+            title={cl.require_pkce
+              ? "PKCE required — click to allow non-PKCE flows"
+              : "PKCE optional — click to require it"}
+          >
+            {cl.require_pkce ? "Required" : "Optional"}
+          </button>
+        </form>
+      </td>
+      <td class="actions">
+        <form method="post" action={`/admin/clients/${cl.id}/rotate`}>
+          <button
+            class="btn ghost small"
+            type="submit"
+            title="New secret (old one stops working immediately)"
+          >
+            Rotate secret
+          </button>
+        </form>
+        <form method="post" action={`/admin/clients/${cl.id}/delete`}>
+          <button class="btn danger ghost small" type="submit">
+            Delete
+          </button>
+        </form>
+      </td>
+    </tr>
+  );
+}
+
 clientsAdmin.get("/", async (c) => {
   const clients = await listClients(c.env.DB);
-  return p(
+  const canAccess = await accessCounts(c.env.DB);
+  return await p(
     c,
     "clients",
     "Apps",
@@ -55,52 +130,14 @@ clientsAdmin.get("/", async (c) => {
           <tr>
             <th>App</th>
             <th>Client ID</th>
-            <th>Groups</th>
+            <th>Redirects to</th>
+            <th>Who can sign in</th>
             <th>PKCE</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {clients.map((cl) => (
-            <tr key={cl.id}>
-              <td>{cl.name}</td>
-              <td class="muted small mono">{cl.id}</td>
-              <td class="muted small">
-                {cl.allowed_groups?.length
-                  ? cl.allowed_groups.join(", ")
-                  : "everyone"}
-              </td>
-              <td class="muted small">
-                <form method="post" action={`/admin/clients/${cl.id}/pkce`}>
-                  <button
-                    class="btn ghost small"
-                    type="submit"
-                    title={cl.require_pkce
-                      ? "PKCE required — click to allow non-PKCE flows"
-                      : "PKCE optional — click to require it"}
-                  >
-                    {cl.require_pkce ? "Required" : "Optional"}
-                  </button>
-                </form>
-              </td>
-              <td class="actions">
-                <form method="post" action={`/admin/clients/${cl.id}/rotate`}>
-                  <button
-                    class="btn ghost small"
-                    type="submit"
-                    title="New secret (old one stops working immediately)"
-                  >
-                    Rotate secret
-                  </button>
-                </form>
-                <form method="post" action={`/admin/clients/${cl.id}/delete`}>
-                  <button class="btn danger ghost small" type="submit">
-                    Delete
-                  </button>
-                </form>
-              </td>
-            </tr>
-          ))}
+          {clients.map((cl) => clientRow(cl, canAccess(cl)))}
         </tbody>
       </table>
     </>,
@@ -130,7 +167,7 @@ async function showSecretOnce(
   secret: string,
   rotated: boolean,
 ) {
-  return p(
+  return await p(
     c,
     "clients",
     rotated ? "Secret rotated" : "App registered",
@@ -167,7 +204,7 @@ clientsAdmin.post("/clients", async (c) => {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   if (!name || !uris) {
-    return p(
+    return await p(
       c,
       "clients",
       "Apps",

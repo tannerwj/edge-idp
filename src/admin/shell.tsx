@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../config";
 import type { User } from "../db";
+import { getSetting } from "../db";
 import { nowSec, randomToken, sha256Hex } from "../util";
 
 export type AdminVars = { Bindings: Env; Variables: { admin: User } };
@@ -25,6 +26,7 @@ const TABS: [string, string][] = [
   ["groups", "Groups"],
   ["clients", "Apps"],
   ["audit", "Audit log"],
+  ["theme", "Theme"],
 ];
 
 export function page(
@@ -32,8 +34,12 @@ export function page(
   active: string,
   adminName: string,
   title: string,
+  theme: string,
   children: unknown,
 ) {
+  const safe = ["obsidian", "porcelain", "ledger", "dusk", "manuscript", "monochrome"].includes(theme)
+    ? theme
+    : "obsidian";
   return (
     <html lang="en">
       <head>
@@ -43,7 +49,7 @@ export function page(
         <title>
           {title} · Admin · {rpName}
         </title>
-        <link rel="stylesheet" href="/styles.css" />
+        <link rel="stylesheet" href={`/themes/${safe}.css`} />
         <script src="/webauthn.js" defer></script>
       </head>
       <body>
@@ -78,8 +84,22 @@ export function page(
   );
 }
 
-export const p = (c: ACtx, active: string, title: string, children: unknown) =>
-  c.html(page(c.env.RP_NAME, active, c.get("admin").name, title, children));
+export const p = async (
+  c: ACtx,
+  active: string,
+  title: string,
+  children: unknown,
+) =>
+  c.html(
+    page(
+      c.env.RP_NAME,
+      active,
+      c.get("admin").name,
+      title,
+      await getSetting(c.env.DB, "theme", "obsidian"),
+      children,
+    ),
+  );
 
 /** One-time enrollment link (7-day TTL, single-use, hashed at rest). */
 export async function mintEnrollmentLink(
