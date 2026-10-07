@@ -26,7 +26,8 @@ auditAdmin.get("/", async (c) => {
       <p class="muted small">
         Newest first, last 200 events. IPs are stored as hashes.
       </p>
-      <table class="table">
+            <div class="table-wrap">
+<table class="table">
         <thead>
           <tr>
             <th>When</th>
@@ -48,6 +49,7 @@ auditAdmin.get("/", async (c) => {
           ))}
         </tbody>
       </table>
+      </div>
     </>,
   );
 });

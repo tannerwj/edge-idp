@@ -125,7 +125,8 @@ clientsAdmin.get("/", async (c) => {
           </button>
         </div>
       </form>
-      <table class="table">
+            <div class="table-wrap">
+<table class="table">
         <thead>
           <tr>
             <th>App</th>
@@ -140,6 +141,7 @@ clientsAdmin.get("/", async (c) => {
           {clients.map((cl) => clientRow(cl, canAccess(cl)))}
         </tbody>
       </table>
+      </div>
     </>,
   );
 });
