@@ -137,7 +137,8 @@ function checkProtocol(c: C, body: RpcBody): boolean | Response {
 }
 
 /** Results for the simple (non tools/call) methods; undefined = unknown method. */
-function simpleResult(body: RpcBody, auth: McpAuth): unknown {
+/** `sandbox`: whether this Worker has a LOADER binding (the `execute` tool needs one). */
+function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
   switch (body.method) {
     case "initialize": {
       const asked = typeof body.params.protocolVersion === "string" ? body.params.protocolVersion : "";
@@ -159,7 +160,7 @@ function simpleResult(body: RpcBody, auth: McpAuth): unknown {
       return {};
     case "tools/list":
       return {
-        tools: TOOLS.filter((t) => !auth.readOnly || !t.write || t.name === "execute").map((t) => ({
+        tools: TOOLS.filter((t) => (t.name === "execute" ? sandbox : !auth.readOnly || !t.write)).map((t) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
@@ -222,7 +223,7 @@ mcp.post("/", async (c) => {
   if (body.id === undefined && body.method.startsWith("notifications/")) return c.body(null, 202);
   const id = body.id ?? null;
   if (body.method === "tools/call") return callTool(c, auth, id, body.params);
-  const result = simpleResult(body, auth);
+  const result = simpleResult(body, auth, !!c.env.LOADER);
   if (result !== undefined) return c.json({ jsonrpc: "2.0", id, result });
   return rpcError(c, id, -32601, `Method not found: ${body.method}`, modern ? 404 : 200);
 });

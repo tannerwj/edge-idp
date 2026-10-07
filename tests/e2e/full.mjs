@@ -310,6 +310,11 @@ try {
   check("tools/call users_list", users.some((u) => u.email === "bob@example.test"), call.body);
   const created = await mcpCall(mt.access_token, "tools/call", { name: "groups_create", arguments: { name: "friends" } });
   check("write tool works with mcp scope", !created.body?.result?.isError, created.body);
+  // Code mode re-enters the Worker through the sandbox entrypoint, whose env
+  // is the raw one: the invite link must still be on this instance's issuer.
+  const exec = await mcpCall(mt.access_token, "tools/call", { name: "execute", arguments: { code: `return (await id.users_create({ name: "Cody Mode", email: "cody@example.test" })).enrollment_link;` } });
+  const execOut = exec.body?.result?.content?.[0]?.text ?? "";
+  check("execute: tool calls inside the sandbox see the issuer", !exec.body?.result?.isError && execOut.includes(`${BASE}/enroll/`), exec.body);
   const modern = await mcpCall(mt.access_token, "tools/call", { name: "groups_list", arguments: {} }, { "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/call", "mcp-name": "wrong" });
   check("2026-07-28: header/body mismatch → -32020", modern.status === 400 && modern.body?.error?.code === -32020, modern.body);
   const notif = await fetch(MCP, { method: "POST", headers: { authorization: `Bearer ${mt.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });

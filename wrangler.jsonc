@@ -1,0 +1,45 @@
+// edge-idp — portable template for the "Deploy to Cloudflare" button and forks.
+//
+// The button reads this file, creates the D1 database (rewriting the id
+// below), asks for the secrets in .dev.vars.example, then runs
+// `npm run deploy` in Workers Builds (migrations + wrangler deploy).
+//
+// Nothing else to fill in: ISSUER defaults to the hostname the Worker is
+// served on and the signing key is generated on first use (src/instance.ts).
+// After adding a custom domain, set ISSUER to it under "vars".
+//
+// The reference instance is deployed with the cf CLI from
+// cloudflare.config.ts instead; cf reads that file, wrangler reads this one.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "edge-idp",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-10-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  // Preview hostnames aren't the issuer, so passkeys wouldn't work there.
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "RP_NAME": "Identity"
+    // "ISSUER": "https://auth.example.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "edge-idp",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Per-IP limits on sign-in ceremonies and token/API traffic.
+  "ratelimits": [
+    { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+    { "name": "API_LIMITER", "namespace_id": "1002", "simple": { "limit": 300, "period": 60 } }
+  ],
+  // Hourly maintenance: expired rows, audit retention, unused DCR clients.
+  "triggers": { "crons": ["17 * * * *"] }
+  // Optional: the MCP code-mode sandbox (`execute` tool) needs a Worker
+  // Loader binding. Add it if your account has Dynamic Workers:
+  //   "worker_loaders": [{ "binding": "LOADER" }]
+}

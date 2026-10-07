@@ -1,6 +1,10 @@
 /**
- * Instance configuration. Everything instance-specific lives in cloudflare.config.ts
- * [vars] / secrets / D1 — never hardcoded in source (portability requirement).
+ * Instance configuration. Everything instance-specific lives in the Worker
+ * config (cloudflare.config.ts, or wrangler.jsonc for one-click installs),
+ * secrets and D1 — never hardcoded in source (portability requirement).
+ *
+ * ISSUER, RP_NAME and SIGNING_KEY_JWK may be unset at deploy time; they're
+ * resolved per request before any handler runs (see instance.ts).
  */
 export interface Env {
   DB: D1Database;
@@ -10,6 +14,11 @@ export interface Env {
   RP_NAME: string;
   /** Secret: RS256 private key as a JSON JWK string. */
   SIGNING_KEY_JWK: string;
+  /**
+   * Optional: lets the first visitor who knows it create the first admin at
+   * /setup (one-click installs). /setup is gone once any user exists.
+   */
+  SETUP_TOKEN?: string;
   /** Optional: Sentry DSN for error tracking. */
   SENTRY_DSN?: string;
   /** Dynamic Worker loader for the MCP code-mode sandbox. */

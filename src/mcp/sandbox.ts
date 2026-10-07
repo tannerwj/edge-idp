@@ -11,6 +11,7 @@
 
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "../config";
+import { resolveEnv } from "../instance";
 import * as ops from "../ops";
 import { activeAdmin, obj, trackCall } from "./common";
 import type { McpAuth, ToolDef, WaitCtx } from "./common";
@@ -20,12 +21,14 @@ interface SandboxProps {
   adminId: string;
   readOnly: boolean;
   tokenId: string;
+  /** Resolved per request host-side; the entrypoint's own env may not have ISSUER (see instance.ts). */
+  issuer: string;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 function isSandboxProps(v: unknown): v is SandboxProps {
-  return isRecord(v) && typeof v.adminId === "string" && !!v.adminId && typeof v.readOnly === "boolean" && typeof v.tokenId === "string";
+  return isRecord(v) && typeof v.adminId === "string" && !!v.adminId && typeof v.readOnly === "boolean" && typeof v.tokenId === "string" && typeof v.issuer === "string";
 }
 
 function errMessage(e: unknown): string {
@@ -44,7 +47,8 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
     if (!isSandboxProps(props) || !(await activeAdmin(this.env.DB, props.adminId))) throw new Error("credential rejected");
     if (tool.write && props.readOnly) throw new Error(`${name} needs write access; this token is read-only`);
     try {
-      return await tool.handler({ db: this.env.DB, env: this.env, actor: { adminId: props.adminId, via: "mcp" } }, args ?? {});
+      const env = await resolveEnv(this.env, props.issuer);
+      return await tool.handler({ db: this.env.DB, env, actor: { adminId: props.adminId, via: "mcp" } }, args ?? {});
     } catch (e) {
       throw new Error(e instanceof ops.OpError ? e.message : `Internal error: ${errMessage(e)}`, { cause: e });
     }
@@ -209,7 +213,7 @@ export async function runExecute(
   if (typeof sandboxExport !== "function") return fail("Error: sandbox entrypoint unavailable.");
   let worker: WorkerStub;
   try {
-    const props: SandboxProps = { adminId: auth.adminId, readOnly: auth.readOnly, tokenId: auth.tokenId };
+    const props: SandboxProps = { adminId: auth.adminId, readOnly: auth.readOnly, tokenId: auth.tokenId, issuer: env.ISSUER };
     const idStub: unknown = Reflect.apply(sandboxExport, undefined, [{ props }]);
     worker = env.LOADER.load({
       compatibilityDate: "2026-10-06",

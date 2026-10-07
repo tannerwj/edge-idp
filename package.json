@@ -31,7 +31,7 @@
     "build:client": "node scripts/build-client.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:migrate:local": "node scripts/db-migrate.mjs --local",
-    "deploy": "npm run build:client && cf deploy",
+    "deploy": "node scripts/deploy.mjs",
     "dev": "npm run build:client && cf dev",
     "fmt": "abacus fmt",
     "fmt:check": "abacus fmt --check",
@@ -54,10 +54,30 @@
     "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "test:e2e:local": "node tests/e2e/full.mjs",
     "test:e2e:staging": "E2E_STAGE=staging node tests/e2e/full.mjs",
+    "test:e2e:setup": "node tests/e2e/setup.mjs",
     "deploy:check": "npm run build:client && cf deploy --dry-run",
     "staging:deploy": "npm run build:client && cf deploy --mode staging",
     "staging:migrate": "node scripts/db-migrate.mjs --stage=staging"
   },
   "type": "module",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "cloudflare": {
+    "bindings": {
+      "SETUP_TOKEN": {
+        "description": "Any long random string (12+ characters). You type it once at **/setup** to create the first admin account; the page disappears after that."
+      },
+      "DB": {
+        "description": "Users, passkeys, sessions, clients and the audit log. Migrations run on every deploy."
+      },
+      "RP_NAME": {
+        "description": "The name people see on the sign-in page and in their passkey manager, e.g. `Smith Family ID`."
+      },
+      "AUTH_LIMITER": {
+        "description": "Per-IP rate limit for passkey ceremonies and setup."
+      },
+      "API_LIMITER": {
+        "description": "Per-IP rate limit for token and MCP traffic."
+      }
+    }
+  }
 }

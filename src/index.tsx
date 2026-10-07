@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import * as Sentry from "@sentry/cloudflare";
 import { assertConfigured } from "./config";
+import { resolveEnv } from "./instance";
 import type { Env } from "./config";
 import { webauthn, validEnrollmentToken } from "./webauthn";
 import { oidc } from "./oidc";
@@ -16,6 +17,7 @@ import { destroySession, getSession } from "./session";
 import { audit, getClient } from "./db";
 import { uiFor } from "./ui/layout";
 import { runMaintenance } from "./maintenance";
+import { setup, setupPending } from "./setup";
 import { APP_CSS, APP_JS } from "./assets.gen";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -43,6 +45,16 @@ function crossOrigin(c: Context<{ Bindings: Env }>): boolean {
   return !!origin && origin !== c.env.ISSUER;
 }
 
+/**
+ * Optional Workers Rate Limiting bindings: ceremonies, registration and setup
+ * on one budget, token/API traffic on another. Keyed per client IP.
+ */
+function limiterFor(env: Env, path: string): RateLimit | undefined {
+  if (path.startsWith("/webauthn/") || path === "/register" || path === "/authorize/decision" || path === "/setup") return env.AUTH_LIMITER;
+  if (path === "/token" || path === "/revoke" || path.startsWith("/mcp")) return env.API_LIMITER;
+  return undefined;
+}
+
 // Hono middleware intentionally returns Response | void (short-circuit or pass-through).
 // eslint-disable-next-line typescript/consistent-return
 app.use("*", async (c, next) => {
@@ -53,8 +65,10 @@ app.use("*", async (c, next) => {
     return c.redirect(url.toString(), 301);
   }
   try {
+    c.env = await resolveEnv(c.env, c.req.url);
     assertConfigured(c.env);
-  } catch {
+  } catch (e) {
+    console.error(e);
     return c.text("Server misconfigured — see DEPLOY.md.", 500);
   }
   const path = url.pathname;
@@ -65,14 +79,7 @@ app.use("*", async (c, next) => {
     return c.text("Cross-origin request refused.", 403);
   }
 
-  // Optional Workers Rate Limiting bindings: ceremonies + registration on
-  // one budget, token/API traffic on another. Keyed per client IP.
-  const limiter =
-    path.startsWith("/webauthn/") || path === "/register" || path === "/authorize/decision"
-      ? c.env.AUTH_LIMITER
-      : path === "/token" || path === "/revoke" || path.startsWith("/mcp")
-        ? c.env.API_LIMITER
-        : undefined;
+  const limiter = limiterFor(c.env, path);
   if (limiter && mutating) {
     const { success } = await limiter.limit({ key: `${path.split("/")[1]}:${clientIp(c)}` });
     if (!success) return c.json({ error: "rate_limited", error_description: "Too many requests — slow down." }, 429, { "retry-after": "60" });
@@ -139,6 +146,8 @@ async function loginContext(db: D1Database, next: string): Promise<{ name: strin
 }
 
 app.get("/login", async (c) => {
+  // Fresh one-click install: nobody to sign in yet.
+  if (await setupPending(c.env.DB)) return c.redirect("/setup", 302);
   const session = await getSession(c);
   const next = safeNext(c.req.query("next"));
   const reauth = c.req.query("reauth") === "1";
@@ -177,6 +186,7 @@ app.post("/logout", async (c) => {
 
 /* ───────────────────────────── routes ───────────────────────────── */
 
+app.route("/", setup);
 app.route("/webauthn", webauthn);
 app.route("/admin", admin);
 app.route("/mcp", mcp);
