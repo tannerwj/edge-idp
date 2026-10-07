@@ -60,7 +60,7 @@
     "staging:migrate": "node scripts/db-migrate.mjs --stage=staging"
   },
   "type": "module",
-  "version": "0.1.0",
+  "version": "2.1.0",
   "cloudflare": {
     "bindings": {
       "SETUP_TOKEN": {

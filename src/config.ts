@@ -19,6 +19,11 @@ export interface Env {
    * /setup (one-click installs). /setup is gone once any user exists.
    */
   SETUP_TOKEN?: string;
+  /**
+   * Optional: "owner/repo" for feedback links and the daily update check
+   * (default: the upstream project), or "off". See upstream.ts.
+   */
+  UPSTREAM_REPO?: string;
   /** Optional: Sentry DSN for error tracking. */
   SENTRY_DSN?: string;
   /** Dynamic Worker loader for the MCP code-mode sandbox. */

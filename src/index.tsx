@@ -18,6 +18,7 @@ import { audit, getClient } from "./db";
 import { uiFor } from "./ui/layout";
 import { runMaintenance } from "./maintenance";
 import { setup, setupPending } from "./setup";
+import { checkForUpdate } from "./upstream";
 import { APP_CSS, APP_JS } from "./assets.gen";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -221,6 +222,12 @@ export default Sentry.withSentry(
       ctx.waitUntil(
         runMaintenance(env.DB).then((r) => {
           console.log(JSON.stringify({ msg: "maintenance", ...r }));
+          return r;
+        }),
+      );
+      ctx.waitUntil(
+        checkForUpdate(env).then((r) => {
+          if (r !== "skipped") console.log(JSON.stringify({ msg: "update_check", result: r }));
           return r;
         }),
       );

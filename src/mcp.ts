@@ -18,6 +18,7 @@
  * challenge, which MCP clients turn into a step-up re-authorization.
  */
 import { Hono } from "hono";
+import { VERSION } from "./assets.gen";
 import type { Context } from "hono";
 import type { Env } from "./config";
 import { verifyAccessToken } from "./crypto";
@@ -76,7 +77,7 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
 
 const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const MODERN_VERSION = "2026-07-28";
-const SERVER_INFO = { name: "edge-idp", title: "edge-idp admin", version: "2.0.0" };
+const SERVER_INFO = { name: "edge-idp", title: "edge-idp admin", version: VERSION };
 const INSTRUCTIONS =
   "Administer this identity provider: users, groups, OAuth/OIDC clients, launcher apps, audit log. " +
   "Prefer the `execute` tool: one JS snippet against the typed `id` proxy (see its description), chaining calls and " +

@@ -105,6 +105,14 @@ wrangler.jsonc       portable template for the Deploy to Cloudflare button and f
 tests/e2e/full.mjs   the end-to-end suite
 ```
 
+## Feedback and contributing
+
+Running your own copy? Admin → Settings → About has "Report a bug" and
+"Suggest a feature" links that open issues here, and the overview tells you
+when there's a newer version ([how to update](DEPLOY.md#staying-up-to-date)).
+Code contributions: [CONTRIBUTING.md](CONTRIBUTING.md). Security issues:
+[report privately](https://github.com/tannerwj/edge-idp/security/advisories/new).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

@@ -22,7 +22,9 @@
   "observability": { "enabled": true },
   "vars": {
     "RP_NAME": "Identity"
-    // "ISSUER": "https://auth.example.com"
+    // "ISSUER": "https://auth.example.com",
+    // Feedback links + daily update check point here; "off" disables both.
+    // "UPSTREAM_REPO": "tannerwj/edge-idp"
   },
   "d1_databases": [
     {
