@@ -64,19 +64,24 @@ auth decision.
 
 ```bash
 npm install
-npx playwright install chromium   # once, for the e2e suite
+npx playwright install chromium   # once, for the e2e suites
 npx cf auth create personal && npx cf auth activate personal "$(pwd)"   # once: scope a Cloudflare login to this folder
 npm run db:migrate:local          # local D1
 npm run dev                       # cf dev on http://localhost:8787 (see DEPLOY.md → Local development)
-npm run test:e2e:local            # full e2e: real passkey ceremonies, OIDC, OAuth/MCP, security regressions
-npm run test:e2e:setup            # portable template: /setup, pinned issuer, encrypted D1 key
-npm test                          # unit tests
-npm run typecheck && npm run gates
-npm run deploy:check              # build + validate bindings without uploading
 ```
 
-`test:e2e:local` boots its own `cf dev` with a throwaway key and a temp D1,
-so it's safe to run any time. It leaves nothing behind.
+Checks, all self-contained (each boots a throwaway local instance and leaves
+nothing behind):
+
+```bash
+npm run typecheck && npm run gates   # types, lint, complexity, dead code, secrets, …
+npm test                             # unit tests (parsers / algorithms only)
+npm run test:e2e                     # full flow: passkeys, admin UI, OIDC, OAuth/MCP, regressions
+npm run test:e2e:setup               # the one-click install path (wrangler.jsonc, /setup)
+npm run test:security                # security-review regressions (tests/security)
+npm run deploy:check                 # build + validate bindings without uploading
+npm run smoke                        # read-only checks against the live deployment
+```
 
 ## Layout
 
@@ -94,7 +99,7 @@ src/
   pages.tsx          sign-in, enrollment, consent, sign-out, errors
   admin/             admin UI (overview, people, groups, apps, clients, audit, connect, tokens, settings)
   ui/                layout, components, icons
-  client/app.ts      browser bundle (esbuild → served from memory)
+  client/            browser bundle + app.css (esbuild → inlined via assets.gen.ts)
   cf-access.ts       optional read-only Cloudflare Access integration
   maintenance.ts     hourly cleanup + retention
   instance.ts        pinned issuer / encrypted D1 signing-key fallback (one-click installs)
@@ -102,7 +107,13 @@ src/
 migrations/          D1 schema (apply manually: npm run db:migrate)
 cloudflare.config.ts Worker config for the cf CLI (bindings, route, cron, account pin, staging)
 wrangler.jsonc       portable template for the Deploy to Cloudflare button and forks
-tests/e2e/full.mjs   the end-to-end suite
+tests/
+  e2e/               full, api and one-click suites + instances.mjs (throwaway servers)
+  security/          regression scripts from the October 2026 security review
+  smoke/             read-only post-deploy checks (tester-army/e2e)
+  unit.test.ts       unit tests
+scripts/             build, deploy, migrations, keys, seeding, smoke runner
+docs/                threat model; archive/ holds superseded research and reviews
 ```
 
 ## Feedback and contributing

@@ -1,6 +1,5 @@
 import { expect, test } from 'e2e';
-
-const base = process.env.E2E_BASE_URL ?? 'https://auth.johnson.network';
+import { base } from './http';
 
 test('trailing slashes redirect to the canonical path', async () => {
   // /admin/ must not 404 — it redirects to /admin.

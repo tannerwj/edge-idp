@@ -1,6 +1,5 @@
 import { expect, test } from 'e2e';
-
-const base = process.env.E2E_BASE_URL ?? 'https://auth.johnson.network';
+import { base } from './http';
 
 test('html responses carry the full security header set', async () => {
   const res = await fetch(`${base}/login`);
@@ -105,4 +104,13 @@ test('dynamic registration rejects dangerous redirect schemes', async () => {
     body: JSON.stringify({ client_name: 'probe', redirect_uris: ['javascript:alert(1)'] }),
   });
   expect(res.status).toBe(400);
+});
+
+test('mcp rejects an invalid token before any work', async () => {
+  const res = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer invalid' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'execute', arguments: { code: 'return 1;' } } }),
+  });
+  expect(res.status).toBe(401);
 });

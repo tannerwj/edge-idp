@@ -8,15 +8,14 @@
     "*.config.{ts,js,mjs}",
     ".dependency-cruiser.{js,cjs,mjs}",
     "scripts/**/*.{ts,js,mjs}",
+    "src/client/app.ts",
     "tests/e2e/**/*.mjs",
-    "src/client/app.ts"
+    "tests/security/**/*.mjs"
   ],
   "ignore": [
     "dist/**",
-    ".next/**",
-    ".open-next/**",
     ".wrangler/**",
-    "public/app.js"
+    "docs/archive/**"
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreDependencies": [

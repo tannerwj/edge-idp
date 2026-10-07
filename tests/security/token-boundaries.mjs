@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Local-only review reproduction. Creates and destroys an isolated cf dev + D1. */
 import { createHash, randomBytes } from "node:crypto";
-import { startLocal } from "../tests/e2e/local-instance.mjs";
+import { startLocal } from "../e2e/instances.mjs";
 
 const port = 9100 + Math.floor(Math.random() * 500);
 const instance = await startLocal({ issuer: `http://localhost:${port}`, port });

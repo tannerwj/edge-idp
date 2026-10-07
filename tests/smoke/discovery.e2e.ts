@@ -1,12 +1,10 @@
 import { expect, test } from 'e2e';
-
-const base = process.env.E2E_BASE_URL ?? 'https://auth.johnson.network';
+import { base, getJson, records } from './http';
 
 test('discovery document is well-formed', async () => {
-  const res = await fetch(`${base}/.well-known/openid-configuration`);
-  expect(res.status).toBe(200);
-  const doc = (await res.json()) as Record<string, unknown>;
-  expect(doc.issuer).toBe(`${base}`);
+  const { status, body: doc } = await getJson('/.well-known/openid-configuration');
+  expect(status).toBe(200);
+  expect(doc.issuer).toBe(base);
   expect(doc.authorization_endpoint).toBe(`${base}/authorize`);
   expect(doc.token_endpoint).toBe(`${base}/token`);
   expect(doc.userinfo_endpoint).toBe(`${base}/userinfo`);
@@ -18,30 +16,26 @@ test('discovery document is well-formed', async () => {
 });
 
 test('jwks exposes an RS256 RSA key', async () => {
-  const res = await fetch(`${base}/jwks`);
-  expect(res.status).toBe(200);
-  const jwks = (await res.json()) as { keys?: Array<Record<string, string>> };
-  expect(jwks.keys?.length).toBeGreaterThan(0);
-  const key = jwks.keys![0];
-  expect(key.kty).toBe('RSA');
-  expect(key.alg).toBe('RS256');
-  expect(key.use).toBe('sig');
-  expect(typeof key.kid).toBe('string');
-  expect(typeof key.n).toBe('string');
-  expect(typeof key.e).toBe('string');
+  const { status, body } = await getJson('/jwks');
+  expect(status).toBe(200);
+  const [key] = records(body.keys);
+  expect(key?.kty).toBe('RSA');
+  expect(key?.alg).toBe('RS256');
+  expect(key?.use).toBe('sig');
+  expect(typeof key?.kid).toBe('string');
+  expect(typeof key?.n).toBe('string');
+  expect(typeof key?.e).toBe('string');
 });
 
 test('jwks alias path serves the same key', async () => {
-  const res = await fetch(`${base}/.well-known/jwks.json`);
-  expect(res.status).toBe(200);
-  const jwks = (await res.json()) as { keys?: Array<Record<string, string>> };
-  expect(jwks.keys?.[0]?.kid).toBeDefined();
+  const { status, body } = await getJson('/.well-known/jwks.json');
+  expect(status).toBe(200);
+  expect(records(body.keys)[0]?.kid).toBeDefined();
 });
 
 test('OAuth metadata advertises what MCP clients need', async () => {
-  const res = await fetch(`${base}/.well-known/oauth-authorization-server`);
-  expect(res.status).toBe(200);
-  const doc = (await res.json()) as Record<string, any>;
+  const { status, body: doc } = await getJson('/.well-known/oauth-authorization-server');
+  expect(status).toBe(200);
   expect(doc.issuer).toBe(base);
   // claude.ai only uses CIMD when BOTH of these are present.
   expect(doc.client_id_metadata_document_supported).toBe(true);
@@ -53,8 +47,7 @@ test('OAuth metadata advertises what MCP clients need', async () => {
 });
 
 test('protected resource metadata names this server for /mcp', async () => {
-  const res = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`);
-  const prm = (await res.json()) as Record<string, any>;
+  const { body: prm } = await getJson('/.well-known/oauth-protected-resource/mcp');
   expect(prm.resource).toBe(`${base}/mcp`);
   expect(prm.authorization_servers).toEqual([base]);
 });

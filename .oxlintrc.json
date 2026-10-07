@@ -8,11 +8,21 @@
     "node_modules/**",
     ".wrangler/**",
     ".dependency-cruiser.cjs",
-    "public/app.js",
     "src/assets.gen.ts",
     "tests/e2e/**",
-    "scripts/**"
+    "scripts/**",
+    "tests/security/**",
+    "docs/archive/**"
   ],
   "rules": {},
-  "overrides": []
+  "overrides": [
+    {
+      "files": [
+        "tests/smoke/**"
+      ],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
+    }
+  ]
 }

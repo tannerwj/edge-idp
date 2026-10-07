@@ -20,7 +20,8 @@
   ],
   "tsc": {
     "projects": [
-      "tsconfig.json"
+      "tsconfig.json",
+      "tsconfig.client.json"
     ]
   },
   "exclude": [

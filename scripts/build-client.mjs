@@ -11,18 +11,19 @@ import esbuild from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
-await esbuild.build({
+const { outputFiles } = await esbuild.build({
   entryPoints: ["src/client/app.ts"],
   bundle: true,
   minify: true,
   format: "iife",
   target: "es2020",
-  outfile: "public/app.js",
+  outfile: "app.js",
+  write: false,
   logLevel: "warning",
 });
 
-const js = readFileSync("public/app.js", "utf8");
-const css = readFileSync("public/app.css", "utf8");
+const js = outputFiles[0].text;
+const css = readFileSync("src/client/app.css", "utf8");
 const { version } = JSON.parse(readFileSync("package.json", "utf8"));
 const buildHash = createHash("sha256").update(js).update(css).digest("hex").slice(0, 10);
 
