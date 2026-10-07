@@ -142,14 +142,17 @@ export async function getUserGroups(
 function blobBytes(v: unknown, column: string): Uint8Array<ArrayBuffer> {
   if (v instanceof Uint8Array) return v.slice();
   if (v instanceof ArrayBuffer) return new Uint8Array(v.slice(0));
-  if (Array.isArray(v)) return Uint8Array.from(v as number[]);
+  if (Array.isArray(v)) {
+    const bytes: number[] = [];
+    for (const b of v) {
+      if (typeof b !== "number") throw new Error(`db: bad BLOB byte in ${column}`);
+      bytes.push(b);
+    }
+    return Uint8Array.from(bytes);
+  }
   if (ArrayBuffer.isView(v)) {
-    const view = v as Uint8Array;
-    return new Uint8Array(
-      view.buffer as ArrayBuffer,
-      view.byteOffset,
-      view.byteLength,
-    ).slice();
+    const view: Uint8Array = v instanceof Uint8Array ? v : new Uint8Array(v.buffer);
+    return view.slice();
   }
   throw new Error(`db: expected BLOB column ${column}`);
 }
@@ -165,7 +168,7 @@ export async function getCredentialsForUser(
   return results.map((r) => ({
     id: str(r.id),
     user_id: str(r.user_id),
-    credential_id: blobBytes(r.credential_id, "credential_id").buffer as ArrayBuffer,
+    credential_id: blobBytes(r.credential_id, "credential_id").buffer,
     public_key: blobBytes(r.public_key, "public_key"),
     counter: num(r.counter),
     transports:

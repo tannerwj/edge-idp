@@ -79,6 +79,36 @@ oidc.get("/.well-known/jwks.json", async (c) => {
   return c.json(jwksDocument(publicJwk));
 });
 
+/**
+ * Validate the PKCE parameters for an authorize request. Returns an error
+ * code when the request must be rejected, null when it may proceed.
+ */
+function pkceError(
+  q: Record<string, string>,
+  client: OidcClient,
+): string | null {
+  if (client.require_pkce) {
+    if (q.code_challenge_method !== "S256" || !q.code_challenge) {
+      return "invalid_request";
+    }
+    return null;
+  }
+  if (q.code_challenge && q.code_challenge_method !== "S256") {
+    return "invalid_request";
+  }
+  return null;
+}
+
+/**
+ * Validate the requested scope. Returns the normalized scope string, or
+ * null when an unknown scope was requested.
+ */
+function normalizeScope(q: Record<string, string>): string | null {
+  const scope = (q.scope ?? "openid profile email").trim() || "openid";
+  const unknown = scope.split(/\s+/).filter((s) => !SCOPES.includes(s));
+  return unknown.length > 0 ? null : scope;
+}
+
 oidc.get("/authorize", async (c) => {
   const q = c.req.query();
   const clientId = q.client_id ?? "";
@@ -111,16 +141,10 @@ oidc.get("/authorize", async (c) => {
   // Threat note: skipping PKCE is safe here because the code is bound to the
   // exact redirect_uri and the confidential client proves possession of its
   // secret at the token endpoint.
-  if (client.require_pkce) {
-    if (q.code_challenge_method !== "S256" || !q.code_challenge) {
-      return redirectError("invalid_request");
-    }
-  } else if (q.code_challenge && q.code_challenge_method !== "S256") {
-    return redirectError("invalid_request");
-  }
-  const scope = (q.scope ?? "openid profile email").trim() || "openid";
-  const unknown = scope.split(/\s+/).filter((s) => !SCOPES.includes(s));
-  if (unknown.length > 0) return redirectError("invalid_scope");
+  const pkceErr = pkceError(q, client);
+  if (pkceErr) return redirectError(pkceErr);
+  const scope = normalizeScope(q);
+  if (!scope) return redirectError("invalid_scope");
 
   const user = await sessionUser(c);
   if (!user) {
