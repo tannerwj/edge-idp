@@ -36,7 +36,7 @@ import {
  */
 
 const CODE_TTL = 60;
-const SCOPES = ["openid", "profile", "email", "groups"];
+const SCOPES = ["openid", "profile", "email", "groups", "mcp"];
 
 export const oidc = new Hono<{ Bindings: Env }>();
 
@@ -77,6 +77,20 @@ oidc.get("/jwks", async (c) => {
 oidc.get("/.well-known/jwks.json", async (c) => {
   const { publicJwk } = await getSigningKey(c.env);
   return c.json(jwksDocument(publicJwk));
+});
+
+/**
+ * RFC 9728: OAuth 2.0 Protected Resource Metadata for the MCP endpoint.
+ * MCP clients fetch this to discover the authorization server (this IdP).
+ */
+oidc.get("/.well-known/oauth-protected-resource/mcp", (c) => {
+  const iss = c.env.ISSUER;
+  return c.json({
+    resource: `${iss}/mcp`,
+    authorization_servers: [iss],
+    scopes_supported: ["mcp"],
+    bearer_methods_supported: ["header"],
+  });
 });
 
 /**

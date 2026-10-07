@@ -23,7 +23,7 @@
     "wrangler": "^4.0.0"
   },
   "license": "MIT",
-  "name": "@johnson/identity",
+  "name": "edge-idp",
   "private": true,
   "scripts": {
     "build:client": "node scripts/build-client.mjs",

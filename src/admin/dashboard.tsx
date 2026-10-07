@@ -87,7 +87,7 @@ dashboardAdmin.get("/", async (c) => {
           ))}
         </ul>
       )}
-      <h2>Apps using Johnson ID</h2>
+      <h2>Apps using this IdP</h2>
       {clients.length === 0 ? (
         <p class="muted small">
           No apps registered yet. <a href="/admin/clients">Register one</a>.

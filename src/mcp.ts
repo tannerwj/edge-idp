@@ -1,5 +1,5 @@
 /**
- * MCP (Model Context Protocol) server for Johnson ID administration.
+ * MCP (Model Context Protocol) server for edge-idp administration.
  *
  * Exposes user, group, client, and theme management as MCP tools over
  * Streamable HTTP at POST /mcp. Auth is via Bearer admin API token
@@ -13,12 +13,14 @@ import type { Env } from "./config";
 import {
   audit,
   getSetting,
+  getUser,
   getUserByEmail,
   listClients,
   listUsers,
   setSetting,
 } from "./db";
 import { getTheme, invalidateThemeCache } from "./theme-cache";
+import { verifyAccessToken } from "./crypto";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
 
 export const mcp = new Hono<{ Bindings: Env }>();
@@ -327,24 +329,49 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-/** Validate a Bearer API token; returns {tokenId, adminId, tokenHash} or null. */
+/**
+ * Validate a Bearer credential for MCP. Accepts either:
+ * 1. An API token (SHA-256 hash lookup in api_tokens), or
+ * 2. An IdP-issued JWT access token (RS256, verified via JWKS) for an admin user.
+ *
+ * Returns {tokenId, adminId, tokenHash} or null. For JWTs, tokenId is "oauth"
+ * and tokenHash is the JWT's jti or a hash of the token (for sandbox binding).
+ */
 async function authToken(
   db: D1Database,
+  env: Env,
   req: Request,
 ): Promise<{ tokenId: string; adminId: string; tokenHash: string } | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const raw = header.slice(7);
+
+  // Try API token first (existing behavior).
   const hash = await sha256Hex(raw);
   const row = await db
     .prepare("SELECT id, created_by FROM api_tokens WHERE token_hash = ?1")
     .bind(hash)
     .first<{ id: string; created_by: string }>();
-  if (!row) return null;
-  await db.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2")
-    .bind(nowSec(), row.id)
-    .run();
-  return { tokenId: row.id, adminId: row.created_by, tokenHash: hash };
+  if (row) {
+    await db.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2")
+      .bind(nowSec(), row.id)
+      .run();
+    return { tokenId: row.id, adminId: row.created_by, tokenHash: hash };
+  }
+
+  // Try IdP-issued JWT access token (OAuth for MCP).
+  try {
+    const payload = await verifyAccessToken(env, raw);
+    const sub = typeof payload.sub === "string" ? payload.sub : null;
+    if (!sub) return null;
+    const user = await getUser(db, sub);
+    if (!user || !user.is_admin || user.disabled) return null;
+    // For sandbox binding, hash the JWT (it never sees the raw token).
+    const jwtHash = await sha256Hex(raw);
+    return { tokenId: "oauth", adminId: user.id, tokenHash: jwtHash };
+  } catch {
+    return null;
+  }
 }
 
 /** Record an MCP tool call for metrics. Fire-and-forget. */
@@ -372,11 +399,16 @@ function trackCall(
 }
 
 mcp.post("/", async (c) => {
-  const auth = await authToken(c.env.DB, c.req.raw);
+  const auth = await authToken(c.env.DB, c.env, c.req.raw);
   if (!auth) {
+    // RFC 9728: tell the client where to discover the authorization server.
+    const resourceMetadata = `${c.env.ISSUER}/.well-known/oauth-protected-resource/mcp`;
     return c.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: valid Bearer API token required." } },
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: Bearer API token or IdP access token required." } },
       401,
+      {
+        "WWW-Authenticate": `Bearer resource_metadata="${resourceMetadata}"`,
+      },
     );
   }
   const { tokenId, adminId, tokenHash } = auth;
@@ -395,9 +427,9 @@ mcp.post("/", async (c) => {
     return ok({
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "johnson-id", version: "1.0.0" },
+      serverInfo: { name: "edge-idp", version: "1.0.0" },
       instructions:
-        "Johnson ID admin MCP. Prefer the `execute` tool: write a single JS snippet " +
+        "edge-idp admin MCP. Prefer the `execute` tool: write a single JS snippet " +
         "against the typed `id` proxy (see its description for all tool signatures), " +
         "chain calls and filter in code — only your return value comes back. " +
         "Use individual tools directly only for single calls or debugging. " +
@@ -429,8 +461,7 @@ mcp.post("/", async (c) => {
         c.executionCtx as unknown as { exports?: Record<string, unknown>; waitUntil(p: Promise<unknown>): void },
         c.env.DB,
         String(args.code ?? ""),
-        tokenHash,
-        tokenId,
+        auth,
       );
       return ok(result);
     }
@@ -480,17 +511,24 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
     }
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
-    // The token lives in ctx.props, invisible across the RPC boundary.
-    // We re-derive adminId from it via the token hash lookup.
-    const props = this.ctx.props as { tokenHash?: string } | undefined;
-    if (!props?.tokenHash) throw new Error("missing credential");
-    const row = await this.env.DB.prepare(
-      "SELECT created_by FROM api_tokens WHERE token_hash = ?1",
-    )
-      .bind(props.tokenHash)
-      .first<{ created_by: string }>();
-    if (!row) throw new Error("credential rejected");
-    return await tool.handler(this.env.DB, args ?? {}, row.created_by);
+    // The credential lives in ctx.props, invisible across the RPC boundary.
+    // For API tokens it's the hash (looked up); for OAuth it's the adminId directly.
+    const props = this.ctx.props as { tokenHash?: string; adminId?: string } | undefined;
+    let adminId: string | null = null;
+    if (props?.adminId) {
+      // OAuth: adminId was validated host-side before isolate spin-up.
+      adminId = props.adminId;
+    } else if (props?.tokenHash) {
+      // API token: re-derive adminId from the hash.
+      const row = await this.env.DB.prepare(
+        "SELECT created_by FROM api_tokens WHERE token_hash = ?1",
+      )
+        .bind(props.tokenHash)
+        .first<{ created_by: string }>();
+      if (row) adminId = row.created_by;
+    }
+    if (!adminId) throw new Error("credential rejected");
+    return await tool.handler(this.env.DB, args ?? {}, adminId);
   }
 }
 
@@ -696,9 +734,9 @@ async function runExecute(
   ctx: { exports?: Record<string, unknown>; waitUntil(p: Promise<unknown>): void },
   db: D1Database,
   code: string,
-  tokenHash: string,
-  tokenId: string,
+  auth: { tokenId: string; adminId: string; tokenHash: string },
 ): Promise<{ content: { type: string; text: string }[]; isError?: boolean }> {
+  const { tokenId, adminId, tokenHash } = auth;
   const started = Date.now();
   const fail = (text: string) => {
     trackCall(db, "execute", started, false, text.slice(0, 200), tokenId);
@@ -714,14 +752,16 @@ async function runExecute(
     return fail("Error: the code-execution sandbox is not configured on this worker.");
   }
   const sandboxExport = ctx.exports?.IdCodeSandbox as
-    | ((opts: { props: { tokenHash: string } }) => unknown)
+    | ((opts: { props: { tokenHash?: string; adminId?: string } }) => unknown)
     | undefined;
   if (!sandboxExport) {
     return fail("Error: sandbox entrypoint unavailable.");
   }
   let worker: { getEntrypoint(name: string, opts: unknown): { run(): Promise<unknown> } };
   try {
-    const idStub = sandboxExport({ props: { tokenHash } });
+    // For OAuth (tokenId "oauth"), pass adminId directly; for API tokens, pass the hash.
+    const props = tokenId === "oauth" ? { adminId } : { tokenHash };
+    const idStub = sandboxExport({ props });
     worker = (env.LOADER as unknown as {
       load(opts: Record<string, unknown>): {
         getEntrypoint(name: string, opts: unknown): { run(): Promise<unknown> };

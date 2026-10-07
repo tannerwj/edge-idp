@@ -1,4 +1,4 @@
-# Identity — "Johnson ID"
+# edge-idp
 
 A minimal, passkey-only OIDC identity provider on Cloudflare Workers + D1.
 Users authenticate once with a passkey; Cloudflare Access — configured with
@@ -14,9 +14,11 @@ account. See [DEPLOY.md](DEPLOY.md).
 - Admin-managed users (name + email); users enroll passkeys via one-time links
 - Passkey registration + authentication (SimpleWebAuthn v14, Face ID / Touch ID first-class)
 - OIDC: `/.well-known/openid-configuration`, `/jwks`, `/authorize`, `/token`, `/userinfo` — authorization code + mandatory PKCE S256
-- OIDC client registry (admin registers apps: name, exact redirect URIs, allowed groups)
+- **Any OIDC app can connect** — it's a standard OIDC provider. Register your app (name, redirect URIs, allowed groups) in the admin UI and point it at the discovery URL. Works with any language, framework, or platform — not just Cloudflare.
+- OIDC client registry (admin registers apps: name, exact redirect URIs, allowed groups, environment)
 - Groups → `groups` claim in ID tokens, so Access policies can match on them
-- Minimal admin UI: users, groups, apps, audit log
+- Minimal admin UI: users, groups, apps, audit log, theme, API tokens, MCP metrics
+- MCP server with code mode: manage everything via AI assistants (API key or OAuth)
 - Account recovery: admin-assisted (revoke keys + fresh enrollment link)
 
 ## What it deliberately doesn't do
