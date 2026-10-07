@@ -93,9 +93,9 @@ for that reason, even though the raw values can be missing
   overlaid here. The admin-set name wins over `RP_NAME`, which wins over
   "Identity". For the Cloudflare credentials the Worker secrets
   (`CF_API_TOKEN`, `CF_ACCOUNT_ID`) win over the stored ones. The settings are
-  read through a per-isolate cache that lives 60 seconds; a save invalidates
+  read through a per-isolate cache that lives 10 seconds; a save invalidates
   it in the isolate that handled it, so other isolates catch up within a
-  minute (`src/settings-cache.ts › getInstanceSettings`).
+  few seconds (`src/settings-cache.ts › getInstanceSettings`).
 - **Signing key:** falls back to the encrypted key in D1. Isolates that start
   at the same moment converge on one key: each runs `INSERT OR IGNORE` into
   `signing_keys` (id `current`) and reads the row back. The row is read on
@@ -422,9 +422,9 @@ no user-facing request pays for a table scan. One D1 batch
 - dynamically registered (DCR) clients older than 30 days that never received
   a consent.
 
-**Caches.** The accent color changes only by admin action, so it is cached per
-isolate for 60 seconds instead of costing a D1 read on every page; a change can
-take up to a minute to reach other isolates (`src/settings-cache.ts`).
+**Caches.** Instance settings (name, accent, Cloudflare connection) change only
+by admin action, so they are cached per isolate for 10 seconds instead of costing a D1 read on every request; a change
+can take up to 10 seconds to reach other isolates (`src/settings-cache.ts`).
 
 ## UI conventions
 

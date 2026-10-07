@@ -679,8 +679,12 @@ try {
     await page.fill("input[name=name]", "Renamed ID");
     await saveSettings();
     check("rename applies across the app", (await page.title()).endsWith("Renamed ID"));
-    const anonLogin = await (await fetch(`${BASE}/login`)).text();
-    check("sign-in page shows the new name", anonLogin.includes("Renamed ID"));
+    let renamedEverywhere = false;
+    for (let i = 0; i < 30 && !renamedEverywhere; i++) {
+      renamedEverywhere = (await (await fetch(`${BASE}/login`)).text()).includes("Renamed ID");
+      if (!renamedEverywhere) await new Promise((r) => setTimeout(r, 500));
+    }
+    check("sign-in page shows the new name within the cache window", renamedEverywhere);
     await page.request.post(`${BASE}/admin/settings`, { form: { name: "   ", accent: "indigo" } });
     check("a blank name is refused", (await setting("instance_name")) === "Renamed ID");
     await page.goto(`${BASE}/admin/settings`);
