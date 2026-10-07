@@ -38,7 +38,8 @@ usersAdmin.get("/", async (c) => {
           Create user
         </button>
       </form>
-      <table class="table">
+            <div class="table-wrap">
+<table class="table">
         <thead>
           <tr>
             <th>Name</th>
@@ -90,6 +91,7 @@ usersAdmin.get("/", async (c) => {
           ))}
         </tbody>
       </table>
+      </div>
     </>,
   );
 });
