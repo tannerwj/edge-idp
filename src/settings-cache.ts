@@ -26,7 +26,7 @@ const KEYS = {
 
 export const SETTING_KEYS = KEYS;
 
-const TTL_MS = 60_000;
+const TTL_MS = 10_000;
 let cache: { value: InstanceSettings; at: number } | null = null;
 
 export async function getInstanceSettings(db: D1Database): Promise<InstanceSettings> {
