@@ -5,6 +5,7 @@ import type { Env } from "./config";
 import { webauthn, validEnrollmentToken } from "./webauthn";
 import { oidc } from "./oidc";
 import { admin } from "./admin";
+import { mcp } from "./mcp";
 import {
   AccountPage,
   DonePage,
@@ -222,6 +223,7 @@ app.get("/done", async (c) =>
 
 app.route("/webauthn", webauthn);
 app.route("/admin", admin);
+app.route("/mcp", mcp);
 // OIDC routes live at absolute paths (/.well-known/…, /authorize, …).
 app.route("/", oidc);
 

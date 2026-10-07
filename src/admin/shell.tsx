@@ -27,8 +27,10 @@ const TABS: [string, string][] = [
   ["users", "Users"],
   ["groups", "Groups"],
   ["clients", "Apps"],
+  ["access", "Access"],
   ["audit", "Audit log"],
   ["theme", "Theme"],
+  ["tokens", "API Tokens"],
 ];
 
 export function page(
@@ -79,6 +81,13 @@ export function page(
               </a>
             </nav>
             {children}
+            <footer class="admin-foot">
+              <span class="muted small">
+                <a href="https://github.com/tannerwj/identity/issues" target="_blank" rel="noopener">
+                  Feedback & feature requests
+                </a>
+              </span>
+            </footer>
           </div>
         </main>
       </body>
