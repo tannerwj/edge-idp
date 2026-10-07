@@ -12,7 +12,7 @@ in about fifteen minutes. Every instance-specific value is marked `REPLACE_` in
 ## 1. Clone and install
 
 ```bash
-git clone https://github.com/tannerwj/identity
+git clone https://github.com/tannerwj/edge-idp
 cd identity
 npm install
 ```
