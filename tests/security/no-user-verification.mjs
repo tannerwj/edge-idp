@@ -48,6 +48,6 @@ try {
   console.log("no-user-verification enrollment rejected: PASS");
 } finally {
   await browser?.close();
-  instance.stop();
+  await instance.stop();
 }
 process.exit(0);

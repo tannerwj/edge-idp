@@ -28,9 +28,33 @@ export function stageArg(argv = process.argv) {
   return m ? m[1] : "production";
 }
 
+export function stopGroup(child) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    const hard = setTimeout(() => {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {}
+    }, 5000);
+    child.once("exit", () => {
+      clearTimeout(hard);
+      resolve();
+    });
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      clearTimeout(hard);
+      resolve();
+    }
+  });
+}
+
 export function cfJson(args, { timeoutMs = 60_000 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn("npx", ["cf", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("npx", ["cf", ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
     let out = "";
     let err = "";
     let done = false;
@@ -38,8 +62,7 @@ export function cfJson(args, { timeoutMs = 60_000 } = {}) {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      child.kill();
-      fn(v);
+      void stopGroup(child).then(() => fn(v));
     };
     const tryParse = () => {
       const start = out.search(/[[{]/);
@@ -79,33 +102,18 @@ export function migrateLocal(persistTo) {
   ]);
 }
 
-const LOCAL_TRANSIENT = /\[10000\] Network connection lost/;
-
-async function withLocalRetry(local, run) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await run();
-    } catch (e) {
-      if (!local || attempt >= 4 || !LOCAL_TRANSIENT.test(String(e))) throw e;
-      await new Promise((r) => setTimeout(r, 750 * attempt));
-    }
-  }
-}
-
 export async function sqlRows(sql, { local = true, persistTo, stage = "production" } = {}) {
-  const res = await withLocalRetry(local, () =>
-    cfJson([
-      "d1",
-      "raw",
-      d1Id(stage),
-      "--sql",
-      sql,
-      "--mode",
-      stage,
-      ...(local ? ["--local"] : []),
-      ...(local && persistTo ? ["--persist-to", persistTo] : []),
-    ]),
-  );
+  const res = await cfJson([
+    "d1",
+    "raw",
+    d1Id(stage),
+    "--sql",
+    sql,
+    "--mode",
+    stage,
+    ...(local ? ["--local"] : []),
+    ...(local && persistTo ? ["--persist-to", persistTo] : []),
+  ]);
   const last = Array.isArray(res) ? res[res.length - 1] : res;
   const { columns = [], rows = [] } = last?.results ?? {};
   return rows.map((r) => Object.fromEntries(columns.map((c, i) => [c, r[i]])));

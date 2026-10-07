@@ -5,6 +5,7 @@ import type { Actor } from "./ops-core";
 
 export { OpError } from "./ops-core";
 export * from "./ops-apps";
+export * from "./ops-settings";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const GROUP_RE = /^[a-z0-9_-]{1,60}$/;

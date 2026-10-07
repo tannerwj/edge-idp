@@ -267,7 +267,7 @@ try {
     );
   }
 } finally {
-  instance.stop();
+  await instance.stop();
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);

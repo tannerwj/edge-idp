@@ -88,7 +88,14 @@ for that reason, even though the raw values can be missing
   `instance_settings`, then the request origin. A database that already has
   users but no pin and no explicit `ISSUER` fails closed instead of guessing
   (it predates issuer pinning, and guessing could silently change the issuer).
-- **RP name:** falls back to "Identity".
+- **Instance settings:** the name and the Cloudflare Access connection can be
+  changed by admins at runtime, so they live in `instance_settings` and are
+  overlaid here. The admin-set name wins over `RP_NAME`, which wins over
+  "Identity". For the Cloudflare credentials the Worker secrets
+  (`CF_API_TOKEN`, `CF_ACCOUNT_ID`) win over the stored ones. The settings are
+  read through a per-isolate cache that lives 60 seconds; a save invalidates
+  it in the isolate that handled it, so other isolates catch up within a
+  minute (`src/settings-cache.ts › getInstanceSettings`).
 - **Signing key:** falls back to the encrypted key in D1. Isolates that start
   at the same moment converge on one key: each runs `INSERT OR IGNORE` into
   `signing_keys` (id `current`) and reads the row back. The row is read on
@@ -133,6 +140,7 @@ src/
   ops.ts                domain operations shared by the admin UI and MCP (users, groups)
   ops-core.ts           OpError, Actor, shared parsing helpers
   ops-apps.ts           OAuth client, launcher app and API token operations
+  ops-settings.ts       instance name and Cloudflare Access connection
   db.ts                 D1 row types, validators, queries, audit writes
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
@@ -495,8 +503,7 @@ and `deploy` (`scripts/build-client.mjs`).
 **`cf` beta workarounds.** These exist because of `cf` 1.0.0-beta.13 behavior.
 Remove each when its condition is met.
 
-| Workaround                                                                                                                         | Why                                                                                                                                                                           | Remove when                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `cfJson` reads stdout until it parses as JSON, then kills the process (60 s default timeout) (`scripts/cf-local.mjs › cfJson`)     | `cf d1 … --local` prints its result but leaves the local Miniflare instance running, so the process never exits                                                               | `cf d1 --local` exits on its own                                                                       |
-| Local migrations and seeding pass `--persist-to .wrangler/state` (`scripts/db-migrate.mjs`, `scripts/cf-local.mjs › migrateLocal`) | `cf dev` reads local D1 from `.wrangler/state`, but `cf d1 --local` defaults elsewhere                                                                                        | `cf dev` and `cf d1 --local` agree on a default                                                        |
-| Local SQL retries up to 4 times with a growing delay on `[10000] Network connection lost` (`scripts/cf-local.mjs › sqlRows`)       | `cf d1 raw --local` runs its own Miniflare against the same SQLite files as the running `cf dev`, and collides with writes the Worker finishes after responding (`waitUntil`) | local `cf d1` commands share the dev server's engine, or stop dropping the connection under contention |
+| Workaround                                                                                                                                                                       | Why                                                                                                                                                                                                                                                    | Remove when                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `cfJson` reads stdout until it parses as JSON, then stops the whole process group and waits for it to exit (60 s default timeout) (`scripts/cf-local.mjs › cfJson`, `stopGroup`) | `cf d1 … --local` prints its result but leaves its local Miniflare running. Run through `npx`, killing only the wrapper orphans `cf` and its engine, which keep the D1 files open and make later local SQL fail with `[10000] Network connection lost` | `cf d1 --local` exits on its own                |
+| Local migrations and seeding pass `--persist-to .wrangler/state` (`scripts/db-migrate.mjs`, `scripts/cf-local.mjs › migrateLocal`)                                               | `cf dev` reads local D1 from `.wrangler/state`, but `cf d1 --local` defaults elsewhere                                                                                                                                                                 | `cf dev` and `cf d1 --local` agree on a default |

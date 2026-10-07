@@ -160,6 +160,8 @@ const CATEGORIES: Record<string, string[]> = {
     "APP_UPDATED",
     "APP_DELETED",
     "SETTINGS_CHANGED",
+    "CF_API_CONNECTED",
+    "CF_API_DISCONNECTED",
     "API_TOKEN_CREATED",
     "API_TOKEN_REVOKED",
   ],

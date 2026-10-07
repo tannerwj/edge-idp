@@ -1,4 +1,5 @@
 import type { Env } from "./config";
+import { getInstanceSettings } from "./settings-cache";
 import { base64url, nowSec } from "./util";
 
 const KEY_PREFIX = "enc:v1:";
@@ -96,6 +97,7 @@ async function storedSigningKey(db: D1Database, secret: string): Promise<string>
 }
 
 export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
+  const settings = await getInstanceSettings(env.DB);
   const pinned = env.ISSUER
     ? null
     : await env.DB.prepare("SELECT value FROM instance_settings WHERE key = 'issuer'").first<{
@@ -112,7 +114,9 @@ export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
   return {
     ...env,
     ISSUER: issuer,
-    RP_NAME: env.RP_NAME || "Identity",
+    RP_NAME: settings.name || env.RP_NAME || "Identity",
+    CF_API_TOKEN: env.CF_API_TOKEN || settings.cfApiToken || undefined,
+    CF_ACCOUNT_ID: env.CF_ACCOUNT_ID || settings.cfAccountId || undefined,
     SIGNING_KEY_JWK: env.SIGNING_KEY_JWK || (await storedSigningKey(env.DB, encryptionSecret(env))),
   };
 }

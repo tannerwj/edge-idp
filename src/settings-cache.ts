@@ -1,6 +1,3 @@
-import { getSetting } from "./db";
-import type { Env } from "./config";
-
 export const ACCENTS = [
   "indigo",
   "iris",
@@ -13,15 +10,46 @@ export const ACCENTS = [
   "graphite",
 ] as const;
 
-let cache: { value: string; at: number } | null = null;
+export interface InstanceSettings {
+  accent: string;
+  name: string | null;
+  cfApiToken: string | null;
+  cfAccountId: string | null;
+}
 
-export async function getAccent(env: Env): Promise<string> {
+const KEYS = {
+  accent: "accent",
+  name: "instance_name",
+  cfApiToken: "cf_api_token",
+  cfAccountId: "cf_account_id",
+} as const;
+
+export const SETTING_KEYS = KEYS;
+
+const TTL_MS = 60_000;
+let cache: { value: InstanceSettings; at: number } | null = null;
+
+export async function getInstanceSettings(db: D1Database): Promise<InstanceSettings> {
   const now = Date.now();
-  if (cache && now - cache.at < 60_000) return cache.value;
-  const raw = await getSetting(env.DB, "accent", "indigo");
-  const value = (ACCENTS as readonly string[]).includes(raw) ? raw : "indigo";
+  if (cache && now - cache.at < TTL_MS) return cache.value;
+  const { results } = await db
+    .prepare("SELECT key, value FROM instance_settings WHERE key IN (?1, ?2, ?3, ?4)")
+    .bind(KEYS.accent, KEYS.name, KEYS.cfApiToken, KEYS.cfAccountId)
+    .all<{ key: string; value: string }>();
+  const get = (k: string) => results.find((r) => r.key === k)?.value || null;
+  const accent = get(KEYS.accent) ?? "indigo";
+  const value: InstanceSettings = {
+    accent: (ACCENTS as readonly string[]).includes(accent) ? accent : "indigo",
+    name: get(KEYS.name),
+    cfApiToken: get(KEYS.cfApiToken),
+    cfAccountId: get(KEYS.cfAccountId),
+  };
   cache = { value, at: now };
   return value;
+}
+
+export async function getAccent(env: { DB: D1Database }): Promise<string> {
+  return (await getInstanceSettings(env.DB)).accent;
 }
 
 export function invalidateSettingsCache(): void {

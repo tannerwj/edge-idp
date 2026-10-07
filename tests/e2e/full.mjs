@@ -666,6 +666,61 @@ try {
     check("scheduled handler runs", r.ok, String(r.status));
   }
 
+  step("instance settings");
+  {
+    const setting = async (key) =>
+      (await sql(`SELECT value FROM instance_settings WHERE key = '${key}'`))[0]?.value ?? null;
+    const saveSettings = () =>
+      Promise.all([
+        page.waitForNavigation(),
+        page.click("form[action='/admin/settings'] button[type=submit]"),
+      ]);
+    await page.goto(`${BASE}/admin/settings`);
+    await page.fill("input[name=name]", "Renamed ID");
+    await saveSettings();
+    check("rename applies across the app", (await page.title()).endsWith("Renamed ID"));
+    const anonLogin = await (await fetch(`${BASE}/login`)).text();
+    check("sign-in page shows the new name", anonLogin.includes("Renamed ID"));
+    await page.request.post(`${BASE}/admin/settings`, { form: { name: "   ", accent: "indigo" } });
+    check("a blank name is refused", (await setting("instance_name")) === "Renamed ID");
+    await page.goto(`${BASE}/admin/settings`);
+    await page.fill("input[name=name]", "E2E Identity");
+    await saveSettings();
+
+    check(
+      "Cloudflare card offers to connect",
+      !!(await page.$("#cloudflare form[action='/admin/settings/cloudflare']")),
+    );
+    if (!process.env.E2E_OFFLINE) {
+      await page.fill("#cloudflare input[name=token]", "e2eNotARealCloudflareToken0123456789abcd");
+      await page.fill("#cloudflare input[name=accountId]", "0123456789abcdef0123456789abcdef");
+      await Promise.all([page.waitForNavigation(), page.click("#cloudflare button[type=submit]")]);
+      check(
+        "a token Cloudflare rejects is not saved",
+        (await setting("cf_api_token")) === null &&
+          ((await page.getAttribute("body", "data-flash")) ?? "").includes("Cloudflare rejected"),
+      );
+    }
+    await sql(
+      "INSERT INTO instance_settings (key, value, updated_at) VALUES ('cf_api_token', 'seeded-token-value-0123456789', 0), ('cf_account_id', 'fedcba9876543210fedcba9876543210', 0)",
+    );
+    await page.goto(`${BASE}/admin/settings`);
+    const card = (await page.textContent("#cloudflare")) ?? "";
+    check(
+      "a saved connection shows as connected, never the token",
+      card.includes("fedcba9876543210fedcba9876543210") &&
+        !card.includes("seeded-token-value") &&
+        !(await page.content()).includes("seeded-token-value"),
+    );
+    await page.click("form[action='/admin/settings/cloudflare/remove'] button");
+    await page.waitForSelector("#confirm-dialog[open]");
+    await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
+    check(
+      "disconnect clears the stored credentials",
+      (await setting("cf_api_token")) === null && (await setting("cf_account_id")) === null,
+    );
+  }
+
   step("feedback + update notice");
   {
     if (!instance.remote) {
@@ -715,7 +770,7 @@ try {
   console.error(`  FAIL [${section}] threw:`, e);
 } finally {
   await browser.close();
-  instance.stop();
+  await instance.stop();
 }
 
 const EXPECTED_ERRORS = ["execute is not available inside execute"];

@@ -220,9 +220,12 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "settings_get",
     write: false,
-    description: "Instance settings: accent color, dynamic client registration, CIMD support.",
+    description:
+      "Instance settings: name, accent color, dynamic client registration, CIMD support, whether the read-only Cloudflare Access connection is set up.",
     inputSchema: obj(),
-    handler: async ({ db }) => ({
+    handler: async ({ db, env }) => ({
+      name: env.RP_NAME,
+      cloudflare_connected: !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID),
       accent: await getSetting(db, "accent", "indigo"),
       dcr_enabled: (await getSetting(db, "dcr_enabled", "1")) === "1",
       cimd_enabled: (await getSetting(db, "cimd_enabled", "1")) === "1",
@@ -231,8 +234,10 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "settings_set",
     write: true,
-    description: "Change instance settings.",
+    description:
+      "Change instance settings. `name` is shown on sign-in pages, invites and in password managers for new passkeys.",
     inputSchema: obj({
+      name: { type: "string", maxLength: 60 },
       accent: {
         type: "string",
         enum: ["indigo", "iris", "blue", "teal", "green", "amber", "orange", "rose", "graphite"],
@@ -241,6 +246,7 @@ export const APP_TOOLS: ToolDef[] = [
       cimd_enabled: { type: "boolean" },
     }),
     handler: async ({ db, actor }, args) => {
+      if (typeof args.name === "string") await ops.setInstanceName(db, args.name, actor);
       if (str(args.accent)) await setSetting(db, "accent", str(args.accent));
       if (typeof args.dcr_enabled === "boolean")
         await setSetting(db, "dcr_enabled", args.dcr_enabled ? "1" : "0");

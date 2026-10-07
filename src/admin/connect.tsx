@@ -165,9 +165,9 @@ function AccessSection(props: {
               </>
             ) : (
               <>
-                Add them under <a href="/admin/apps">Apps</a>, or set <code>CF_ACCOUNT_ID</code> +{" "}
-                <code>CF_API_TOKEN</code> (Access read permissions) to import them and see their
-                policies here.
+                Add them under <a href="/admin/apps">Apps</a>, or{" "}
+                <a href="/admin/settings#cloudflare">connect Cloudflare</a> (read-only) to import
+                them and see their policies here.
               </>
             )}
           </p>
