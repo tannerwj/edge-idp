@@ -11,7 +11,7 @@ import { getAccent } from "../settings-cache";
 import { raw } from "hono/html";
 import { Icon } from "./icons";
 import type { IconName } from "./icons";
-import { Avatar } from "./components";
+import { Avatar, ConfirmDialog } from "./components";
 
 export type Mode = "system" | "light" | "dark";
 
@@ -128,6 +128,7 @@ function Document(props: {
           {...(flash ? { "data-flash": flash.m, "data-flash-tone": flash.t } : {})}
         >
           {props.children}
+          <ConfirmDialog />
           <div class="toasts" id="toasts" aria-live="polite"></div>
         </body>
       </html>

@@ -217,3 +217,33 @@ export function GroupPicker(props: {
     </div>
   );
 }
+
+export function ConfirmDialog() {
+  return (
+    <dialog
+      id="confirm-dialog"
+      class="confirm"
+      aria-labelledby="confirm-title"
+      aria-describedby="confirm-detail"
+    >
+      <div class="dlg-head">
+        <span class="confirm-icon">
+          <Icon name="alert" class="when-danger" />
+          <Icon name="info" class="when-plain" />
+        </span>
+        <div class="grow">
+          <h2 id="confirm-title"></h2>
+          <p id="confirm-detail"></p>
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <button class="btn" type="button" data-close>
+          Cancel
+        </button>
+        <button class="btn danger solid" type="button" id="confirm-ok">
+          Confirm
+        </button>
+      </div>
+    </dialog>
+  );
+}
