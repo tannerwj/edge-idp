@@ -245,3 +245,6 @@ export default Sentry.withSentry(
   }),
   app,
 );
+
+// Code-mode sandbox entrypoint (must be exported for ctx.exports).
+export { IdCodeSandbox } from "./mcp";
