@@ -1,12 +1,17 @@
 /** Server-rendered pages. No inline <script> anywhere — the CSP forbids it;
  *  all behavior lives in /webauthn.js and reads data-* attributes. */
 
+export const THEMES = ["obsidian", "porcelain", "ledger", "dusk", "manuscript", "monochrome"] as const;
+export type Theme = (typeof THEMES)[number];
+
 export function Layout(props: {
   title: string;
   rpName: string;
   children: unknown;
   page?: string;
+  theme?: string;
 }) {
+  const theme = THEMES.includes(props.theme as Theme) ? props.theme : "obsidian";
   return (
     <html lang="en">
       <head>
@@ -14,7 +19,7 @@ export function Layout(props: {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="color-scheme" content="light dark" />
         <title>{props.title}</title>
-        <link rel="stylesheet" href="/styles.css" />
+        <link rel="stylesheet" href={`/themes/${theme}.css`} />
         <script src="/webauthn.js" defer></script>
       </head>
       <body data-page={props.page ?? ""}>
@@ -28,16 +33,15 @@ export function Layout(props: {
             </div>
             {props.children}
           </div>
-          <p class="foot">Protected by passkeys — no passwords, nothing to phish.</p>
         </main>
       </body>
     </html>
   );
 }
 
-export function LoginPage(props: { rpName: string; next: string }) {
+export function LoginPage(props: { rpName: string; next: string; theme?: string }) {
   return (
-    <Layout title={`Sign in — ${props.rpName}`} rpName={props.rpName} page="login">
+    <Layout title={`Sign in — ${props.rpName}`} rpName={props.rpName} page="login" theme={props.theme}>
       <h1>Welcome back</h1>
       <p class="muted">Sign in with your passkey — Face ID, Touch ID, or your security key.</p>
       <div id="login-box" data-next={props.next}>
@@ -64,12 +68,14 @@ export function EnrollPage(props: {
   rpName: string;
   name: string;
   token: string;
+  theme?: string;
 }) {
   return (
     <Layout
       title={`Set up your passkey — ${props.rpName}`}
       rpName={props.rpName}
       page="enroll"
+      theme={props.theme}
     >
       <h1>Hi {props.name}</h1>
       <p class="muted">
@@ -92,14 +98,30 @@ export function EnrollPage(props: {
 
 export function AccountPage(props: {
   rpName: string;
+  theme?: string;
   name: string;
   email: string;
   credentials: { id: string; name: string; created: string; lastUsed: string }[];
 }) {
   return (
-    <Layout title={`Your account — ${props.rpName}`} rpName={props.rpName} page="account">
-      <h1>{props.name}</h1>
-      <p class="muted">{props.email}</p>
+    <Layout title={`Your account — ${props.rpName}`} rpName={props.rpName} page="account" theme={props.theme}>
+      <h1>Your account</h1>
+      <h2>Profile</h2>
+      <form method="post" action="/account/profile" class="stack">
+        <label class="field">
+          <span>Name</span>
+          <input name="name" required maxLength={120} value={props.name} />
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input name="email" type="email" required maxLength={254} value={props.email} />
+        </label>
+        <div>
+          <button class="btn primary" type="submit">
+            Save profile
+          </button>
+        </div>
+      </form>
       <h2>Passkeys</h2>
       {props.credentials.length === 0 ? (
         <p class="muted">No passkeys yet.</p>
@@ -138,9 +160,9 @@ export function AccountPage(props: {
   );
 }
 
-export function DonePage(props: { rpName: string; title: string; body: string }) {
+export function DonePage(props: { rpName: string; title: string; body: string; theme?: string }) {
   return (
-    <Layout title={props.title} rpName={props.rpName}>
+    <Layout title={props.title} rpName={props.rpName} theme={props.theme}>
       <h1>{props.title}</h1>
       <p class="muted">{props.body}</p>
       <p>
@@ -152,9 +174,9 @@ export function DonePage(props: { rpName: string; title: string; body: string })
   );
 }
 
-export function ErrorPage(props: { rpName: string; message: string }) {
+export function ErrorPage(props: { rpName: string; message: string; theme?: string }) {
   return (
-    <Layout title={`Error — ${props.rpName}`} rpName={props.rpName}>
+    <Layout title={`Error — ${props.rpName}`} rpName={props.rpName} theme={props.theme}>
       <h1>Something went wrong</h1>
       <p class="muted">{props.message}</p>
       <p>

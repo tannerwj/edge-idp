@@ -12,10 +12,15 @@ import {
   LoginPage,
 } from "./pages";
 import { destroySession, sessionUser } from "./session";
-import { audit, getCredentialsForUser } from "./db";
-import { STYLES_CSS, WEBAUTHN_JS } from "./assets.gen";
+import { audit, getCredentialsForUser, getSetting } from "./db";
+import { THEMES_CSS, WEBAUTHN_JS } from "./assets.gen";
 
 const app = new Hono<{ Bindings: Env }>();
+
+/** Current site theme (admin-configurable, defaults to classic). */
+async function theme(c: { env: Env }): Promise<string> {
+  return getSetting(c.env.DB, "theme", "obsidian");
+}
 
 /**
  * Security headers on EVERY response (coding standard). Static assets are
@@ -44,12 +49,16 @@ app.use("*", async (c, next) => {
   );
 });
 
-app.get("/styles.css", (c) =>
-  c.body(STYLES_CSS, 200, {
+app.get("/themes/:name.css", (c) => {
+  const raw = c.req.param("name.css") ?? "";
+  const name = raw.replace(/\.css$/, "");
+  const css = THEMES_CSS[name];
+  if (!css) return c.text("Unknown theme", 404);
+  return c.body(css, 200, {
     "content-type": "text/css; charset=utf-8",
     "cache-control": "public, max-age=3600",
-  }),
-);
+  });
+});
 app.get("/webauthn.js", (c) =>
   c.body(WEBAUTHN_JS, 200, {
     "content-type": "text/javascript; charset=utf-8",
@@ -72,7 +81,9 @@ app.get("/login", async (c) => {
   const user = await sessionUser(c);
   const next = safeNext(c.req.query("next"));
   if (user) return c.redirect(next, 302);
-  return c.html(<LoginPage rpName={c.env.RP_NAME} next={next} />);
+  return c.html(
+    <LoginPage rpName={c.env.RP_NAME} next={next} theme={await theme(c)} />,
+  );
 });
 
 app.get("/enroll/:token", async (c) => {
@@ -82,6 +93,7 @@ app.get("/enroll/:token", async (c) => {
       <ErrorPage
         rpName={c.env.RP_NAME}
         message="This enrollment link is invalid, expired, or already used. Ask your admin for a new one."
+        theme={await theme(c)}
       />,
       400,
     );
@@ -91,6 +103,7 @@ app.get("/enroll/:token", async (c) => {
       rpName={c.env.RP_NAME}
       name={v.user.name}
       token={c.req.param("token")}
+      theme={await theme(c)}
     />,
   );
 });
@@ -104,6 +117,7 @@ app.get("/account", async (c) => {
       rpName={c.env.RP_NAME}
       name={user.name}
       email={user.email}
+      theme={await theme(c)}
       credentials={creds.map((k) => ({
         id: k.id,
         name: k.name,
@@ -143,6 +157,40 @@ app.post("/account/keys/:id/remove", async (c) => {
   return c.json({ ok: true });
 });
 
+app.post("/account/profile", async (c) => {
+  const user = await sessionUser(c);
+  if (!user) return c.redirect("/login?next=/account", 302);
+  const form = await c.req.parseBody();
+  const name = String(form.name ?? "").trim().slice(0, 120);
+  const email = String(form.email ?? "").trim().slice(0, 254);
+  const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  const err = async (message: string) =>
+    c.html(
+      <ErrorPage rpName={c.env.RP_NAME} message={message} theme={await theme(c)} />,
+      400,
+    );
+  if (!name) return err("Name is required.");
+  if (!emailOk) return err("Enter a valid email address.");
+  if (email.toLowerCase() !== user.email.toLowerCase()) {
+    const clash = await c.env.DB.prepare(
+      "SELECT id FROM users WHERE lower(email) = lower(?1) AND id != ?2",
+    )
+      .bind(email, user.id)
+      .first();
+    if (clash) return err("That email is already in use by another account.");
+  }
+  await c.env.DB.prepare(
+    "UPDATE users SET name = ?1, email = ?2, updated_at = ?3 WHERE id = ?4",
+  )
+    .bind(name, email, Math.floor(Date.now() / 1000), user.id)
+    .run();
+  await audit(c.env.DB, "PROFILE_UPDATED", {
+    userId: user.id,
+    detail: { nameChanged: name !== user.name, emailChanged: email !== user.email },
+  });
+  return c.redirect("/account", 303);
+});
+
 app.post("/logout", async (c) => {
   const user = await sessionUser(c);
   if (user) await audit(c.env.DB, "SIGN_OUT", { userId: user.id });
@@ -150,12 +198,13 @@ app.post("/logout", async (c) => {
   return c.redirect("/login", 303);
 });
 
-app.get("/done", (c) =>
+app.get("/done", async (c) =>
   c.html(
     <DonePage
       rpName={c.env.RP_NAME}
       title="You're signed in"
       body="You can close this tab and return to the app."
+      theme={await theme(c)}
     />,
   ),
 );
@@ -165,9 +214,13 @@ app.route("/admin", admin);
 // OIDC routes live at absolute paths (/.well-known/…, /authorize, …).
 app.route("/", oidc);
 
-app.notFound((c) =>
+app.notFound(async (c) =>
   c.html(
-    <ErrorPage rpName={c.env.RP_NAME ?? "Identity"} message="Page not found." />,
+    <ErrorPage
+      rpName={c.env.RP_NAME ?? "Identity"}
+      message="Page not found."
+      theme={await theme(c)}
+    />,
     404,
   ),
 );

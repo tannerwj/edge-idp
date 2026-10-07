@@ -252,3 +252,30 @@ export async function audit(
     .run();
 }
 
+
+/** Instance settings: get a setting, falling back to the default. */
+export async function getSetting(
+  db: D1Database,
+  key: string,
+  fallback: string,
+): Promise<string> {
+  const row = await db
+    .prepare("SELECT value FROM instance_settings WHERE key = ?1")
+    .bind(key)
+    .first<{ value: string }>();
+  return row?.value ?? fallback;
+}
+
+/** Instance settings: set a setting. */
+export async function setSetting(
+  db: D1Database,
+  key: string,
+  value: string,
+): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO instance_settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3",
+    )
+    .bind(key, value, nowSec())
+    .run();
+}

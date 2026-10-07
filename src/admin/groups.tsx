@@ -22,7 +22,7 @@ groupsAdmin.get("/", async (c) => {
       return { g, members };
     }),
   );
-  return p(
+  return await p(
     c,
     "groups",
     "Groups",
@@ -97,7 +97,7 @@ groupsAdmin.post("/groups", async (c) => {
   const form = await c.req.parseBody();
   const name = field(form, "name").trim().toLowerCase().slice(0, 60);
   if (!/^[a-z0-9_-]{1,60}$/.test(name)) {
-    return p(
+    return await p(
       c,
       "groups",
       "Groups",
