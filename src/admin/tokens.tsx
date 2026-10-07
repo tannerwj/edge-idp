@@ -1,128 +1,173 @@
 import { Hono } from "hono";
 import { audit } from "../db";
-import { newId, nowSec, randomToken, sha256Hex } from "../util";
+import * as ops from "../ops";
+import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
-import { field, fmt, p } from "./shell";
+import { act, actor, field, page } from "./shell";
+import { Callout, CopyField, Dialog, Empty, PageHead, PostButton, Time } from "../ui/components";
+import { Icon } from "../ui/icons";
 
 export const tokensAdmin = new Hono<AdminVars>();
 
 tokensAdmin.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT t.id, t.name, t.created_at, t.last_used_at, u.name AS creator
-     FROM api_tokens t JOIN users u ON u.id = t.created_by
-     ORDER BY t.created_at DESC`,
-  ).all<{
-    id: string;
-    name: string;
-    created_at: number;
-    last_used_at: number | null;
-    creator: string;
-  }>();
-  return await p(
+    `SELECT t.id, t.name, t.created_at, t.last_used_at, t.scope, t.expires_at, t.prefix, u.name AS creator
+     FROM api_tokens t JOIN users u ON u.id = t.created_by ORDER BY t.created_at DESC`,
+  ).all<{ id: string; name: string; created_at: number; last_used_at: number | null; scope: string; expires_at: number | null; prefix: string | null; creator: string }>();
+  const now = nowSec();
+  return await page(
     c,
-    "tokens",
-    "API Tokens",
+    { active: "tokens", title: "API tokens" },
     <>
-      <p class="muted">
-        Tokens for MCP and programmatic access. They have full admin power —
-        guard them like passwords. Only the hash is stored.
-      </p>
-      <form method="post" action="/admin/tokens" class="row wrap">
-        <label class="field inline">
-          <span>Token name</span>
-          <input name="name" required maxLength={60} placeholder="Claude MCP" />
-        </label>
-        <button class="btn primary" type="submit">
-          Create token
-        </button>
-      </form>
-      {results.length === 0 ? (
-        <p class="muted small">No tokens yet.</p>
-      ) : (
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Created</th>
-                <th>Last used</th>
-                <th>By</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.name}</td>
-                  <td class="muted small">{fmt(t.created_at)}</td>
-                  <td class="muted small">{t.last_used_at ? fmt(t.last_used_at) : "never"}</td>
-                  <td class="muted small">{t.creator}</td>
-                  <td class="actions">
-                    <form method="post" action={`/admin/tokens/${t.id}/delete`}>
-                      <button class="btn danger ghost small" type="submit">
-                        Revoke
-                      </button>
-                    </form>
-                  </td>
+      <PageHead
+        title="API tokens"
+        lede={
+          <>
+            Bearer tokens for the admin MCP server and scripts. Most AI clients can use OAuth instead — see{" "}
+            <a href="/admin/connect#mcp">Connect</a>.
+          </>
+        }
+        actions={
+          <button class="btn primary" type="button" data-open="new-token">
+            <Icon name="plus" size="sm" />
+            New token
+          </button>
+        }
+      />
+      <div class="card">
+        {results.length ? (
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Access</th>
+                  <th>Last used</th>
+                  <th>Expires</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {results.map((t) => {
+                  const expired = !!t.expires_at && t.expires_at < now;
+                  return (
+                    <tr key={t.id}>
+                      <td>
+                        <div class="name">{t.name}</div>
+                        <div class="muted small">
+                          {t.prefix ? <span class="mono">{t.prefix}…</span> : null} by {t.creator}
+                        </div>
+                      </td>
+                      <td>{t.scope === "admin" ? <span class="badge warn">Full admin</span> : <span class="badge">Read-only</span>}</td>
+                      <td class="muted small nowrap">
+                        <Time ts={t.last_used_at} empty="Never" />
+                      </td>
+                      <td class="small nowrap">
+                        {expired ? <span class="badge bad">Expired</span> : t.expires_at ? <Time ts={t.expires_at} /> : <span class="muted">Never</span>}
+                      </td>
+                      <td class="actions">
+                        <PostButton action={`/admin/tokens/${t.id}/delete`} label="Revoke" class="btn ghost sm danger" confirm={`Revoke “${t.name}”? Anything using it stops working.`} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty icon="key" title="No API tokens" action={<button class="btn primary" type="button" data-open="new-token">Create a token</button>}>
+            Create one for scripts or MCP clients that can't do OAuth.
+          </Empty>
+        )}
+      </div>
+      <Dialog id="new-token" title="New API token" lede="Shown once. Stored as a hash." action="/admin/tokens" submit="Create token">
+        <label class="field">
+          <span class="label">Name</span>
+          <input name="name" required maxLength={60} placeholder="Home automation script" />
+        </label>
+        <div class="field">
+          <span class="label">Access</span>
+          <label class="check">
+            <input type="radio" name="scope" value="read" checked />
+            <span>
+              Read-only
+              <span class="sub">List people, groups, apps, audit log. Can't change anything.</span>
+            </span>
+          </label>
+          <label class="check">
+            <input type="radio" name="scope" value="admin" />
+            <span>
+              Full admin
+              <span class="sub">Everything you can do in this UI. Guard it like a password.</span>
+            </span>
+          </label>
         </div>
-      )}
-      <h2>Connect via MCP</h2>
-      <p class="muted small">
-        Point your MCP client at <code>{c.env.ISSUER}/mcp</code> with the token
-        as a Bearer header. Streamable HTTP transport.
-      </p>
+        <label class="field">
+          <span class="label">Expires</span>
+          <select name="expires">
+            <option value="30">In 30 days</option>
+            <option value="90" selected>
+              In 90 days
+            </option>
+            <option value="365">In a year</option>
+            <option value="">Never</option>
+          </select>
+        </label>
+      </Dialog>
     </>,
   );
 });
 
 tokensAdmin.post("/", async (c) => {
   const form = await c.req.parseBody();
-  const name = field(form, "name").trim().slice(0, 60);
-  if (!name) return c.text("Name is required.", 400);
-  const raw = randomToken(32);
-  const id = newId();
-  await c.env.DB.prepare(
-    "INSERT INTO api_tokens (id, token_hash, name, created_at, created_by) VALUES (?1, ?2, ?3, ?4, ?5)",
-  )
-    .bind(id, await sha256Hex(raw), name, nowSec(), c.get("admin").id)
-    .run();
-  await audit(c.env.DB, "API_TOKEN_CREATED", {
-    userId: c.get("admin").id,
-    detail: { name },
-  });
-  return await p(
+  const days = parseInt(field(form, "expires"), 10);
+  let raw: string;
+  try {
+    raw = await ops.createApiToken(
+      c.env.DB,
+      { name: field(form, "name"), scope: field(form, "scope") === "admin" ? "admin" : "read", expiresInDays: Number.isFinite(days) && days > 0 ? days : null },
+      actor(c),
+    );
+  } catch (e) {
+    if (e instanceof ops.OpError) return act(c, "/admin/tokens", "", async () => { throw e; });
+    throw e;
+  }
+  const url = `${c.env.ISSUER}/mcp`;
+  return await page(
     c,
-    "tokens",
-    "Token created",
-    <>
-      <h1>Token created</h1>
-      <p class="muted">
-        Copy this <strong>now</strong> — it can never be shown again.
-      </p>
-      <label class="field">
-        <span>API token</span>
-        <input readonly value={raw} data-select />
-      </label>
-      <p>
-        <a class="btn" href="/admin/tokens">
-          Back to tokens
-        </a>
-      </p>
-    </>,
+    { active: "tokens", title: "Token created", crumbs: [{ label: "API tokens", href: "/admin/tokens" }, { label: "New token" }], narrow: true },
+    <div class="card">
+      <div class="card-body stack">
+        <div class="hero-icon ok">
+          <Icon name="key" />
+        </div>
+        <div>
+          <h1>Copy your token</h1>
+          <p class="muted">This is the only time it's shown.</p>
+        </div>
+        <CopyField value={raw} big label="API token" />
+        <Callout icon="terminal">
+          <div class="stack-sm">
+            <b>Claude Code</b>
+            <pre class="code">{`claude mcp add --transport http ${c.env.RP_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-")} ${url} \\\n  --header "Authorization: Bearer ${raw}"`}</pre>
+            <b>curl</b>
+            <pre class="code">{`curl -s ${url} -H "Authorization: Bearer ${raw}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`}</pre>
+          </div>
+        </Callout>
+        <div class="row">
+          <a class="btn primary right" href="/admin/tokens">
+            Done
+          </a>
+        </div>
+      </div>
+    </div>,
   );
 });
 
 tokensAdmin.post("/:id/delete", async (c) => {
-  await c.env.DB.prepare("DELETE FROM api_tokens WHERE id = ?1")
-    .bind(c.req.param("id"))
-    .run();
-  await audit(c.env.DB, "API_TOKEN_REVOKED", {
-    userId: c.get("admin").id,
-    detail: { token: c.req.param("id").slice(0, 8) },
+  const id = c.req.param("id");
+  return act(c, "/admin/tokens", "Token revoked", async () => {
+    await c.env.DB.prepare("DELETE FROM api_tokens WHERE id = ?1").bind(id).run();
+    await audit(c.env.DB, "API_TOKEN_REVOKED", { userId: c.get("admin").id, detail: { token: id.slice(0, 8) } });
   });
-  return c.redirect("/admin/tokens", 303);
 });

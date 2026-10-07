@@ -12,12 +12,14 @@
     "@e2e-dev/web": "^0.13.0",
     "@tjohnson/abacus": "github:tannerwj/abacus",
     "@types/node": "^26.6.4",
+    "cf": "^1.0.0-beta.13",
     "e2e": "^0.18.0",
     "esbuild": "^0.25.0",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",
     "oxlint-tsgolint": "^7.0.2003",
     "playwright": "^1.63.0",
+    "qrcode-generator": "^2.0.4",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0",
     "wrangler": "^4.0.0"
@@ -27,10 +29,10 @@
   "private": true,
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
-    "db:migrate": "wrangler d1 migrations apply identity --remote",
-    "db:migrate:local": "wrangler d1 migrations apply identity --local",
-    "deploy": "npm run build:client && wrangler deploy",
-    "dev": "npm run build:client && wrangler dev",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:migrate:local": "node scripts/db-migrate.mjs --local",
+    "deploy": "npm run build:client && cf deploy",
+    "dev": "npm run build:client && cf dev",
     "fmt": "abacus fmt",
     "fmt:check": "abacus fmt --check",
     "gates": "abacus check",
@@ -49,7 +51,12 @@
     "todos": "abacus todos",
     "check": "abacus check",
     "test:e2e": "E2E_TELEMETRY_DISABLED=1 e2e run",
-    "typecheck:e2e": "tsc -p tsconfig.e2e.json"
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json",
+    "test:e2e:local": "node tests/e2e/full.mjs",
+    "test:e2e:staging": "E2E_STAGE=staging node tests/e2e/full.mjs",
+    "deploy:check": "npm run build:client && cf deploy --dry-run",
+    "staging:deploy": "npm run build:client && cf deploy --mode staging",
+    "staging:migrate": "node scripts/db-migrate.mjs --stage=staging"
   },
   "type": "module",
   "version": "0.1.0"

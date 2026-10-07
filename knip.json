@@ -8,15 +8,18 @@
     "*.config.{ts,js,mjs}",
     ".dependency-cruiser.{js,cjs,mjs}",
     "scripts/**/*.{ts,js,mjs}",
-    "src/client/webauthn.ts",
-    "tests/e2e/**/*.mjs"
+    "tests/e2e/**/*.mjs",
+    "src/client/app.ts"
   ],
   "ignore": [
     "dist/**",
     ".next/**",
     ".open-next/**",
     ".wrangler/**",
-    "public/webauthn.js"
+    "public/app.js"
   ],
-  "ignoreExportsUsedInFile": true
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": [
+    "cloudflare"
+  ]
 }

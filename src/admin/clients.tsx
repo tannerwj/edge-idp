@@ -1,301 +1,277 @@
 import { Hono } from "hono";
-import { audit, listClients } from "../db";
-import { nowSec, randomToken, sha256Hex } from "../util";
+import { count, getClient, listClients, listGroups } from "../db";
+import type { Group } from "../db";
+import * as ops from "../ops";
+import { nowSec } from "../util";
 import type { ACtx, AdminVars } from "./shell";
-import { field, p } from "./shell";
+import { act, actor, field, fields, page } from "./shell";
+import { Callout, CopyField, Dialog, Empty, GroupChips, GroupPicker, PageHead, Time } from "../ui/components";
+import { Icon } from "../ui/icons";
+import { ClientDetail, detailHref, host, TypeBadges } from "./client-detail";
+
+function NewClientDialog({ groups }: { groups: Group[] }) {
+  return (
+    <Dialog id="new-client" sheet title="Register a client" lede="You'll get a client ID (and secret, for confidential clients) to paste into the app." action="/admin/clients" submit="Register">
+      <label class="field">
+        <span class="label">Name</span>
+        <input name="name" required maxLength={120} placeholder="Cloudflare Access" />
+        <span class="hint">Shown on the sign-in page ("Continue to …").</span>
+      </label>
+      <div class="field">
+        <span class="label">Type</span>
+        <label class="check">
+          <input type="radio" name="clientType" value="confidential" checked />
+          <span>
+            Confidential — has a server that can keep a secret
+            <span class="sub">Cloudflare Access, Grafana, Outline, most self-hosted web apps.</span>
+          </span>
+        </label>
+        <label class="check">
+          <input type="radio" name="clientType" value="public" />
+          <span>
+            Public — runs on the user's device
+            <span class="sub">SPAs, mobile and CLI apps. Uses PKCE, no secret.</span>
+          </span>
+        </label>
+      </div>
+      <label class="field">
+        <span class="label">Redirect URIs</span>
+        <textarea name="redirectUris" rows={3} required placeholder="https://yourteam.cloudflareaccess.com/cdn-cgi/access/callback"></textarea>
+        <span class="hint">One per line. Matched exactly (http://localhost may use any port).</span>
+      </label>
+      <div class="field">
+        <span class="label">Allowed groups</span>
+        <GroupPicker name="groups" all={groups} selected={[]} />
+        <span class="hint">None selected = everyone. For Cloudflare Access, leave empty and use Access policies per app.</span>
+      </div>
+      <label class="check">
+        <input type="checkbox" name="requirePkce" value="1" checked />
+        <span>
+          Require PKCE
+          <span class="sub">Turn off only for clients that can't send it — Cloudflare Access is one.</span>
+        </span>
+      </label>
+      <label class="field">
+        <span class="label">Environment</span>
+        <select name="environment">
+          <option value="production">Production</option>
+          <option value="staging">Staging</option>
+          <option value="development">Development</option>
+        </select>
+      </label>
+    </Dialog>
+  );
+}
 
 export const clientsAdmin = new Hono<AdminVars>();
 
-type ClientRow = Awaited<ReturnType<typeof listClients>>[number];
-
-/** How many users can reach an app: everyone, or members of allowed groups. */
-async function accessCounts(db: D1Database) {
-  const { results: groupCounts } = await db
-    .prepare(
-      `SELECT g.name, COUNT(m.user_id) AS n FROM groups g
-       LEFT JOIN group_members m ON m.group_id = g.id
-       GROUP BY g.id`,
-    )
-    .all<{ name: string; n: number }>();
-  const countByGroup = new Map(groupCounts.map((r) => [r.name, r.n]));
-  const { count: totalUsers } =
-    (await db
-      .prepare("SELECT COUNT(*) AS count FROM users WHERE disabled = 0")
-      .first<{ count: number }>()) ?? { count: 0 };
-  return (cl: ClientRow) => {
-    if (!cl.allowed_groups?.length) return totalUsers;
-    return cl.allowed_groups.reduce(
-      (sum, g) => sum + (countByGroup.get(g) ?? 0),
-      0,
-    );
-  };
-}
-
-function clientRow(cl: ClientRow, canAccess: number) {
-  const envBadge =
-    cl.environment === "production" ? (
-      <span class="pill">prod</span>
-    ) : (
-      <span class="pill muted-pill">{cl.environment}</span>
-    );
-  return (
-    <tr key={cl.id}>
-      <td>
-        {cl.name} {envBadge}
-      </td>
-      <td class="muted small mono">{cl.id}</td>
-      <td class="muted small">
-        {cl.redirect_uris.map((u) => (
-          <div key={u} class="mono">
-            {new URL(u).host}
-          </div>
-        ))}
-      </td>
-      <td class="muted small">
-        {cl.allowed_groups?.length ? cl.allowed_groups.join(", ") : "everyone"}{" "}
-        ({canAccess} {canAccess === 1 ? "user" : "users"})
-      </td>
-      <td class="muted small">
-        <form method="post" action={`/admin/clients/${cl.id}/pkce`}>
-          <button
-            class="btn ghost small"
-            type="submit"
-            title={cl.require_pkce
-              ? "PKCE required — click to allow non-PKCE flows"
-              : "PKCE optional — click to require it"}
-          >
-            {cl.require_pkce ? "Required" : "Optional"}
-          </button>
-        </form>
-      </td>
-      <td class="actions">
-        <form method="post" action={`/admin/clients/${cl.id}/rotate`}>
-          <button
-            class="btn ghost small"
-            type="submit"
-            title="New secret (old one stops working immediately)"
-          >
-            Rotate secret
-          </button>
-        </form>
-        <form method="post" action={`/admin/clients/${cl.id}/delete`}>
-          <button class="btn danger ghost small" type="submit">
-            Delete
-          </button>
-        </form>
-      </td>
-    </tr>
-  );
-}
-
 clientsAdmin.get("/", async (c) => {
-  const clients = await listClients(c.env.DB);
-  const canAccess = await accessCounts(c.env.DB);
-  return await p(
+  const db = c.env.DB;
+  const view = c.req.query("view") === "connected" ? "connected" : "registered";
+  const [all, groups] = await Promise.all([listClients(db), listGroups(db)]);
+  const registered = all.filter((x) => x.source === "admin");
+  const connected = all.filter((x) => x.source !== "admin");
+  const shown = view === "connected" ? connected : registered;
+  return await page(
     c,
-    "clients",
-    "Apps",
+    { active: "clients", title: "Clients" },
     <>
-      <p class="muted">
-        Register an app to let it use this server for sign-in. Redirect URIs
-        must match <em>exactly</em> — that is what stops another app from
-        stealing login codes.
-      </p>
-      <form method="post" action="/admin/clients" class="stack">
-        <label class="field">
-          <span>App name</span>
-          <input name="name" required maxLength={120} placeholder="Constellation" />
-        </label>
-        <label class="field">
-          <span>Redirect URIs (one per line)</span>
-          <textarea
-            name="redirectUris"
-            rows={3}
-            required
-            placeholder="https://app.example.com/cdn-cgi/access/callback"
-          />
-        </label>
-        <label class="field">
-          <span>Allowed groups (comma-separated, blank = everyone)</span>
-          <input name="allowedGroups" maxLength={200} placeholder="family, finance" />
-        </label>
-        <label class="field">
-          <span>Environment</span>
-          <select name="environment">
-            <option value="production">Production</option>
-            <option value="staging">Staging</option>
-            <option value="development">Development</option>
-          </select>
-        </label>
-        <label class="check">
-          <input type="checkbox" name="requirePkce" value="1" checked />
-          <span>
-            Require PKCE S256 <span class="muted small">(uncheck for server-side
-            clients like Cloudflare Access that can't send a code challenge)</span>
-          </span>
-        </label>
-        <div>
-          <button class="btn primary" type="submit">
-            Register app
+      <PageHead
+        title="Clients"
+        lede="Anything that signs people in through this server over OpenID Connect / OAuth: Cloudflare Access, your own apps, and AI tools like Claude."
+        actions={
+          <button class="btn primary" type="button" data-open="new-client" {...(c.req.query("new") ? { "data-autoopen": "" } : {})}>
+            <Icon name="plus" size="sm" />
+            Register client
           </button>
+        }
+      />
+      <div class="filters">
+        <div class="segmented">
+          <a href="/admin/clients" class={view === "registered" ? "active" : ""}>
+            Registered <span class="muted">{registered.length}</span>
+          </a>
+          <a href="/admin/clients?view=connected" class={view === "connected" ? "active" : ""}>
+            Connected tools <span class="muted">{connected.length}</span>
+          </a>
         </div>
-      </form>
-            <div class="table-wrap">
-<table class="table">
-        <thead>
-          <tr>
-            <th>App</th>
-            <th>Client ID</th>
-            <th>Redirects to</th>
-            <th>Who can sign in</th>
-            <th>PKCE</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {clients.map((cl) => clientRow(cl, canAccess(cl)))}
-        </tbody>
-      </table>
       </div>
+      {view === "connected" ? (
+        <Callout icon="bot">
+          Tools that registered themselves (MCP clients like Claude, Cursor, VS Code) — via dynamic registration or a client
+          metadata URL. Only admins can authorize them, every user sees a consent screen, and you can revoke any of them here.
+        </Callout>
+      ) : null}
+      <div class="card section-gap">
+        {shown.length ? (
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Redirects to</th>
+                  <th>Who can sign in</th>
+                  <th>Last used</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((x) => (
+                  <tr key={x.id} data-href={detailHref(x.id)}>
+                    <td>
+                      <a class="name" href={detailHref(x.id)}>
+                        {x.name}
+                      </a>
+                      <div class="row-sm wrap small">
+                        <TypeBadges c={x} />
+                      </div>
+                    </td>
+                    <td class="small mono text-2">
+                      {[...new Set(x.redirect_uris.map(host))].slice(0, 3).map((h) => (
+                        <div key={h}>{h}</div>
+                      ))}
+                    </td>
+                    <td>
+                      <GroupChips groups={x.allowed_groups} empty={x.source === "admin" ? "Everyone" : "Admins only"} />
+                    </td>
+                    <td class="muted small nowrap">
+                      <Time ts={x.last_used_at} empty="Never" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : view === "connected" ? (
+          <Empty icon="bot" title="No connected tools yet">
+            Add <code>{c.env.ISSUER}/mcp</code> as a connector in Claude, Claude Code, Cursor or VS Code and it will appear here after you
+            approve it.
+          </Empty>
+        ) : (
+          <Empty icon="plug" title="No clients registered" action={<button class="btn primary" type="button" data-open="new-client">Register a client</button>}>
+            Start with Cloudflare Access — see <a href="/admin/connect">Connect</a> for the walkthrough.
+          </Empty>
+        )}
+      </div>
+
+      <NewClientDialog groups={groups} />
     </>,
   );
 });
 
-/** Redirect URIs must be https and unique; anything else is rejected. */
-function parseUris(input: string): string[] | null {
-  const uris = input
-    .split(/[\r\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (uris.length === 0) return null;
-  for (const u of uris) {
-    try {
-      if (new URL(u).protocol !== "https:") return null;
-    } catch {
-      return null;
-    }
-  }
-  return [...new Set(uris)];
-}
-
-async function showSecretOnce(
-  c: ACtx,
-  clientId: string,
-  secret: string,
-  rotated: boolean,
-) {
-  return await p(
+async function revealSecret(c: ACtx, client: { id: string; name: string }, secret: string | null, rotated: boolean) {
+  return await page(
     c,
-    "clients",
-    rotated ? "Secret rotated" : "App registered",
-    <>
-      <h1>{rotated ? "Secret rotated" : "App registered"}</h1>
-      <p class="muted">
-        Copy these <strong>now</strong> — the secret is stored as a hash and
-        can never be shown again
-        {rotated ? "; the old secret no longer works" : ""}.
-      </p>
-      <label class="field">
-        <span>Client ID</span>
-        <input readonly value={clientId} data-select />
-      </label>
-      <label class="field">
-        <span>Client secret</span>
-        <input readonly value={secret} data-select />
-      </label>
-      <p>
-        <a class="btn" href="/admin/clients">
-          Back to apps
-        </a>
-      </p>
-    </>,
+    { active: "clients", title: rotated ? "Secret rotated" : "Client registered", crumbs: [{ label: "Clients", href: "/admin/clients" }, { label: client.name, href: detailHref(client.id) }, { label: "Credentials" }], narrow: true },
+    <div class="card">
+      <div class="card-body stack">
+        <div class="hero-icon ok">
+          <Icon name="key" />
+        </div>
+        <div>
+          <h1>{rotated ? "New secret ready" : `${client.name} is registered`}</h1>
+          <p class="muted">
+            {secret ? "Copy the secret now — only its hash is stored, so it can never be shown again." : "Public client: no secret, it proves itself with PKCE."}
+            {rotated ? " The old secret has stopped working." : ""}
+          </p>
+        </div>
+        <div class="field">
+          <span class="label">Client ID</span>
+          <CopyField value={client.id} label="client ID" />
+        </div>
+        {secret ? (
+          <div class="field">
+            <span class="label">Client secret</span>
+            <CopyField value={secret} big label="client secret" />
+          </div>
+        ) : null}
+        <div class="field">
+          <span class="label">Discovery URL</span>
+          <CopyField value={`${c.env.ISSUER}/.well-known/openid-configuration`} label="discovery URL" />
+        </div>
+        <div class="row">
+          <a class="btn primary right" href={detailHref(client.id)}>
+            Done
+          </a>
+        </div>
+      </div>
+    </div>,
   );
 }
 
-clientsAdmin.post("/clients", async (c) => {
-  const form = await c.req.parseBody();
-  const name = field(form, "name").trim().slice(0, 120);
-  const uris = parseUris(field(form, "redirectUris"));
-  const groups = field(form, "allowedGroups")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  if (!name || !uris) {
-    return await p(
-      c,
-      "clients",
-      "Apps",
-      <p class="status error">
-        A name and at least one valid https redirect URI are required.
-      </p>,
+clientsAdmin.post("/", async (c) => {
+  const form = await c.req.parseBody({ all: true });
+  try {
+    const name = field(form, "name");
+    const r = await ops.createClient(
+      c.env.DB,
+      {
+        name,
+        redirectUris: field(form, "redirectUris"),
+        allowedGroups: fields(form, "groups"),
+        requirePkce: field(form, "requirePkce") === "1",
+        clientType: field(form, "clientType") === "public" ? "public" : "confidential",
+        environment: field(form, "environment"),
+      },
+      actor(c),
     );
+    return revealSecret(c, { id: r.id, name }, r.secret, false);
+  } catch (e) {
+    if (e instanceof ops.OpError) return act(c, "/admin/clients?new=1", "", async () => { throw e; });
+    throw e;
   }
-  const id = randomToken(18);
-  const secret = randomToken(32);
-  const requirePkce = field(form, "requirePkce") === "1" ? 1 : 0;
-  const environment = ["production", "staging", "development"].includes(field(form, "environment"))
-    ? field(form, "environment")
-    : "production";
-  await c.env.DB.prepare(
-    `INSERT INTO oidc_clients
-       (id, name, redirect_uris, secret_hash, secret_prefix, allowed_groups, require_pkce, environment, created_at, created_by)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
-  )
-    .bind(
-      id,
-      name,
-      JSON.stringify(uris),
-      await sha256Hex(secret),
-      secret.slice(0, 6),
-      groups.length ? JSON.stringify(groups) : null,
-      requirePkce,
-      environment,
-      nowSec(),
-      c.get("admin").id,
-    )
-    .run();
-  await audit(c.env.DB, "CLIENT_CREATED", {
-    clientId: id,
-    detail: { by: c.get("admin").id, name },
-  });
-  return showSecretOnce(c, id, secret, false);
 });
 
-clientsAdmin.post("/clients/:id/rotate", async (c) => {
-  const secret = randomToken(32);
-  await c.env.DB.prepare(
-    "UPDATE oidc_clients SET secret_hash = ?1, secret_prefix = ?2 WHERE id = ?3",
-  )
-    .bind(await sha256Hex(secret), secret.slice(0, 6), c.req.param("id"))
-    .run();
-  await audit(c.env.DB, "CLIENT_SECRET_ROTATED", {
-    clientId: c.req.param("id"),
-    detail: { by: c.get("admin").id },
-  });
-  return showSecretOnce(c, c.req.param("id"), secret, true);
+clientsAdmin.get("/:id", async (c) => {
+  const db = c.env.DB;
+  const client = await getClient(db, c.req.param("id"));
+  if (!client) return c.notFound();
+  const [groups, grants, refresh, signIns] = await Promise.all([
+    listGroups(db),
+    count(db, "SELECT COUNT(*) AS n FROM oauth_grants WHERE client_id = ?1", client.id),
+    count(db, "SELECT COUNT(DISTINCT family_id) AS n FROM refresh_tokens WHERE client_id = ?1 AND rotated_at IS NULL AND expires_at > ?2", client.id, nowSec()),
+    count(db, "SELECT COUNT(*) AS n FROM audit_log WHERE client_id = ?1 AND event = 'CODE_ISSUED' AND created_at > ?2", client.id, nowSec() - 30 * 86400),
+  ]);
+  return await page(
+    c,
+    { active: "clients", title: client.name, crumbs: [{ label: "Clients", href: client.source === "admin" ? "/admin/clients" : "/admin/clients?view=connected" }, { label: client.name }] },
+    <ClientDetail client={client} groups={groups} grants={grants} refresh={refresh} signIns={signIns} iss={c.env.ISSUER} />,
+  );
 });
 
-clientsAdmin.post("/clients/:id/pkce", async (c) => {
+clientsAdmin.post("/:id", async (c) => {
+  const client = await getClient(c.env.DB, c.req.param("id"));
+  if (!client) return c.notFound();
+  const form = await c.req.parseBody({ all: true });
+  return act(c, detailHref(client.id), "Client saved", () =>
+    ops.updateClient(
+      c.env.DB,
+      client,
+      {
+        name: field(form, "name"),
+        redirectUris: field(form, "redirectUris"),
+        allowedGroups: fields(form, "groups"),
+        environment: field(form, "environment"),
+        requirePkce: field(form, "requirePkce") === "1",
+        skipConsent: field(form, "skipConsent") === "1",
+      },
+      actor(c),
+    ),
+  );
+});
+
+clientsAdmin.post("/:id/rotate", async (c) => {
+  const client = await getClient(c.env.DB, c.req.param("id"));
+  if (!client) return c.notFound();
+  try {
+    const secret = await ops.rotateClientSecret(c.env.DB, client, actor(c));
+    return revealSecret(c, client, secret, true);
+  } catch (e) {
+    if (e instanceof ops.OpError) return act(c, detailHref(client.id), "", async () => { throw e; });
+    throw e;
+  }
+});
+
+clientsAdmin.post("/:id/delete", async (c) => {
   const id = c.req.param("id");
-  await c.env.DB.prepare(
-    "UPDATE oidc_clients SET require_pkce = 1 - require_pkce WHERE id = ?1",
-  )
-    .bind(id)
-    .run();
-  await audit(c.env.DB, "CLIENT_PKCE_TOGGLED", {
-    clientId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect("/admin/clients", 303);
-});
-
-clientsAdmin.post("/clients/:id/delete", async (c) => {
-  await c.env.DB.prepare("DELETE FROM oidc_clients WHERE id = ?1")
-    .bind(c.req.param("id"))
-    .run();
-  await audit(c.env.DB, "CLIENT_DELETED", {
-    clientId: c.req.param("id"),
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect("/admin/clients", 303);
+  return act(c, "/admin/clients", "Client deleted", () => ops.deleteClient(c.env.DB, id, actor(c)));
 });

@@ -1,21 +1,20 @@
 #!/usr/bin/env node
 /**
  * OIDC API end-to-end test. Self-contained:
- *   1. generates a dev signing key (.dev.vars) if missing
- *   2. applies migrations to local D1, seeds a user + client + session
- *   3. starts `wrangler dev --local` on 127.0.0.1:18877
+ *   1-3. boots a throwaway local instance (tests/e2e/local-instance.mjs) on
+ *        localhost:18877 with issuer https://auth.example.test, and seeds a
+ *        user + client + session
  *   4. exercises discovery, JWKS, /authorize validation, the full code flow
  *      (including PKCE mismatch + code reuse rejection), and /userinfo
  *   5. stops the server; exits non-zero on any failure
  *
  * Usage: node tests/e2e/api.mjs
  */
-import { spawn, execFileSync } from "node:child_process";
+import { startLocal } from "./local-instance.mjs";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
 
 const PORT = 18877;
-const BASE = `http://127.0.0.1:${PORT}`;
+const BASE = `http://localhost:${PORT}`;
 const ISSUER = "https://auth.example.test";
 const CLIENT_ID = "test-client-" + randomUUID().slice(0, 8);
 const CLIENT_SECRET = "test-secret-" + randomUUID().replace(/-/g, "");
@@ -39,58 +38,19 @@ const b64url = (buf) =>
   buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const CHALLENGE = b64url(createHash("sha256").update(VERIFIER).digest());
 
-function wrangler(...args) {
-  execFileSync("npx", ["wrangler", ...args], { stdio: "pipe" });
-}
-
-console.log("== setup: dev key ==");
-if (!existsSync(".dev.vars")) {
-  const jwk = execFileSync("node", ["scripts/gen-key.mjs"], { encoding: "utf8" });
-  writeFileSync(".dev.vars", `SIGNING_KEY_JWK='${jwk.trim()}'\nISSUER="${ISSUER}"\nRP_NAME="Test Identity"\n`);
-  console.log("  wrote .dev.vars");
-} else {
-  console.log("  .dev.vars exists");
-}
-
-console.log("== setup: local D1 ==");
-wrangler("d1", "migrations", "apply", "identity", "--local");
-// Local D1 persists between runs: clear previous e2e rows so fixed seed
-// emails don't collide with UNIQUE constraints.
-wrangler("d1", "execute", "identity", "--local", "--command",
-  "DELETE FROM group_members; DELETE FROM groups; DELETE FROM auth_codes; " +
-  "DELETE FROM sessions; DELETE FROM webauthn_credentials; " +
-  "DELETE FROM enrollment_tokens; DELETE FROM oidc_clients; " +
-  "DELETE FROM audit_log; DELETE FROM users;");
+console.log("== setup: local instance ==");
+const instance = await startLocal({ issuer: ISSUER, rpName: "Test Identity", port: PORT });
 const now = Math.floor(Date.now() / 1000);
-const seed = [
+await instance.sql([
   `INSERT INTO users (id, created_at, name, email, is_admin, updated_at) VALUES ('${USER_ID}', ${now}, 'Test User', 'test@example.test', 1, ${now});`,
   `INSERT INTO oidc_clients (id, name, redirect_uris, secret_hash, secret_prefix, created_at) VALUES ('${CLIENT_ID}', 'Test App', '${JSON.stringify([REDIRECT_URI])}', '${sha256Hex(CLIENT_SECRET)}', '${CLIENT_SECRET.slice(0, 6)}', ${now});`,
   `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at) VALUES ('${sha256Hex(SESSION_TOKEN)}', '${USER_ID}', ${now}, ${now + 3600}, ${now});`,
   `INSERT INTO groups (id, name, created_at) VALUES ('${randomUUID()}', 'family', ${now});`,
   `INSERT INTO group_members (group_id, user_id, created_at) VALUES ((SELECT id FROM groups WHERE name='family'), '${USER_ID}', ${now});`,
-].join("\n");
-wrangler("d1", "execute", "identity", "--local", "--command", seed);
-console.log("  seeded user, client, session, group");
+].join("\n"));
+console.log("  seeded user, client, session, group; ready");
 
-console.log("== starting wrangler dev ==");
-const server = spawn("npx", ["wrangler", "dev", "--local", "--port", String(PORT), "--ip", "127.0.0.1"], {
-  stdio: ["ignore", "pipe", "pipe"],
-});
-let ready = false;
-server.stdout.on("data", (d) => {
-  if (d.toString().includes("Ready")) ready = true;
-});
-server.stderr.on("data", () => {});
-const deadline = Date.now() + 60000;
-while (!ready && Date.now() < deadline) await new Promise((r) => setTimeout(r, 500));
-if (!ready) {
-  console.error("wrangler dev did not start in 60s");
-  server.kill();
-  process.exit(1);
-}
-console.log("  ready");
-
-const sessionHeaders = { cookie: `idp_session=${SESSION_TOKEN}` };
+const sessionHeaders = { cookie: `__Host-idp_session=${SESSION_TOKEN}` };
 
 try {
   console.log("== discovery / jwks ==");
@@ -171,6 +131,25 @@ try {
     const j = await r.json();
     check("PKCE mismatch -> invalid_grant", r.status === 400 && j.error === "invalid_grant", JSON.stringify(j));
   }
+  {
+    // Redemption is atomic and single-shot: a failed attempt burns the code,
+    // so whoever raced the real client with a stolen code can't retry later.
+    const r = await fetch(`${BASE}/token`, {
+      method: "POST",
+      headers: { authorization: "Basic " + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64") },
+      body: tokenForm(),
+    });
+    check("failed PKCE attempt burns the code", r.status === 400);
+    const again = await fetch(
+      authQ({
+        client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: "code",
+        code_challenge: CHALLENGE, code_challenge_method: "S256",
+        state: "xyz", scope: "openid profile email groups", nonce: "n-123",
+      }),
+      { redirect: "manual", headers: sessionHeaders },
+    );
+    code = new URL(again.headers.get("location") ?? "", BASE).searchParams.get("code");
+  }
 
   let idToken, accessToken;
   {
@@ -225,7 +204,7 @@ try {
     // challenge, exchange without a verifier.
     const noPkceId = "test-nopkce-" + randomUUID().slice(0, 8);
     const noPkceSecret = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
-    wrangler("d1", "execute", "identity", "--local", "--command",
+    await instance.sql(
       `INSERT INTO oidc_clients (id, name, redirect_uris, secret_hash, secret_prefix, require_pkce, created_at) VALUES ('${noPkceId}', 'NoPKCE App', '${JSON.stringify([REDIRECT_URI])}', '${sha256Hex(noPkceSecret)}', '${noPkceSecret.slice(0, 6)}', 0, ${Math.floor(Date.now() / 1000)});`);
     const authUrl = `${BASE}/authorize?` + new URLSearchParams({
       client_id: noPkceId, redirect_uri: REDIRECT_URI,
@@ -244,7 +223,7 @@ try {
     check("no-PKCE token 200 without verifier", tr.status === 200 && typeof tj.id_token === "string", `${tr.status} ${JSON.stringify(tj).slice(0, 100)}`);
   }
 } finally {
-  server.kill();
+  instance.stop();
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);

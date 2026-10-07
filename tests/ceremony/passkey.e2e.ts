@@ -92,11 +92,13 @@ test.describe('passkey ceremonies', () => {
 
       await setPresence(cdp, authId, true);
       await page.locator('#enroll-btn').click();
-      await page.waitForURL(`${base}/account`, { timeout: 30_000 });
+      await page.waitForURL((u) => u.pathname === '/', { timeout: 30_000 });
       await setPresence(cdp, authId, false);
 
+      // Enrollment lands on home; the new key is listed under Account.
+      await page.goto(`${base}/account`, { waitUntil: 'networkidle' });
       const body = (await page.content()) ?? '';
-      expect(body.includes('Synced passkey') || body.includes('Device passkey')).toBe(true);
+      expect(body.includes('Synced passkey') || body.includes('Security key')).toBe(true);
     } finally {
       await ctx.close();
       dropUser(seed.userId);
@@ -115,23 +117,25 @@ test.describe('passkey ceremonies', () => {
       await page.goto(`${base}/enroll/${seed.token}`, { waitUntil: 'networkidle' });
       await setPresence(cdp, authId, true);
       await page.locator('#enroll-btn').click();
-      await page.waitForURL(`${base}/account`, { timeout: 30_000 });
+      await page.waitForURL((u) => u.pathname === '/', { timeout: 30_000 });
       await setPresence(cdp, authId, false);
 
       // Sign out.
       await page.locator('form[action="/logout"] button').click();
-      await page.waitForURL(`${base}/login`, { timeout: 15_000 });
+      await page.waitForURL(/\/login/, { timeout: 15_000 });
 
       // Sign back in with the button. The conditional request hangs (no
       // auto-presence), so the explicit flow must carry the login.
       await page.goto(`${base}/login`, { waitUntil: 'networkidle' });
+      await page.getByText('Use a passkey for a specific email').click();
       await page.locator('#email').fill(seed.email);
       await setPresence(cdp, authId, true);
       await page.locator('#passkey-btn').click();
-      await page.waitForURL(`${base}/account`, { timeout: 30_000 });
+      await page.waitForURL((u) => u.pathname === '/', { timeout: 30_000 });
       await setPresence(cdp, authId, false);
 
-      expect(page.url().replace(/\/$/, '')).toBe(`${base}/account`);
+      expect(new URL(page.url()).pathname).toBe('/');
+      await page.goto(`${base}/account`, { waitUntil: 'networkidle' });
       expect((await page.content()).includes(seed.email)).toBe(true);
     } finally {
       await ctx.close();
@@ -151,14 +155,14 @@ test.describe('passkey ceremonies', () => {
 
       await page.goto(`${base}/enroll/${seed.token}`, { waitUntil: 'networkidle' });
       await page.locator('#enroll-btn').click();
-      await page.waitForURL(`${base}/account`, { timeout: 30_000 });
+      await page.waitForURL((u) => u.pathname === '/', { timeout: 30_000 });
 
       await page.locator('form[action="/logout"] button').click();
-      await page.waitForURL(`${base}/login`, { timeout: 15_000 });
+      await page.waitForURL(/\/login/, { timeout: 15_000 });
 
       await page.goto(`${base}/login`, { waitUntil: 'networkidle' });
-      await page.waitForURL(`${base}/account`, { timeout: 15_000 });
-      expect(page.url().replace(/\/$/, '')).toBe(`${base}/account`);
+      await page.waitForURL((u) => u.pathname === '/', { timeout: 15_000 });
+      expect(new URL(page.url()).pathname).toBe('/');
     } finally {
       await ctx.close();
       dropUser(seed.userId);

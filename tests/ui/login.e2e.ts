@@ -3,14 +3,13 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('login page is clean and classy', { requires: ['browser'] }, async ({ app, screen, browser }) => {
+test('login page is clean and passkey-first', { requires: ['browser'] }, async ({ app, screen, browser }) => {
   await app.open('/login');
   await expect(browser).toHaveTitle(/Sign in/);
-  await expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
-  const email = screen.getByRole('textbox', { name: 'Email' });
-  await expect(email).toBeVisible();
-  await expect(email).toHaveAttribute('placeholder', 'you@example.com');
-  await expect(screen.getByRole('button', { name: 'Continue with passkey' })).toBeVisible();
+  await expect(screen.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(screen.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
+  // The email path (for non-discoverable security keys) is tucked away.
+  await expect(screen.getByText(/Use a passkey for a specific email/)).toBeVisible();
   await expect(screen.getByText(/nothing to phish/)).toBeVisible();
 });
 
@@ -24,5 +23,5 @@ test('login page has no js errors', { requires: ['browser'] }, async ({ app, bro
 
 test('enrollment with a bad token explains itself', { requires: ['browser'] }, async ({ app, screen }) => {
   await app.open('/enroll/does-not-exist');
-  await expect(screen.getByText(/invalid, expired, or already used/i)).toBeVisible();
+  await expect(screen.getByText(/work once and last 7 days/i)).toBeVisible();
 });

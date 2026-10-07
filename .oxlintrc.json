@@ -8,7 +8,7 @@
     "node_modules/**",
     ".wrangler/**",
     ".dependency-cruiser.cjs",
-    "public/webauthn.js",
+    "public/app.js",
     "src/assets.gen.ts",
     "tests/e2e/**",
     "scripts/**"

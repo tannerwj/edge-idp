@@ -1,62 +1,65 @@
 import type { Context } from "hono";
 import type { Env } from "../config";
 import type { User } from "../db";
-import { getTheme } from "../theme-cache";
-import { nowSec, randomToken, sha256Hex } from "../util";
-import { AppShell, adminNav } from "../shell";
+import { OpError } from "../ops";
+import { AppShell, setFlash, uiFor } from "../ui/layout";
+import type { Crumb } from "../ui/layout";
 
 export type AdminVars = { Bindings: Env; Variables: { admin: User } };
 export type ACtx = Context<AdminVars>;
 
 /** Form fields from parseBody(): File uploads are never valid here. */
-export function field(
-  form: Record<string, string | File | undefined>,
-  key: string,
-): string {
+export function field(form: Record<string, string | File | (string | File)[] | undefined>, key: string): string {
   const v = form[key];
   return typeof v === "string" ? v : "";
 }
 
-export function fmt(ts: number | null): string {
-  if (!ts) return "—";
-  return new Date(ts * 1000).toLocaleString();
+/** Multi-value field (checkbox groups) — parseBody({ all: true }) shape. */
+export function fields(form: Record<string, string | File | (string | File)[] | undefined>, key: string): string[] {
+  const v = form[key];
+  const list = Array.isArray(v) ? v : v === undefined ? [] : [v];
+  return list.filter((x): x is string => typeof x === "string");
 }
 
-export const p = async (
-  c: ACtx,
-  active: string,
-  title: string,
-  children: unknown,
-) => {
-  const admin = c.get("admin");
-  return c.html(
-    AppShell({
-      rpName: c.env.RP_NAME,
-      title,
-      theme: await getTheme(c.env),
-      userName: admin.name,
-      userEmail: admin.email,
-      isAdmin: true,
-      active,
-      nav: adminNav(),
-      children,
-    }),
-  );
-};
+export function actor(c: ACtx) {
+  return { adminId: c.get("admin").id, via: "ui" as const };
+}
 
-/** One-time enrollment link (7-day TTL, single-use, hashed at rest). */
-export async function mintEnrollmentLink(
-  db: D1Database,
-  userId: string,
-  issuer: string,
-): Promise<string> {
-  const token = randomToken(32);
-  await db
-    .prepare(
-      `INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at)
-       VALUES (?1, ?2, ?3, ?4)`,
-    )
-    .bind(await sha256Hex(token), userId, nowSec(), nowSec() + 7 * 86400)
-    .run();
-  return `${issuer}/enroll/${token}`;
+/** Render an admin page inside the app shell. */
+export async function page(
+  c: ACtx,
+  opts: { active: string; title: string; crumbs?: Crumb[]; narrow?: boolean; page?: string },
+  children: unknown,
+) {
+  const a = c.get("admin");
+  return c.html(
+    <AppShell
+      ui={await uiFor(c)}
+      viewer={{ id: a.id, name: a.name, email: a.email, isAdmin: true }}
+      active={opts.active}
+      title={opts.title}
+      crumbs={opts.crumbs}
+      narrow={opts.narrow}
+      page={opts.page}
+      flash={c.req.query("ok")}
+    >
+      {children}
+    </AppShell>,
+  );
+}
+
+/**
+ * Run a mutation and redirect back with a flash message. OpErrors (bad
+ * input) become a red toast on the same page; anything else is a real bug
+ * and propagates to Sentry.
+ */
+export async function act(c: ACtx, back: string, ok: string, fn: () => Promise<unknown>): Promise<Response> {
+  try {
+    await fn();
+    setFlash(c, ok, "ok");
+  } catch (e) {
+    if (!(e instanceof OpError)) throw e;
+    setFlash(c, e.message, "bad");
+  }
+  return c.redirect(back, 303);
 }

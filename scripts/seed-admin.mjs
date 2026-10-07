@@ -1,13 +1,14 @@
 /**
  * Create the first admin user and print their enrollment link.
  *
- * Usage: node scripts/seed-admin.mjs --email=you@example.com --name="Your Name"
+ * Usage: node scripts/seed-admin.mjs --email=you@example.com --name="Your Name" [--local | --stage=staging]
  *
- * Runs `wrangler d1 execute` against the database in wrangler.toml, so run it
- * after `wrangler d1 create` + migrations. Requires no app code — it only
- * needs the ISSUER var from wrangler.toml for the printed link.
+ * Runs SQL with the cf CLI against the D1 database in cloudflare.config.ts
+ * (remote by default; --local targets the `cf dev` database in
+ * .wrangler/state), so run it after migrations. The printed link uses
+ * ISSUER from .dev.vars (--local) or the stage in cloudflare.config.ts.
  */
-import { execFileSync } from "node:child_process";
+import { sqlRows, stageArg, stageConfig } from "./cf-local.mjs";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -25,10 +26,13 @@ if (!email || !name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
   process.exit(1);
 }
 
-const toml = readFileSync("wrangler.toml", "utf8");
-const issuer = (toml.match(/ISSUER\s*=\s*"([^"]+)"/) ?? [])[1] ?? "";
+const local = args.local === true;
+const stage = stageArg();
+const devVars = local ? (() => { try { return readFileSync(".dev.vars", "utf8"); } catch { return ""; } })() : "";
+const issuer =
+  (devVars.match(/ISSUER\s*=\s*"([^"]+)"/) ?? [])[1] ?? stageConfig(stage).issuer;
 if (!issuer || issuer.includes("REPLACE")) {
-  console.error("Set ISSUER in wrangler.toml first (see DEPLOY.md).");
+  console.error("Set ISSUER in cloudflare.config.ts first (see DEPLOY.md).");
   process.exit(1);
 }
 
@@ -43,9 +47,7 @@ const sql = [
   `INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at) VALUES (${q(tokenHash)}, ${q(userId)}, ${now}, ${now + 7 * 86400});`,
 ].join("\n");
 
-execFileSync("npx", ["wrangler", "d1", "execute", "identity", "--remote", "--command", sql], {
-  stdio: "inherit",
-});
+await sqlRows(sql, local ? { local: true, persistTo: ".wrangler/state" } : { local: false, stage });
 
 console.log(`\nAdmin user created: ${name} <${email}>`);
 console.log(`Enrollment link (valid 7 days, one-time):\n${issuer}/enroll/${token}\n`);

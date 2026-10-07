@@ -5,7 +5,7 @@ const base = process.env.E2E_BASE_URL ?? 'https://auth.johnson.network';
 // Code mode tests require a valid API token. Set E2E_MCP_TOKEN to run them;
 // they are skipped otherwise (no production writes).
 const token = process.env.E2E_MCP_TOKEN;
-const auth = token ? { Authorization: `Bearer ${token}` } : {};
+const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
 async function rpc(method: string, params?: unknown) {
   const res = await fetch(`${base}/mcp`, {
