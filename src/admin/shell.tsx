@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { Env } from "../config";
 import type { User } from "../db";
 import { getTheme } from "../theme-cache";
+import { BUILD_HASH } from "../assets.gen";
 import { nowSec, randomToken, sha256Hex } from "../util";
 
 export type AdminVars = { Bindings: Env; Variables: { admin: User } };
@@ -50,8 +51,8 @@ export function page(
         <title>
           {title} · Admin · {rpName}
         </title>
-        <link rel="stylesheet" href={`/themes/${safe}.css`} />
-        <script src="/webauthn.js" defer></script>
+        <link rel="stylesheet" href={`/themes/${safe}.css?v=${BUILD_HASH}`} />
+        <script src={`/webauthn.js?v=${BUILD_HASH}`} defer></script>
       </head>
       <body>
         <main class="shell wide">

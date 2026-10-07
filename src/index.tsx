@@ -15,7 +15,7 @@ import {
 import { destroySession, sessionUser } from "./session";
 import { audit, getCredentialsForUser, getSetting } from "./db";
 import { getTheme } from "./theme-cache";
-import { THEMES_CSS, WEBAUTHN_JS } from "./assets.gen";
+import { BUILD_HASH, THEMES_CSS, WEBAUTHN_JS } from "./assets.gen";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -30,6 +30,14 @@ async function theme(c: { env: Env }): Promise<string> {
 // Hono middleware intentionally returns Response | void (short-circuit or pass-through).
 // eslint-disable-next-line typescript/consistent-return
 app.use("*", async (c, next) => {
+  // Normalize trailing slashes: /admin/ -> /admin (except root /).
+  // Hono's mounted routes are strict about trailing slashes, and users
+  // expect both to work.
+  const url = new URL(c.req.url);
+  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.slice(0, -1);
+    return c.redirect(url.toString(), 301);
+  }
   try {
     assertConfigured(c.env);
   } catch {
@@ -83,7 +91,7 @@ app.get("/login", async (c) => {
   const next = safeNext(c.req.query("next"));
   if (user) return c.redirect(next, 302);
   return c.html(
-    <LoginPage rpName={c.env.RP_NAME} next={next} theme={await theme(c)} />,
+    <LoginPage rpName={c.env.RP_NAME} next={next} theme={await theme(c)}  buildHash={BUILD_HASH} />,
   );
 });
 
@@ -95,7 +103,7 @@ app.get("/enroll/:token", async (c) => {
         rpName={c.env.RP_NAME}
         message="This enrollment link is invalid, expired, or already used. Ask your admin for a new one."
         theme={await theme(c)}
-      />,
+       buildHash={BUILD_HASH} />,
       400,
     );
   }
@@ -105,7 +113,7 @@ app.get("/enroll/:token", async (c) => {
       name={v.user.name}
       token={c.req.param("token")}
       theme={await theme(c)}
-    />,
+     buildHash={BUILD_HASH} />,
   );
 });
 
@@ -120,6 +128,7 @@ app.get("/account", async (c) => {
       email={user.email}
       isAdmin={!!user.is_admin}
       theme={await theme(c)}
+      buildHash={BUILD_HASH}
       credentials={creds.map((k) => ({
         id: k.id,
         name: k.name,
@@ -168,7 +177,7 @@ app.post("/account/profile", async (c) => {
   const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
   const err = async (message: string) =>
     c.html(
-      <ErrorPage rpName={c.env.RP_NAME} message={message} theme={await theme(c)} />,
+      <ErrorPage rpName={c.env.RP_NAME} message={message} theme={await theme(c)}  buildHash={BUILD_HASH} />,
       400,
     );
   if (!name) return err("Name is required.");
@@ -207,7 +216,7 @@ app.get("/done", async (c) =>
       title="You're signed in"
       body="You can close this tab and return to the app."
       theme={await theme(c)}
-    />,
+     buildHash={BUILD_HASH} />,
   ),
 );
 
@@ -222,7 +231,7 @@ app.notFound(async (c) =>
       rpName={c.env.RP_NAME ?? "Identity"}
       message="Page not found."
       theme={await theme(c)}
-    />,
+     buildHash={BUILD_HASH} />,
     404,
   ),
 );

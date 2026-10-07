@@ -12,8 +12,11 @@ export function Layout(props: {
   theme?: string;
   /** Navigation: show account/admin links when the user is signed in. */
   nav?: { isAdmin: boolean; active?: string };
+  /** Cache-busting hash for static assets. */
+  buildHash?: string;
 }) {
   const theme = THEMES.includes(props.theme as Theme) ? props.theme : "obsidian";
+  const v = props.buildHash ? `?v=${props.buildHash}` : "";
   return (
     <html lang="en">
       <head>
@@ -21,8 +24,8 @@ export function Layout(props: {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="color-scheme" content="light dark" />
         <title>{props.title}</title>
-        <link rel="stylesheet" href={`/themes/${theme}.css`} />
-        <script src="/webauthn.js" defer></script>
+        <link rel="stylesheet" href={`/themes/${theme}.css${v}`} />
+        <script src={`/webauthn.js${v}`} defer></script>
       </head>
       <body data-page={props.page ?? ""}>
         <main class="shell">
@@ -59,9 +62,10 @@ export function Layout(props: {
   );
 }
 
-export function LoginPage(props: { rpName: string; next: string; theme?: string }) {
+export function LoginPage(props: { rpName: string; next: string; theme?: string ;
+  buildHash?: string;}) {
   return (
-    <Layout title={`Sign in — ${props.rpName}`} rpName={props.rpName} page="login" theme={props.theme}>
+    <Layout title={`Sign in — ${props.rpName}`} rpName={props.rpName} page="login" theme={props.theme} buildHash={props.buildHash}>
       <h1>Welcome back</h1>
       <p class="muted">Sign in with your passkey — Face ID, Touch ID, or your security key.</p>
       <div id="login-box" data-next={props.next}>
@@ -89,6 +93,7 @@ export function EnrollPage(props: {
   name: string;
   token: string;
   theme?: string;
+  buildHash?: string;
 }) {
   return (
     <Layout
@@ -96,7 +101,7 @@ export function EnrollPage(props: {
       rpName={props.rpName}
       page="enroll"
       theme={props.theme}
-    >
+     buildHash={props.buildHash}>
       <h1>Hi {props.name}</h1>
       <p class="muted">
         Let's set up your passkey. Your device will ask for Face ID, Touch ID,
@@ -122,6 +127,7 @@ export function AccountPage(props: {
   name: string;
   email: string;
   isAdmin: boolean;
+  buildHash?: string;
   credentials: { id: string; name: string; created: string; lastUsed: string }[];
 }) {
   return (
@@ -131,7 +137,7 @@ export function AccountPage(props: {
       page="account"
       theme={props.theme}
       nav={{ isAdmin: props.isAdmin, active: "account" }}
-    >
+     buildHash={props.buildHash}>
       <h1>Your account</h1>
       <h2>Profile</h2>
       <form method="post" action="/account/profile" class="stack">
@@ -187,9 +193,10 @@ export function AccountPage(props: {
   );
 }
 
-export function DonePage(props: { rpName: string; title: string; body: string; theme?: string }) {
+export function DonePage(props: { rpName: string; title: string; body: string; theme?: string ;
+  buildHash?: string;}) {
   return (
-    <Layout title={props.title} rpName={props.rpName} theme={props.theme}>
+    <Layout title={props.title} rpName={props.rpName} theme={props.theme} buildHash={props.buildHash}>
       <h1>{props.title}</h1>
       <p class="muted">{props.body}</p>
       <p>
@@ -201,9 +208,10 @@ export function DonePage(props: { rpName: string; title: string; body: string; t
   );
 }
 
-export function ErrorPage(props: { rpName: string; message: string; theme?: string }) {
+export function ErrorPage(props: { rpName: string; message: string; theme?: string ;
+  buildHash?: string;}) {
   return (
-    <Layout title={`Error — ${props.rpName}`} rpName={props.rpName} theme={props.theme}>
+    <Layout title={`Error — ${props.rpName}`} rpName={props.rpName} theme={props.theme} buildHash={props.buildHash}>
       <h1>Something went wrong</h1>
       <p class="muted">{props.message}</p>
       <p>
