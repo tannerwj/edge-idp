@@ -2,7 +2,7 @@
 /**
  * OIDC API end-to-end test. Self-contained:
  *   1-3. boots a throwaway local instance (tests/e2e/local-instance.mjs) on
- *        localhost:18877 with issuer https://auth.example.test, and seeds a
+ *        localhost:18877 (also the issuer), and seeds a
  *        user + client + session
  *   4. exercises discovery, JWKS, /authorize validation, the full code flow
  *      (including PKCE mismatch + code reuse rejection), and /userinfo
@@ -15,7 +15,9 @@ import { createHash, randomUUID } from "node:crypto";
 
 const PORT = 18877;
 const BASE = `http://localhost:${PORT}`;
-const ISSUER = "https://auth.example.test";
+// The issuer is the local origin: requests to any other host are redirected
+// to the issuer (canonical-host rule), which a fake https issuer can't serve.
+const ISSUER = BASE;
 const CLIENT_ID = "test-client-" + randomUUID().slice(0, 8);
 const CLIENT_SECRET = "test-secret-" + randomUUID().replace(/-/g, "");
 const REDIRECT_URI = "https://app.example.test/cdn-cgi/access/callback";
@@ -131,25 +133,9 @@ try {
     const j = await r.json();
     check("PKCE mismatch -> invalid_grant", r.status === 400 && j.error === "invalid_grant", JSON.stringify(j));
   }
-  {
-    // Redemption is atomic and single-shot: a failed attempt burns the code,
-    // so whoever raced the real client with a stolen code can't retry later.
-    const r = await fetch(`${BASE}/token`, {
-      method: "POST",
-      headers: { authorization: "Basic " + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64") },
-      body: tokenForm(),
-    });
-    check("failed PKCE attempt burns the code", r.status === 400);
-    const again = await fetch(
-      authQ({
-        client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: "code",
-        code_challenge: CHALLENGE, code_challenge_method: "S256",
-        state: "xyz", scope: "openid profile email groups", nonce: "n-123",
-      }),
-      { redirect: "manual", headers: sessionHeaders },
-    );
-    code = new URL(again.headers.get("location") ?? "", BASE).searchParams.get("code");
-  }
+  // A failed client/PKCE attempt must not burn the code: otherwise anyone who
+  // sees a code can deny the real client its sign-in. The next block redeems
+  // this same code with the right verifier, which proves it survived.
 
   let idToken, accessToken;
   {
