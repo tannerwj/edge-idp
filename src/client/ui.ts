@@ -29,14 +29,16 @@ export function initDialogs(): void {
     }
   });
   $$("[data-autoopen]").forEach((el) => el.click());
+  initConfirm();
 
   // Confirm before destructive submits.
   document.addEventListener("submit", (ev) => {
     const form = ev.target;
     if (!(form instanceof HTMLFormElement)) return;
     const msg = form.getAttribute("data-confirm");
-    if (msg && !window.confirm(msg)) {
+    if (msg && form.dataset.confirmed !== "1") {
       ev.preventDefault();
+      askToConfirm(form, msg, ev instanceof SubmitEvent ? ev.submitter : null);
       return;
     }
     form.querySelectorAll<HTMLButtonElement>("button[type=submit]").forEach((b) => {
@@ -47,6 +49,43 @@ export function initDialogs(): void {
   $$<HTMLSelectElement>("select[data-autosubmit]").forEach((s) =>
     s.addEventListener("change", () => s.form?.submit()),
   );
+}
+
+let pendingConfirm: { form: HTMLFormElement; submitter: HTMLElement | null } | null = null;
+
+function askToConfirm(form: HTMLFormElement, message: string, submitter: HTMLElement | null): void {
+  const dialog = $("confirm-dialog");
+  const title = $("confirm-title");
+  const detail = $("confirm-detail");
+  const ok = $("confirm-ok");
+  if (!(dialog instanceof HTMLDialogElement) || !title || !detail || !ok) {
+    if (window.confirm(message)) submitConfirmed(form, submitter);
+    return;
+  }
+  const split = /^(.+?\?)\s+(.+)$/s.exec(message);
+  title.textContent = split?.[1] ?? message;
+  detail.textContent = split?.[2] ?? "";
+  ok.textContent = submitter?.textContent?.trim() || submitter?.title || "Confirm";
+  ok.className = submitter?.classList.contains("danger") ? "btn danger solid" : "btn primary";
+  dialog.classList.toggle("danger", ok.classList.contains("danger"));
+  pendingConfirm = { form, submitter };
+  dialog.showModal();
+  dialog.querySelector<HTMLElement>("[data-close]")?.focus();
+}
+
+function initConfirm(): void {
+  $("confirm-ok")?.addEventListener("click", () => {
+    const pending = pendingConfirm;
+    pendingConfirm = null;
+    const dialog = $("confirm-dialog");
+    if (dialog instanceof HTMLDialogElement) dialog.close();
+    if (pending) submitConfirmed(pending.form, pending.submitter);
+  });
+}
+
+function submitConfirmed(form: HTMLFormElement, submitter: HTMLElement | null): void {
+  form.dataset.confirmed = "1";
+  form.requestSubmit(submitter instanceof HTMLButtonElement ? submitter : undefined);
 }
 
 /* ───────────────────────────── copy / share / qr ───────────────────────────── */

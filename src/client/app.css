@@ -1809,6 +1809,41 @@ dialog::backdrop {
 dialog[open] {
   animation: pop 0.22s var(--ease);
 }
+dialog.confirm {
+  width: min(440px, calc(100vw - 32px));
+}
+dialog.confirm .dlg-head {
+  padding: 22px 22px 18px;
+  gap: 14px;
+}
+dialog.confirm .dlg-head p {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+dialog.confirm .dlg-head p:empty {
+  display: none;
+}
+.confirm-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+dialog.confirm .when-danger,
+dialog.confirm.danger .when-plain {
+  display: none;
+}
+dialog.confirm.danger .when-danger {
+  display: block;
+}
+dialog.confirm.danger .confirm-icon {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
 dialog.sheet {
   margin: 0 0 0 auto;
   height: 100vh;

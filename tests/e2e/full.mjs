@@ -591,9 +591,28 @@ try {
       )
     ).json();
     await page.goto(`${BASE}/account#connected`);
-    page.once("dialog", (d) => d.accept());
-    await page.click("form[action='/account/grants/revoke'] button");
-    await page.waitForLoadState();
+    let nativeDialog = false;
+    const onNative = (d) => {
+      nativeDialog = true;
+      void d.dismiss();
+    };
+    page.on("dialog", onNative);
+    const revoke = "form[action='/account/grants/revoke'] button";
+    await page.click(revoke);
+    await page.waitForSelector("#confirm-dialog[open]");
+    check("confirmation is the styled dialog, not window.confirm", !nativeDialog);
+    check(
+      "confirm dialog names the action",
+      (await page.textContent("#confirm-title"))?.startsWith("Disconnect") &&
+        (await page.textContent("#confirm-ok"))?.trim().length > 0,
+    );
+    await page.click("#confirm-dialog [data-close]");
+    await page.waitForSelector("#confirm-dialog", { state: "hidden" });
+    check("cancel keeps the grant", !!(await page.$(revoke)));
+    await page.click(revoke);
+    await page.waitForSelector("#confirm-dialog[open]");
+    await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
+    page.off("dialog", onNative);
     const after = await tokenReq(
       { grant_type: "refresh_token", refresh_token: t3.refresh_token, client_id: dcr.client_id },
       null,
