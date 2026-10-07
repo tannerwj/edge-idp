@@ -160,6 +160,7 @@ new ones. `npx cf d1 migrations list <db-id>` shows what's pending.
 npm run test:e2e:staging   # optional: the full suite against staging (see Staging)
 npm run deploy:check   # build + validate bindings, no upload
 npm run deploy         # builds the browser bundle, then cf deploy (wrangler in Workers Builds)
+npm run smoke          # read-only checks against the live issuer
 ```
 
 `cf deploy` attaches the route from `cloudflare.config.ts` and applies the cron
@@ -336,7 +337,7 @@ location while `cf d1 --local` defaults elsewhere (cf beta). Local `cf d1`
 commands also don't exit on their own yet, so `scripts/cf-local.mjs` wraps
 them.
 
-`npm run test:e2e:local` runs the full suite in its own throwaway instance:
+`npm run test:e2e` runs the full suite in its own throwaway instance:
 real passkey ceremonies via a virtual authenticator, OIDC, OAuth/MCP, and
 security regressions.
 

@@ -13,15 +13,13 @@
  *
  * Usage: npm run test:e2e:setup   (E2E_KEEP=1 keeps the temp dir)
  */
-import { execFileSync, spawn } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { randomBytes } from "node:crypto";
+import { startPortable } from "./instances.mjs";
 
 const PORT = 8890 + Math.floor(Math.random() * 100);
-const BASE = `http://localhost:${PORT}`;
 const SETUP_TOKEN = randomBytes(32).toString("base64url");
 
 let failures = 0;
@@ -33,40 +31,8 @@ function check(name, cond, extra = "") {
   }
 }
 
-const root = process.cwd();
-const work = mkdtempSync(join(tmpdir(), "edge-idp-setup-"));
-for (const f of ["src", "public", "migrations", "node_modules", "scripts"]) symlinkSync(join(root, f), join(work, f));
-for (const f of ["wrangler.jsonc", "package.json", "tsconfig.json"]) copyFileSync(join(root, f), join(work, f));
-writeFileSync(join(work, ".dev.vars"), `SETUP_TOKEN="${SETUP_TOKEN}"\n`);
-execFileSync("node", ["scripts/build-client.mjs"], { stdio: "ignore" });
-const wrangler = (args) => execFileSync("npx", ["wrangler", ...args], { cwd: work, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-wrangler(["d1", "migrations", "apply", "DB", "--local"]);
-const sql = (q) => JSON.parse(wrangler(["d1", "execute", "DB", "--local", "--json", "--command", q]))[0].results;
-
-let server = null;
-let log = "";
-async function start() {
-  server = spawn("npx", ["wrangler", "dev", "--port", String(PORT)], { cwd: work, stdio: ["ignore", "pipe", "pipe"] });
-  server.stdout.on("data", (d) => (log += d));
-  server.stderr.on("data", (d) => (log += d));
-  const deadline = Date.now() + 90_000;
-  for (;;) {
-    try {
-      if ((await fetch(`${BASE}/healthz`)).ok) return;
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() > deadline) throw new Error(`wrangler dev did not start\n${log.slice(-3000)}`);
-    await new Promise((r) => setTimeout(r, 500));
-  }
-}
-async function stop() {
-  if (!server) return;
-  const exited = new Promise((r) => server.once("exit", r));
-  server.kill();
-  await exited;
-  server = null;
-}
+const inst = await startPortable({ prefix: "setup", port: PORT, vars: { SETUP_TOKEN } });
+const { base: BASE, work, sql, start, stop } = inst;
 
 async function mcpCall(token, method, params = {}) {
   const r = await fetch(`${BASE}/mcp`, {
@@ -161,11 +127,10 @@ try {
   console.error("  FAIL threw:", e);
 } finally {
   await browser?.close();
-  await stop();
-  if (!process.env.E2E_KEEP) rmSync(work, { recursive: true, force: true });
+  await inst.cleanup();
 }
 
-const unexpectedLogErrors = log.split("\n").filter((line) =>
+const unexpectedLogErrors = inst.log().split("\n").filter((line) =>
   /ERROR|Uncaught/.test(line) && !line.includes("identity: existing installation needs an explicit ISSUER before upgrade"));
 if (unexpectedLogErrors.length) {
   console.error("\nserver log contained errors:\n" + unexpectedLogErrors.slice(0, 20).join("\n"));

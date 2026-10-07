@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Local-only browser proof that an authenticator without user verification can enroll and sign in. */
 import { createHash, randomBytes } from "node:crypto";
-import { startLocal } from "../tests/e2e/local-instance.mjs";
+import { startLocal } from "../e2e/instances.mjs";
 import { chromium } from "playwright";
 
 const port = 10300 + Math.floor(Math.random() * 100);

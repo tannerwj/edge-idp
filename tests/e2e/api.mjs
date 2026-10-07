@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * OIDC API end-to-end test. Self-contained:
- *   1-3. boots a throwaway local instance (tests/e2e/local-instance.mjs) on
+ *   1-3. boots a throwaway local instance (tests/e2e/instances.mjs) on
  *        localhost:18877 (also the issuer), and seeds a
  *        user + client + session
  *   4. exercises discovery, JWKS, /authorize validation, the full code flow
@@ -10,7 +10,7 @@
  *
  * Usage: node tests/e2e/api.mjs
  */
-import { startLocal } from "./local-instance.mjs";
+import { startLocal } from "./instances.mjs";
 import { createHash, randomUUID } from "node:crypto";
 
 const PORT = 18877;

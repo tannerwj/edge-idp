@@ -17,10 +17,11 @@ here. Please leave out tokens, keys, enrollment links and anything else private.
 4. Before opening a PR:
 
    ```bash
-   npm run typecheck
+   npm run typecheck && npm run gates
    npm test                  # unit tests (parsers / algorithms only)
-   npm run test:e2e:local    # the full end-to-end suite
+   npm run test:e2e          # the full end-to-end suite
    npm run test:e2e:setup    # the one-click install path
+   npm run test:security     # security regressions
    ```
 
    The e2e suites boot throwaway local instances and leave nothing behind.

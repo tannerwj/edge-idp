@@ -8,10 +8,10 @@
  * own port with http://localhost as the issuer (a secure context, so WebAuthn
  * works), runs, and tears everything down.
  *
- * The instance is isolated (see local-instance.mjs): nothing touches your
+ * The instance is isolated (see instances.mjs): nothing touches your
  * .dev.vars or your local database.
  *
- * Usage: npm run test:e2e:local          (E2E_KEEP=1 keeps the temp dir)
+ * Usage: npm run test:e2e          (E2E_KEEP=1 keeps the temp dir)
  *        npm run test:e2e:staging        same suite against the deployed
  *                                        staging Worker (E2E_STAGE=staging),
  *                                        real D1/limiters/loader/edge
@@ -21,8 +21,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { chromium } from "playwright";
-import { startLocal } from "./local-instance.mjs";
-import { startRemote } from "./remote-instance.mjs";
+import { startLocal, startRemote } from "./instances.mjs";
 import { createRemoteJWKSet, jwtVerify, decodeJwt } from "jose";
 
 const STAGE = process.env.E2E_STAGE;
@@ -324,6 +323,10 @@ try {
   const exec = await mcpCall(mt.access_token, "tools/call", { name: "execute", arguments: { code: `return (await id.users_create({ name: "Cody Mode", email: "cody@example.test" })).enrollment_link;` } });
   const execOut = exec.body?.result?.content?.[0]?.text ?? "";
   check("execute: tool calls inside the sandbox see the issuer", !exec.body?.result?.isError && execOut.includes(`${BASE}/enroll#`), exec.body);
+  const sandboxed = async (code) => JSON.parse((await mcpCall(mt.access_token, "tools/call", { name: "execute", arguments: { code } })).body?.result?.content?.[0]?.text ?? "{}");
+  check("execute: sandbox has no network", (await sandboxed(`try { await fetch("https://example.com"); return "open"; } catch { return "blocked"; }`)).value === "blocked");
+  const recursion = await mcpCall(mt.access_token, "tools/call", { name: "execute", arguments: { code: `return await id.execute({ code: "1" });` } });
+  check("execute: can't call execute", (recursion.body?.result?.content?.[0]?.text ?? "").includes("not available inside execute"), recursion.body);
   const modern = await mcpCall(mt.access_token, "tools/call", { name: "groups_list", arguments: {} }, { "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/call", "mcp-name": "wrong" });
   check("2026-07-28: header/body mismatch → -32020", modern.status === 400 && modern.body?.error?.code === -32020, modern.body);
   const notif = await fetch(MCP, { method: "POST", headers: { authorization: `Bearer ${mt.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
@@ -434,8 +437,11 @@ try {
   instance.stop();
 }
 
-if (/ERROR|Uncaught/.test(instance.log())) {
-  console.error("\nserver log contained errors:\n" + instance.log().split("\n").filter((l) => /ERROR|Uncaught/.test(l)).slice(0, 20).join("\n"));
+// The recursion check makes the sandbox RPC throw on purpose; workerd logs it.
+const EXPECTED_ERRORS = ["execute is not available inside execute"];
+const serverErrors = instance.log().split("\n").filter((l) => /ERROR|Uncaught/.test(l) && !EXPECTED_ERRORS.some((e) => l.includes(e)));
+if (serverErrors.length) {
+  console.error("\nserver log contained errors:\n" + serverErrors.slice(0, 20).join("\n"));
   failures++;
 }
 console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
