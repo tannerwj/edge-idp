@@ -10,7 +10,7 @@
   --text: #1c1917; /* warm ink */
   --muted: #78716c;
   --line: #e5dccb; /* warm hairlines */
-  --accent: #1f4d3a; /* deep racing green */
+  --on-accent: TEMP; #1f4d3a; /* deep racing green */
   --accent-ink: #faf6ef;
   --danger: #9c2b2e; /* oxblood */
   --radius: 6px;
@@ -933,7 +933,7 @@ select {
 
 .nav-link.active {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   font-weight: 500;
 }
 
@@ -1210,4 +1210,51 @@ select {
 
 .card + .card {
   margin-top: 0;
+}
+
+/* Concise forms and buttons */
+.btn {
+  padding: 8px 14px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.btn.small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.field span {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.field input,
+.field select {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.field.inline {
+  min-width: 160px;
+}
+
+/* Tighter card spacing */
+.card {
+  padding: 20px;
+}
+
+.card h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+/* Stack with tighter gaps */
+.stack {
+  gap: 12px;
 }

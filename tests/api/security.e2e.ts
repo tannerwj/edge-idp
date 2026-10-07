@@ -43,10 +43,13 @@ test('unregistered redirect uri fails as a page', async () => {
 });
 
 test('admin pages fail closed without a session', async () => {
-  for (const path of ['/admin/', '/admin/clients', '/admin/users', '/admin/audit']) {
+  for (const path of ['/admin', '/admin/clients', '/admin/users', '/admin/audit']) {
     const res = await fetch(`${base}${path}`, { redirect: 'manual' });
     expect(res.status).toBe(403);
   }
+  // Trailing slash normalizes before auth.
+  const slash = await fetch(`${base}/admin/`, { redirect: 'manual' });
+  expect(slash.status).toBe(301);
 });
 
 test('userinfo rejects a bogus token', async () => {

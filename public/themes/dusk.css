@@ -9,7 +9,7 @@
   --line: rgba(255, 255, 255, 0.1);
   --text: #f4f1fa;
   --muted: #a79fc0;
-  --accent: #b79bff;
+  --on-accent: TEMP; #b79bff;
   --accent-ink: #ffffff;
   --danger: #ff8a8a;
   --radius: 20px;
@@ -942,7 +942,7 @@ select {
 
 .nav-link.active {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   font-weight: 500;
 }
 
@@ -1219,4 +1219,51 @@ select {
 
 .card + .card {
   margin-top: 0;
+}
+
+/* Concise forms and buttons */
+.btn {
+  padding: 8px 14px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.btn.small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.field span {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.field input,
+.field select {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.field.inline {
+  min-width: 160px;
+}
+
+/* Tighter card spacing */
+.card {
+  padding: 20px;
+}
+
+.card h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+/* Stack with tighter gaps */
+.stack {
+  gap: 12px;
 }

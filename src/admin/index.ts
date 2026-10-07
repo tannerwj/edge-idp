@@ -4,13 +4,12 @@ import type { AdminVars } from "./shell";
 import { dashboardAdmin } from "./dashboard";
 import { usersAdmin } from "./users";
 import { userDetailAdmin } from "./user-detail";
-import { groupsAdmin } from "./groups";
 import { clientsAdmin } from "./clients";
 import { auditAdmin } from "./audit";
-import { themeAdmin } from "./theme";
+import { preferencesAdmin } from "./preferences";
 import { tokensAdmin } from "./tokens";
 import { accessAdmin } from "./access";
-import { mcpMetricsAdmin } from "./mcp-metrics";
+import { metricsAdmin } from "./metrics";
 
 /**
  * Admin router. The middleware is the entire authorization story: an
@@ -31,10 +30,13 @@ admin.use("*", async (c, next) => {
 admin.route("/", dashboardAdmin);
 admin.route("/users", usersAdmin);
 admin.route("/users/:id", userDetailAdmin);
-admin.route("/groups", groupsAdmin);
 admin.route("/clients", clientsAdmin);
 admin.route("/access", accessAdmin);
 admin.route("/audit", auditAdmin);
-admin.route("/theme", themeAdmin);
+admin.route("/preferences", preferencesAdmin);
 admin.route("/tokens", tokensAdmin);
-admin.route("/mcp", mcpMetricsAdmin);
+admin.route("/metrics", metricsAdmin);
+// Legacy redirects
+admin.get("/groups", (c) => c.redirect("/admin/users", 301));
+admin.get("/theme", (c) => c.redirect("/admin/preferences", 301));
+admin.get("/mcp", (c) => c.redirect("/admin/metrics", 301));
