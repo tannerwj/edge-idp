@@ -98,7 +98,8 @@ src/
   crypto.ts          RS256 ID/access tokens, JWKS with rotation
   mcp.ts             admin MCP server + code-mode sandbox
   ops.ts             domain operations shared by the admin UI and MCP
-  account.tsx        home launcher + account & security
+  account.tsx        account & security routes (views in account-sections.tsx)
+  home.tsx           home launcher
   pages.tsx          sign-in, enrollment, consent, sign-out, errors
   admin/             admin UI (overview, people, groups, apps, clients, audit, connect, tokens, settings)
   ui/                layout, components, icons
