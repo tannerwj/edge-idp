@@ -8,7 +8,7 @@ Connect, and AI assistants over MCP.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tannerwj/edge-idp)
 
 **One click, or by hand:** the button creates the Worker and D1 database and
-asks for one setup token; open the new URL and `/setup` makes you the admin.
+asks for one generated setup token; open the new URL and `/setup` makes you the admin.
 Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 `cf deploy`. See [DEPLOY.md](DEPLOY.md).
 
@@ -25,8 +25,8 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 **For you (admin)**
 - People: invite with a one-time link (copy, email, share sheet, or QR for a
   phone), groups, roles, recovery (reset passkeys), disable, delete
-- Groups that show up in every token's `groups` claim, so Access policies and
-  your apps can match on them
+- Groups in ID tokens and in access tokens granted the `groups` scope, so
+  Access policies and authorized apps can match on them
 - Apps: the launcher, with per-group visibility; optional import of your
   Cloudflare Access apps and their policies (read-only)
 - Clients: OIDC/OAuth clients, both confidential and public, with exact
@@ -69,7 +69,7 @@ npx cf auth create personal && npx cf auth activate personal "$(pwd)"   # once: 
 npm run db:migrate:local          # local D1
 npm run dev                       # cf dev on http://localhost:8787 (see DEPLOY.md → Local development)
 npm run test:e2e:local            # full e2e: real passkey ceremonies, OIDC, OAuth/MCP, security regressions
-npm run test:e2e:setup            # the one-click install: wrangler.jsonc template, /setup, generated key
+npm run test:e2e:setup            # portable template: /setup, pinned issuer, encrypted D1 key
 npm test                          # unit tests
 npm run typecheck && npm run gates
 npm run deploy:check              # build + validate bindings without uploading
@@ -97,7 +97,7 @@ src/
   client/app.ts      browser bundle (esbuild → served from memory)
   cf-access.ts       optional read-only Cloudflare Access integration
   maintenance.ts     hourly cleanup + retention
-  instance.ts        per-request ISSUER / signing-key defaults (one-click installs)
+  instance.ts        pinned issuer / encrypted D1 signing-key fallback (one-click installs)
   setup.tsx          first-run /setup (first admin)
 migrations/          D1 schema (apply manually: npm run db:migrate)
 cloudflare.config.ts Worker config for the cf CLI (bindings, route, cron, account pin, staging)

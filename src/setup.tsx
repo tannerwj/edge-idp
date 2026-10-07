@@ -12,15 +12,14 @@
 import { Hono } from "hono";
 import type { Env } from "./config";
 import { audit } from "./db";
-import { mintEnrollmentLink } from "./ops";
 import { AuthLayout, uiFor } from "./ui/layout";
 import type { Ui } from "./ui/layout";
 import { Callout } from "./ui/components";
 import { Icon } from "./ui/icons";
-import { newId, nowSec, sha256Hex, timingSafeEqualHex } from "./util";
+import { newId, nowSec, randomToken, sha256Hex, timingSafeEqualHex } from "./util";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const MIN_TOKEN = 12;
+const MIN_TOKEN = 43;
 
 let done = false;
 
@@ -102,17 +101,36 @@ setup.post("/setup", async (c) => {
 
   const id = newId();
   const now = nowSec();
-  const res = await c.env.DB.prepare(
-    "INSERT INTO users (id, created_at, name, email, is_admin, updated_at) SELECT ?1, ?2, ?3, ?4, 1, ?2 WHERE NOT EXISTS (SELECT 1 FROM users)",
-  )
-    .bind(id, now, name, email)
-    .run();
-  if (res.meta.changes !== 1) {
+  const token = randomToken(32);
+  const tokenHash = await sha256Hex(token);
+  // D1 batch is transactional: a missing audit/enrollment table or failed
+  // write rolls back the first-admin row, so setup remains recoverable.
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare(
+      "INSERT INTO users (id, created_at, name, email, is_admin, updated_at) SELECT ?1, ?2, ?3, ?4, 1, ?2 WHERE NOT EXISTS (SELECT 1 FROM users)",
+    ).bind(id, now, name, email),
+    c.env.DB.prepare(
+      `INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at)
+       SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?2)`,
+    ).bind(tokenHash, id, now, now + 7 * 86400),
+    c.env.DB.prepare(
+      `INSERT INTO audit_log (created_at, event, user_id)
+       SELECT ?1, 'SETUP_COMPLETED', ?2 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?2)`,
+    ).bind(now, id),
+    c.env.DB.prepare(
+      `INSERT INTO audit_log (created_at, event, user_id, detail)
+       SELECT ?1, 'ENROLLMENT_STARTED', ?2, ?3 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?2)`,
+    ).bind(now, id, JSON.stringify({ adminId: id, via: "ui" })),
+    c.env.DB.prepare(
+      `INSERT INTO instance_settings (key, value, updated_at)
+       SELECT 'issuer', ?1, ?2 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?3)
+       ON CONFLICT(key) DO NOTHING`,
+    ).bind(c.env.ISSUER, now, id),
+  ]);
+  if (results[0]?.meta.changes !== 1) {
     done = true;
     return c.notFound();
   }
   done = true;
-  await audit(c.env.DB, "SETUP_COMPLETED", { userId: id });
-  const link = await mintEnrollmentLink(c.env.DB, c.env.ISSUER, id, { adminId: id, via: "ui" });
-  return c.redirect(new URL(link).pathname, 303);
+  return c.redirect(`/enroll#${token}`, 303);
 });

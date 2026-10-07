@@ -25,7 +25,8 @@ export async function mintEnrollmentLink(db: D1Database, issuer: string, userId:
     .bind(await sha256Hex(token), userId, nowSec(), nowSec() + ENROLL_TTL)
     .run();
   await audit(db, "ENROLLMENT_STARTED", { userId, detail: by(a) });
-  return `${issuer}/enroll/${token}`;
+  // URL fragments stay in the browser; Workers Logs never see this bearer.
+  return `${issuer}/enroll#${token}`;
 }
 
 export async function createUser(

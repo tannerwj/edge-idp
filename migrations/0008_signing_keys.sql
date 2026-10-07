@@ -1,5 +1,6 @@
--- Signing key generated on first use when the SIGNING_KEY_JWK secret isn't set
--- (one-click installs). Never shown in the UI or MCP. See src/instance.ts.
+-- Signing key generated on first use without SIGNING_KEY_JWK (one-click).
+-- New rows are AES-GCM encrypted under the SETUP_TOKEN Worker secret.
+-- Legacy plaintext rows require rotation before upgrading; see DEPLOY.md.
 CREATE TABLE IF NOT EXISTS signing_keys (
   id TEXT PRIMARY KEY,
   jwk TEXT NOT NULL,

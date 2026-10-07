@@ -4,9 +4,10 @@
 // below), asks for the secrets in .dev.vars.example, then runs
 // `npm run deploy` in Workers Builds (migrations + wrangler deploy).
 //
-// Nothing else to fill in: ISSUER defaults to the hostname the Worker is
-// served on and the signing key is generated on first use (src/instance.ts).
-// After adding a custom domain, set ISSUER to it under "vars".
+// Generate SETUP_TOKEN with scripts/gen-setup-token.mjs and back it up.
+// Setup pins the first request origin as ISSUER. Choose a custom domain and
+// explicit ISSUER before setup if needed. The signing key is encrypted in D1
+// using SETUP_TOKEN unless SIGNING_KEY_JWK is provided as a Worker secret.
 //
 // The reference instance is deployed with the cf CLI from
 // cloudflare.config.ts instead; cf reads that file, wrangler reads this one.

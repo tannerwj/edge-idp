@@ -1,0 +1,83 @@
+{
+  "commit": "89481cc3aff32dbc02628e16efb73917cc26cdcb",
+  "branch": "codex/security-review-remediation",
+  "workingTree": "modified",
+  "environment": "local wrangler dev, fresh D1, no issuer or signing-key secret, no Worker Loader",
+  "results": {
+    "first_health_including_key_generation": [
+      {
+        "status": 200,
+        "ms": 242.7
+      }
+    ],
+    "warm_health": [
+      {
+        "status": 200,
+        "ms": 3.4
+      },
+      {
+        "status": 200,
+        "ms": 3
+      },
+      {
+        "status": 200,
+        "ms": 2.6
+      },
+      {
+        "status": 200,
+        "ms": 2.3
+      },
+      {
+        "status": 200,
+        "ms": 2.6
+      }
+    ],
+    "warm_jwks": [
+      {
+        "status": 200,
+        "ms": 2.8
+      },
+      {
+        "status": 200,
+        "ms": 2.4
+      },
+      {
+        "status": 200,
+        "ms": 3.2
+      },
+      {
+        "status": 200,
+        "ms": 2.1
+      },
+      {
+        "status": 200,
+        "ms": 2.4
+      }
+    ],
+    "setup_pending": [
+      {
+        "status": 200,
+        "ms": 6
+      },
+      {
+        "status": 200,
+        "ms": 3
+      },
+      {
+        "status": 200,
+        "ms": 2.8
+      },
+      {
+        "status": 200,
+        "ms": 2.6
+      },
+      {
+        "status": 200,
+        "ms": 2.7
+      }
+    ],
+    "key_cache_after_local_d1_replacement": {
+      "jwksStillOld": false
+    }
+  }
+}

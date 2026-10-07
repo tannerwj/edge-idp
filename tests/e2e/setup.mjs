@@ -18,10 +18,11 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { randomBytes } from "node:crypto";
 
 const PORT = 8890 + Math.floor(Math.random() * 100);
 const BASE = `http://localhost:${PORT}`;
-const SETUP_TOKEN = "e2e-setup-token-0123456789";
+const SETUP_TOKEN = randomBytes(32).toString("base64url");
 
 let failures = 0;
 function check(name, cond, extra = "") {
@@ -112,8 +113,8 @@ try {
   check("cross-origin setup POST refused", cross.status() === 403, String(cross.status()));
 
   await page.fill("input[name=token]", SETUP_TOKEN);
-  await Promise.all([page.waitForURL(/\/enroll\//), page.click("button[type=submit]")]);
-  check("right token → passkey enrollment", new URL(page.url()).pathname.startsWith("/enroll/"), page.url());
+  await Promise.all([page.waitForURL(/\/enroll#/), page.click("button[type=submit]")]);
+  check("right token → passkey enrollment", new URL(page.url()).pathname === "/enroll" && new URL(page.url()).hash.length > 40, page.url());
   await page.fill("#key-name", "Setup key");
   await page.click("#enroll-btn");
   await page.waitForURL(`${BASE}/?**`, { timeout: 15000 }).catch(() => {});
@@ -149,7 +150,12 @@ try {
   check("signing key survives a restart", (await jwkN()) === n1);
   const exec = await mcpCall(token, "tools/call", { name: "execute", arguments: { code: `return (await id.users_create({ name: "Cody Mode", email: "cody@example.test" })).enrollment_link;` } });
   const out = exec?.result?.content?.[0]?.text ?? "";
-  check("execute: sandboxed tool calls get the derived issuer", !exec?.result?.isError && out.includes(`${BASE}/enroll/`), exec);
+  check("execute: sandboxed tool calls get the derived issuer", !exec?.result?.isError && out.includes(`${BASE}/enroll#`), exec);
+
+  sql("DELETE FROM instance_settings WHERE key = 'issuer'");
+  check("initialized portable DB without issuer pin fails closed", (await fetch(`${BASE}/healthz`)).status === 500);
+  sql(`INSERT INTO instance_settings (key, value, updated_at) VALUES ('issuer', '${BASE}', 0)`);
+  check("restoring issuer pin restores service", (await fetch(`${BASE}/healthz`)).status === 200);
 } catch (e) {
   failures++;
   console.error("  FAIL threw:", e);
@@ -159,8 +165,10 @@ try {
   if (!process.env.E2E_KEEP) rmSync(work, { recursive: true, force: true });
 }
 
-if (/ERROR|Uncaught/.test(log)) {
-  console.error("\nserver log contained errors:\n" + log.split("\n").filter((l) => /ERROR|Uncaught/.test(l)).slice(0, 20).join("\n"));
+const unexpectedLogErrors = log.split("\n").filter((line) =>
+  /ERROR|Uncaught/.test(line) && !line.includes("identity: existing installation needs an explicit ISSUER before upgrade"));
+if (unexpectedLogErrors.length) {
+  console.error("\nserver log contained errors:\n" + unexpectedLogErrors.slice(0, 20).join("\n"));
   failures++;
 }
 console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
