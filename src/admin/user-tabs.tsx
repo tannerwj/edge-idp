@@ -29,6 +29,65 @@ export interface TabData {
   activity: FeedRow[];
 }
 
+function RoleCard({ id, self, user }: Pick<TabData, "id" | "self" | "user">) {
+  return (
+    <div class="card">
+      <div class="card-head">
+        <h2>Role</h2>
+      </div>
+      <div class="card-body stack-sm">
+        <p class="muted small">
+          {user.is_admin
+            ? "Admins manage people, apps and settings, and can use the admin API (MCP)."
+            : "Standard member: signs in to the apps their groups allow."}
+        </p>
+        {self ? (
+          <p class="muted small">You can't change your own role.</p>
+        ) : (
+          <PostButton
+            action={`/admin/users/${id}/role`}
+            fields={{ isAdmin: user.is_admin ? "0" : "1" }}
+            label={user.is_admin ? "Remove admin" : "Make admin"}
+            icon="shield"
+            class="btn sm"
+            confirm={
+              user.is_admin
+                ? `Remove admin from ${user.name}? Their API tokens are deleted too.`
+                : `Make ${user.name} an admin?`
+            }
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DangerZoneCard({ id, user }: Pick<TabData, "id" | "user">) {
+  return (
+    <div class="card danger-zone">
+      <div class="card-head">
+        <h2>Danger zone</h2>
+      </div>
+      <div class="card-body stack-sm">
+        <PostButton
+          action={`/admin/users/${id}/revoke-keys`}
+          label="Reset passkeys (recovery)"
+          icon="refresh"
+          class="btn sm danger"
+          confirm={`Delete all of ${user.name}'s passkeys and sign them out? Then send them a new enrollment link.`}
+        />
+        <PostButton
+          action={`/admin/users/${id}/delete`}
+          label="Delete person"
+          icon="trash"
+          class="btn sm danger"
+          confirm={`Permanently delete ${user.name}? Disabling is reversible; this isn't.`}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function OverviewTab({ id, self, user, creds, groups, allGroups }: TabData) {
   return (
     <div class="grid-3">
@@ -99,57 +158,8 @@ export function OverviewTab({ id, self, user, creds, groups, allGroups }: TabDat
             </dl>
           </div>
         </div>
-        <div class="card">
-          <div class="card-head">
-            <h2>Role</h2>
-          </div>
-          <div class="card-body stack-sm">
-            <p class="muted small">
-              {user.is_admin
-                ? "Admins manage people, apps and settings, and can use the admin API (MCP)."
-                : "Standard member: signs in to the apps their groups allow."}
-            </p>
-            {self ? (
-              <p class="muted small">You can't change your own role.</p>
-            ) : (
-              <PostButton
-                action={`/admin/users/${id}/role`}
-                fields={{ isAdmin: user.is_admin ? "0" : "1" }}
-                label={user.is_admin ? "Remove admin" : "Make admin"}
-                icon="shield"
-                class="btn sm"
-                confirm={
-                  user.is_admin
-                    ? `Remove admin from ${user.name}? Their API tokens are deleted too.`
-                    : `Make ${user.name} an admin?`
-                }
-              />
-            )}
-          </div>
-        </div>
-        {self ? null : (
-          <div class="card danger-zone">
-            <div class="card-head">
-              <h2>Danger zone</h2>
-            </div>
-            <div class="card-body stack-sm">
-              <PostButton
-                action={`/admin/users/${id}/revoke-keys`}
-                label="Reset passkeys (recovery)"
-                icon="refresh"
-                class="btn sm danger"
-                confirm={`Delete all of ${user.name}'s passkeys and sign them out? Then send them a new enrollment link.`}
-              />
-              <PostButton
-                action={`/admin/users/${id}/delete`}
-                label="Delete person"
-                icon="trash"
-                class="btn sm danger"
-                confirm={`Permanently delete ${user.name}? Disabling is reversible; this isn't.`}
-              />
-            </div>
-          </div>
-        )}
+        <RoleCard id={id} self={self} user={user} />
+        {self ? null : <DangerZoneCard id={id} user={user} />}
       </div>
     </div>
   );

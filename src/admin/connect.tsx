@@ -95,6 +95,117 @@ function Row(props: { label: string; value: string }) {
   );
 }
 
+function AccessSection(props: {
+  iss: string;
+  accessClient: { id: string; name: string } | undefined;
+  cfConnected: boolean;
+}) {
+  const { iss, accessClient } = props;
+  return (
+    <section class="card" id="access">
+      <div class="card-head">
+        <Icon name="cloud" />
+        <div class="grow">
+          <h2>Cloudflare Access</h2>
+          <div class="sub">Replace one-time PINs with passkeys on every Access app.</div>
+        </div>
+        {accessClient ? (
+          <a class="badge ok dot" href={`/admin/clients/${encodeURIComponent(accessClient.id)}`}>
+            Client registered
+          </a>
+        ) : null}
+      </div>
+      <ol class="steps-list">
+        <Step n={1} title="Register Access as a client">
+          <p class="text-2">
+            Confidential client, <b>PKCE off</b> (Access doesn't send it), redirect URI{" "}
+            <code>https://&lt;your-team&gt;.cloudflareaccess.com/cdn-cgi/access/callback</code>.
+          </p>
+          <div>
+            {accessClient ? (
+              <a class="btn sm" href={`/admin/clients/${encodeURIComponent(accessClient.id)}`}>
+                Open {accessClient.name}
+              </a>
+            ) : (
+              <a class="btn primary sm" href="/admin/clients?new=1">
+                Register client
+              </a>
+            )}
+          </div>
+        </Step>
+        <Step n={2} title="Add it as an OpenID Connect login method">
+          <p class="text-2">
+            Zero Trust → Settings → Authentication → Login methods → Add new → OpenID Connect.
+          </p>
+          <div class="grid-2">
+            <Row label="Auth URL" value={`${iss}/authorize`} />
+            <Row label="Token URL" value={`${iss}/token`} />
+            <Row label="Certificate URL" value={`${iss}/jwks`} />
+            <Row label="Scopes" value="openid email profile groups" />
+          </div>
+          <p class="text-2">
+            Paste the client ID + secret as App ID / Client secret. Under <b>OIDC Claims</b>, add{" "}
+            <code>groups</code> so policies can see it. Leave PKCE off.
+          </p>
+        </Step>
+        <Step n={3} title="Use groups in Access policies">
+          <p class="text-2">
+            In each Access application's policy, add an <b>Include → OIDC Claims</b> rule: claim
+            name <code>groups</code>, value <code>family</code> (any group from{" "}
+            <a href="/admin/groups">Groups</a>). Then set this IdP as the only login method and turn
+            on <b>instant auth</b> to skip the Access chooser screen.
+          </p>
+        </Step>
+        <Step n={4} title="Show those apps on the home screen">
+          <p class="text-2">
+            {props.cfConnected ? (
+              <>
+                The Cloudflare API is connected —{" "}
+                <a href="/admin/apps?cf=1#cloudflare">import your Access apps</a>.
+              </>
+            ) : (
+              <>
+                Add them under <a href="/admin/apps">Apps</a>, or set <code>CF_ACCOUNT_ID</code> +{" "}
+                <code>CF_API_TOKEN</code> (Access read permissions) to import them and see their
+                policies here.
+              </>
+            )}
+          </p>
+        </Step>
+      </ol>
+    </section>
+  );
+}
+
+function OidcSection({ iss }: { iss: string }) {
+  return (
+    <section class="card" id="oidc">
+      <div class="card-head">
+        <Icon name="plug" />
+        <div class="grow">
+          <h2>Any OpenID Connect app</h2>
+          <div class="sub">
+            Grafana, Outline, Immich, Proxmox, Jellyfin plugins, Tailscale, your own code…
+          </div>
+        </div>
+      </div>
+      <div class="card-body stack">
+        <div class="grid-2">
+          <Row label="Issuer" value={iss} />
+          <Row label="Discovery URL" value={`${iss}/.well-known/openid-configuration`} />
+        </div>
+        <p class="text-2">
+          Register a client under <a href="/admin/clients?new=1">Clients</a>, then point the app at
+          the discovery URL. Tokens are RS256, carry <code>email</code>, <code>name</code>,{" "}
+          <code>groups</code> and <code>auth_time</code>; apps can force a fresh passkey with{" "}
+          <code>prompt=login</code> or <code>max_age</code>, and sign users out via{" "}
+          <code>{iss}/end-session</code>.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 connectAdmin.get("/", async (c) => {
   const iss = c.env.ISSUER;
   const slug =
@@ -121,106 +232,9 @@ connectAdmin.get("/", async (c) => {
         <a href="#mcp">AI assistants</a>
       </nav>
       <div class="stack-lg">
-        <section class="card" id="access">
-          <div class="card-head">
-            <Icon name="cloud" />
-            <div class="grow">
-              <h2>Cloudflare Access</h2>
-              <div class="sub">Replace one-time PINs with passkeys on every Access app.</div>
-            </div>
-            {accessClient ? (
-              <a
-                class="badge ok dot"
-                href={`/admin/clients/${encodeURIComponent(accessClient.id)}`}
-              >
-                Client registered
-              </a>
-            ) : null}
-          </div>
-          <ol class="steps-list">
-            <Step n={1} title="Register Access as a client">
-              <p class="text-2">
-                Confidential client, <b>PKCE off</b> (Access doesn't send it), redirect URI{" "}
-                <code>https://&lt;your-team&gt;.cloudflareaccess.com/cdn-cgi/access/callback</code>.
-              </p>
-              <div>
-                {accessClient ? (
-                  <a class="btn sm" href={`/admin/clients/${encodeURIComponent(accessClient.id)}`}>
-                    Open {accessClient.name}
-                  </a>
-                ) : (
-                  <a class="btn primary sm" href="/admin/clients?new=1">
-                    Register client
-                  </a>
-                )}
-              </div>
-            </Step>
-            <Step n={2} title="Add it as an OpenID Connect login method">
-              <p class="text-2">
-                Zero Trust → Settings → Authentication → Login methods → Add new → OpenID Connect.
-              </p>
-              <div class="grid-2">
-                <Row label="Auth URL" value={`${iss}/authorize`} />
-                <Row label="Token URL" value={`${iss}/token`} />
-                <Row label="Certificate URL" value={`${iss}/jwks`} />
-                <Row label="Scopes" value="openid email profile groups" />
-              </div>
-              <p class="text-2">
-                Paste the client ID + secret as App ID / Client secret. Under <b>OIDC Claims</b>,
-                add <code>groups</code> so policies can see it. Leave PKCE off.
-              </p>
-            </Step>
-            <Step n={3} title="Use groups in Access policies">
-              <p class="text-2">
-                In each Access application's policy, add an <b>Include → OIDC Claims</b> rule: claim
-                name <code>groups</code>, value <code>family</code> (any group from{" "}
-                <a href="/admin/groups">Groups</a>). Then set this IdP as the only login method and
-                turn on <b>instant auth</b> to skip the Access chooser screen.
-              </p>
-            </Step>
-            <Step n={4} title="Show those apps on the home screen">
-              <p class="text-2">
-                {cfConfigured(c.env) ? (
-                  <>
-                    The Cloudflare API is connected —{" "}
-                    <a href="/admin/apps?cf=1#cloudflare">import your Access apps</a>.
-                  </>
-                ) : (
-                  <>
-                    Add them under <a href="/admin/apps">Apps</a>, or set <code>CF_ACCOUNT_ID</code>{" "}
-                    + <code>CF_API_TOKEN</code> (Access read permissions) to import them and see
-                    their policies here.
-                  </>
-                )}
-              </p>
-            </Step>
-          </ol>
-        </section>
+        <AccessSection iss={iss} accessClient={accessClient} cfConnected={cfConfigured(c.env)} />
 
-        <section class="card" id="oidc">
-          <div class="card-head">
-            <Icon name="plug" />
-            <div class="grow">
-              <h2>Any OpenID Connect app</h2>
-              <div class="sub">
-                Grafana, Outline, Immich, Proxmox, Jellyfin plugins, Tailscale, your own code…
-              </div>
-            </div>
-          </div>
-          <div class="card-body stack">
-            <div class="grid-2">
-              <Row label="Issuer" value={iss} />
-              <Row label="Discovery URL" value={`${iss}/.well-known/openid-configuration`} />
-            </div>
-            <p class="text-2">
-              Register a client under <a href="/admin/clients?new=1">Clients</a>, then point the app
-              at the discovery URL. Tokens are RS256, carry <code>email</code>, <code>name</code>,{" "}
-              <code>groups</code> and <code>auth_time</code>; apps can force a fresh passkey with{" "}
-              <code>prompt=login</code> or <code>max_age</code>, and sign users out via{" "}
-              <code>{iss}/end-session</code>.
-            </p>
-          </div>
-        </section>
+        <OidcSection iss={iss} />
 
         <McpSection mcpUrl={mcpUrl} slug={slug} dcr={dcr} cimd={cimd} />
       </div>

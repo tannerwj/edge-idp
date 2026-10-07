@@ -2,11 +2,12 @@
 import { Hono } from "hono";
 import type { Env } from "./config";
 import { appsForUser, getCredentialsForUser, getUserGroups } from "./db";
-import type { App } from "./db";
+import type { App, WebAuthnCredential } from "./db";
 import { getSession } from "./session";
 import { AppShell, uiFor } from "./ui/layout";
 import { Callout, Empty, hueOf, PageHead, Time } from "./ui/components";
 import { Feed } from "./ui/feed";
+import type { FeedRow } from "./ui/feed";
 import { Icon } from "./ui/icons";
 import { viewerOf } from "./account";
 
@@ -55,6 +56,140 @@ export function AppTile(props: { app: App; admin?: boolean }) {
   );
 }
 
+function GroupsLede({ groups }: { groups: string[] }) {
+  return (
+    <>
+      You're in{" "}
+      {groups.map((g, i) => (
+        <>
+          {i ? ", " : ""}
+          <b>{g}</b>
+        </>
+      ))}
+      .
+    </>
+  );
+}
+
+function BackupPasskeyCallout({ count }: { count: number }) {
+  return (
+    <Callout tone="accent" icon="shieldCheck">
+      <div class="row wrap between">
+        <div>
+          <b>Add a backup passkey.</b>{" "}
+          <span class="text-2">
+            You have {count === 0 ? "no passkeys" : "one passkey"}. A second device (say, your
+            phone) means losing one is never a lockout.
+          </span>
+        </div>
+        <a class="btn sm" href="/account#passkeys">
+          Add passkey
+        </a>
+      </div>
+    </Callout>
+  );
+}
+
+function AppsSection({ apps, isAdmin }: { apps: App[]; isAdmin: boolean }) {
+  return (
+    <section>
+      <div class="section-title">
+        <h2>Your apps</h2>
+        <span class="sub">{apps.length ? `${apps.length} available` : ""}</span>
+      </div>
+      {apps.length ? (
+        <div class="launcher">
+          {apps.map((a) => (
+            <AppTile key={a.id} app={a} />
+          ))}
+          {isAdmin ? (
+            <a class="tile add" href="/admin/apps?new=1">
+              <Icon name="plus" size="lg" />
+              <span>Add an app</span>
+            </a>
+          ) : null}
+        </div>
+      ) : (
+        <div class="card">
+          <Empty
+            icon="grid"
+            title="No apps yet"
+            action={
+              isAdmin ? (
+                <a class="btn primary" href="/admin/apps?new=1">
+                  <Icon name="plus" size="sm" />
+                  Add your first app
+                </a>
+              ) : null
+            }
+          >
+            {isAdmin
+              ? "Apps you add appear here for everyone allowed to use them — a home screen for your stuff."
+              : "When your admin shares apps with you, they'll show up here."}
+          </Empty>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RecentActivityCard({ rows }: { rows: FeedRow[] }) {
+  return (
+    <div class="card">
+      <div class="card-head">
+        <h2>Recent activity</h2>
+        <a class="right small" href="/account#activity">
+          View all
+        </a>
+      </div>
+      {rows.length ? (
+        <Feed rows={rows} showWho={false} />
+      ) : (
+        <Empty icon="activity" title="Nothing yet" />
+      )}
+    </div>
+  );
+}
+
+function SecurityCard({ creds, authTime }: { creds: WebAuthnCredential[]; authTime: number }) {
+  return (
+    <div class="card">
+      <div class="card-head">
+        <h2>Security</h2>
+        <a class="right small" href="/account">
+          Manage
+        </a>
+      </div>
+      <ul class="list">
+        <li>
+          <Icon name="fingerprint" />
+          <div class="grow">
+            <div class="title">Passkeys</div>
+            <div class="meta">
+              {creds.length} registered
+              {creds.some((k) => k.backup_state) ? " · synced across devices" : ""}
+            </div>
+          </div>
+          {creds.length >= 2 ? (
+            <span class="badge ok dot">Good</span>
+          ) : (
+            <span class="badge warn dot">Add a backup</span>
+          )}
+        </li>
+        <li>
+          <Icon name="clock" />
+          <div class="grow">
+            <div class="title">This session</div>
+            <div class="meta">
+              Signed in <Time ts={authTime} />
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 /* ───────────────────────────── home ───────────────────────────── */
 
 home.get("/", async (c) => {
@@ -86,126 +221,14 @@ home.get("/", async (c) => {
     >
       <PageHead
         title={`${greeting()}, ${first}`}
-        lede={
-          groups.length ? (
-            <>
-              You're in{" "}
-              {groups.map((g, i) => (
-                <>
-                  {i ? ", " : ""}
-                  <b>{g}</b>
-                </>
-              ))}
-              .
-            </>
-          ) : (
-            "Here's everything you can open."
-          )
-        }
+        lede={groups.length ? <GroupsLede groups={groups} /> : "Here's everything you can open."}
       />
       <div class="stack-lg">
-        {creds.length < 2 ? (
-          <Callout tone="accent" icon="shieldCheck">
-            <div class="row wrap between">
-              <div>
-                <b>Add a backup passkey.</b>{" "}
-                <span class="text-2">
-                  You have {creds.length === 0 ? "no passkeys" : "one passkey"}. A second device
-                  (say, your phone) means losing one is never a lockout.
-                </span>
-              </div>
-              <a class="btn sm" href="/account#passkeys">
-                Add passkey
-              </a>
-            </div>
-          </Callout>
-        ) : null}
-        <section>
-          <div class="section-title">
-            <h2>Your apps</h2>
-            <span class="sub">{apps.length ? `${apps.length} available` : ""}</span>
-          </div>
-          {apps.length ? (
-            <div class="launcher">
-              {apps.map((a) => (
-                <AppTile key={a.id} app={a} />
-              ))}
-              {s.user.is_admin ? (
-                <a class="tile add" href="/admin/apps?new=1">
-                  <Icon name="plus" size="lg" />
-                  <span>Add an app</span>
-                </a>
-              ) : null}
-            </div>
-          ) : (
-            <div class="card">
-              <Empty
-                icon="grid"
-                title="No apps yet"
-                action={
-                  s.user.is_admin ? (
-                    <a class="btn primary" href="/admin/apps?new=1">
-                      <Icon name="plus" size="sm" />
-                      Add your first app
-                    </a>
-                  ) : null
-                }
-              >
-                {s.user.is_admin
-                  ? "Apps you add appear here for everyone allowed to use them — a home screen for your stuff."
-                  : "When your admin shares apps with you, they'll show up here."}
-              </Empty>
-            </div>
-          )}
-        </section>
+        {creds.length < 2 ? <BackupPasskeyCallout count={creds.length} /> : null}
+        <AppsSection apps={apps} isAdmin={!!s.user.is_admin} />
         <section class="grid-2">
-          <div class="card">
-            <div class="card-head">
-              <h2>Recent activity</h2>
-              <a class="right small" href="/account#activity">
-                View all
-              </a>
-            </div>
-            {recent.results.length ? (
-              <Feed rows={recent.results} showWho={false} />
-            ) : (
-              <Empty icon="activity" title="Nothing yet" />
-            )}
-          </div>
-          <div class="card">
-            <div class="card-head">
-              <h2>Security</h2>
-              <a class="right small" href="/account">
-                Manage
-              </a>
-            </div>
-            <ul class="list">
-              <li>
-                <Icon name="fingerprint" />
-                <div class="grow">
-                  <div class="title">Passkeys</div>
-                  <div class="meta">
-                    {creds.length} registered
-                    {creds.some((k) => k.backup_state) ? " · synced across devices" : ""}
-                  </div>
-                </div>
-                {creds.length >= 2 ? (
-                  <span class="badge ok dot">Good</span>
-                ) : (
-                  <span class="badge warn dot">Add a backup</span>
-                )}
-              </li>
-              <li>
-                <Icon name="clock" />
-                <div class="grow">
-                  <div class="title">This session</div>
-                  <div class="meta">
-                    Signed in <Time ts={s.authTime} />
-                  </div>
-                </div>
-              </li>
-            </ul>
-          </div>
+          <RecentActivityCard rows={recent.results} />
+          <SecurityCard creds={creds} authTime={s.authTime} />
         </section>
       </div>
     </AppShell>,

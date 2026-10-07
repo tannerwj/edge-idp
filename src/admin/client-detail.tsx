@@ -115,6 +115,78 @@ function ClientSidebar({
   );
 }
 
+function ClientSettingsForm({ client, groups }: { client: OidcClient; groups: Group[] }) {
+  return (
+    <form class="card" method="post" action={detailHref(client.id)}>
+      <div class="card-head">
+        <Icon name="settings" />
+        <h2>Settings</h2>
+      </div>
+      <div class="card-body stack">
+        <label class="field">
+          <span class="label">Name</span>
+          <input name="name" required maxLength={120} value={client.name} />
+        </label>
+        <label class="field">
+          <span class="label">Redirect URIs</span>
+          <textarea name="redirectUris" rows={3} required>
+            {client.redirect_uris.join("\n")}
+          </textarea>
+        </label>
+        <div class="field">
+          <span class="label">Allowed groups</span>
+          <GroupPicker name="groups" all={groups} selected={client.allowed_groups} />
+          <span class="hint">
+            {client.source === "admin"
+              ? "None selected = everyone."
+              : "None selected = admins only (third-party client)."}{" "}
+            Checked at every sign-in.
+          </span>
+        </div>
+        <div class="grid-2">
+          <label class="field">
+            <span class="label">Environment</span>
+            <select name="environment">
+              {ops.ENVIRONMENTS.map((e) => (
+                <option key={e} value={e} selected={client.environment === e}>
+                  {e.charAt(0).toUpperCase() + e.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label class="check">
+          <input
+            type="checkbox"
+            name="requirePkce"
+            value="1"
+            checked={client.require_pkce}
+            disabled={client.client_type === "public"}
+          />
+          <span>
+            Require PKCE
+            <span class="sub">Always on for public clients. Cloudflare Access needs it off.</span>
+          </span>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="skipConsent" value="1" checked={client.skip_consent} />
+          <span>
+            Trusted first-party app (skip the consent screen)
+            <span class="sub">
+              The passkey ceremony is the consent. Leave off for anything you didn't build or vet.
+            </span>
+          </span>
+        </label>
+      </div>
+      <div class="card-foot">
+        <button class="btn primary right" type="submit">
+          Save changes
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function ClientDetail(props: {
   client: OidcClient;
   groups: Group[];
@@ -175,76 +247,7 @@ export function ClientDetail(props: {
             </Callout>
           ) : null}
 
-          <form class="card" method="post" action={detailHref(client.id)}>
-            <div class="card-head">
-              <Icon name="settings" />
-              <h2>Settings</h2>
-            </div>
-            <div class="card-body stack">
-              <label class="field">
-                <span class="label">Name</span>
-                <input name="name" required maxLength={120} value={client.name} />
-              </label>
-              <label class="field">
-                <span class="label">Redirect URIs</span>
-                <textarea name="redirectUris" rows={3} required>
-                  {client.redirect_uris.join("\n")}
-                </textarea>
-              </label>
-              <div class="field">
-                <span class="label">Allowed groups</span>
-                <GroupPicker name="groups" all={groups} selected={client.allowed_groups} />
-                <span class="hint">
-                  {client.source === "admin"
-                    ? "None selected = everyone."
-                    : "None selected = admins only (third-party client)."}{" "}
-                  Checked at every sign-in.
-                </span>
-              </div>
-              <div class="grid-2">
-                <label class="field">
-                  <span class="label">Environment</span>
-                  <select name="environment">
-                    {ops.ENVIRONMENTS.map((e) => (
-                      <option key={e} value={e} selected={client.environment === e}>
-                        {e.charAt(0).toUpperCase() + e.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label class="check">
-                <input
-                  type="checkbox"
-                  name="requirePkce"
-                  value="1"
-                  checked={client.require_pkce}
-                  disabled={client.client_type === "public"}
-                />
-                <span>
-                  Require PKCE
-                  <span class="sub">
-                    Always on for public clients. Cloudflare Access needs it off.
-                  </span>
-                </span>
-              </label>
-              <label class="check">
-                <input type="checkbox" name="skipConsent" value="1" checked={client.skip_consent} />
-                <span>
-                  Trusted first-party app (skip the consent screen)
-                  <span class="sub">
-                    The passkey ceremony is the consent. Leave off for anything you didn't build or
-                    vet.
-                  </span>
-                </span>
-              </label>
-            </div>
-            <div class="card-foot">
-              <button class="btn primary right" type="submit">
-                Save changes
-              </button>
-            </div>
-          </form>
+          <ClientSettingsForm client={client} groups={groups} />
         </div>
 
         <ClientSidebar

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { listApps, listClients, listGroups, listUsers } from "../db";
+import type { User } from "../db";
 import * as ops from "../ops";
 import type { AdminVars } from "./shell";
 import { act, actor, field, page } from "./shell";
@@ -16,6 +17,8 @@ async function usage(db: D1Database) {
     apps: apps.filter((a) => !a.client_id && a.allowed_groups?.includes(name)),
   });
 }
+
+type Usage = ReturnType<Awaited<ReturnType<typeof usage>>>;
 
 groupsAdmin.get("/", async (c) => {
   const db = c.env.DB;
@@ -136,6 +139,87 @@ groupsAdmin.post("/", async (c) => {
   );
 });
 
+function MembersCard({ id, inGroup, notIn }: { id: string; inGroup: User[]; notIn: User[] }) {
+  return (
+    <section class="card span-2">
+      <div class="card-head">
+        <h2 class="grow">Members</h2>
+        {notIn.length ? (
+          <form method="post" action={`/admin/groups/${id}/members`} class="row-sm">
+            <select name="user_id" required aria-label="Person to add" class="select-sm">
+              {notIn.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} — {x.email}
+                </option>
+              ))}
+            </select>
+            <button class="btn sm primary" type="submit">
+              Add
+            </button>
+          </form>
+        ) : null}
+      </div>
+      {inGroup.length ? (
+        <ul class="list">
+          {inGroup.map((m) => (
+            <li key={m.id}>
+              <Avatar name={m.name} seed={m.id} />
+              <div class="grow">
+                <a class="title" href={`/admin/users/${m.id}`}>
+                  {m.name}
+                </a>
+                <div class="meta">{m.email}</div>
+              </div>
+              <PostButton
+                action={`/admin/groups/${id}/members/${m.id}/remove`}
+                label="Remove"
+                class="btn ghost sm"
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Empty icon="users" title="No members yet" />
+      )}
+    </section>
+  );
+}
+
+function GrantsCard({ name, u }: { name: string; u: Usage }) {
+  return (
+    <section class="card">
+      <div class="card-head">
+        <h2>Grants access to</h2>
+      </div>
+      {u.clients.length + u.apps.length ? (
+        <ul class="list">
+          {u.clients.map((x) => (
+            <li key={x.id}>
+              <Icon name="plug" />
+              <a class="grow title" href={`/admin/clients/${encodeURIComponent(x.id)}`}>
+                {x.name}
+              </a>
+              <span class="badge">Client</span>
+            </li>
+          ))}
+          {u.apps.map((x) => (
+            <li key={x.id}>
+              <Icon name="grid" />
+              <span class="grow title">{x.name}</span>
+              <span class="badge">Launcher</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div class="card-body muted small">
+          Nothing here references <code>{name}</code> yet. It may still be used by Cloudflare Access
+          policies.
+        </div>
+      )}
+    </section>
+  );
+}
+
 groupsAdmin.get("/:id", async (c) => {
   const db = c.env.DB;
   const id = c.req.param("id");
@@ -172,78 +256,9 @@ groupsAdmin.get("/:id", async (c) => {
         }
       />
       <div class="grid-3">
-        <section class="card span-2">
-          <div class="card-head">
-            <h2 class="grow">Members</h2>
-            {notIn.length ? (
-              <form method="post" action={`/admin/groups/${id}/members`} class="row-sm">
-                <select name="user_id" required aria-label="Person to add" class="select-sm">
-                  {notIn.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.name} — {x.email}
-                    </option>
-                  ))}
-                </select>
-                <button class="btn sm primary" type="submit">
-                  Add
-                </button>
-              </form>
-            ) : null}
-          </div>
-          {inGroup.length ? (
-            <ul class="list">
-              {inGroup.map((m) => (
-                <li key={m.id}>
-                  <Avatar name={m.name} seed={m.id} />
-                  <div class="grow">
-                    <a class="title" href={`/admin/users/${m.id}`}>
-                      {m.name}
-                    </a>
-                    <div class="meta">{m.email}</div>
-                  </div>
-                  <PostButton
-                    action={`/admin/groups/${id}/members/${m.id}/remove`}
-                    label="Remove"
-                    class="btn ghost sm"
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty icon="users" title="No members yet" />
-          )}
-        </section>
+        <MembersCard id={id} inGroup={inGroup} notIn={notIn} />
         <div class="stack">
-          <section class="card">
-            <div class="card-head">
-              <h2>Grants access to</h2>
-            </div>
-            {u.clients.length + u.apps.length ? (
-              <ul class="list">
-                {u.clients.map((x) => (
-                  <li key={x.id}>
-                    <Icon name="plug" />
-                    <a class="grow title" href={`/admin/clients/${encodeURIComponent(x.id)}`}>
-                      {x.name}
-                    </a>
-                    <span class="badge">Client</span>
-                  </li>
-                ))}
-                {u.apps.map((x) => (
-                  <li key={x.id}>
-                    <Icon name="grid" />
-                    <span class="grow title">{x.name}</span>
-                    <span class="badge">Launcher</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div class="card-body muted small">
-                Nothing here references <code>{g.name}</code> yet. It may still be used by
-                Cloudflare Access policies.
-              </div>
-            )}
-          </section>
+          <GrantsCard name={g.name} u={u} />
           <section class="card danger-zone">
             <div class="card-body stack-sm">
               <p class="muted small">

@@ -190,6 +190,81 @@ function attentionItems(x: {
   return out;
 }
 
+function OverviewActions() {
+  return (
+    <>
+      <a class="btn" href="/admin/users?invite=1">
+        <Icon name="userPlus" size="sm" />
+        Invite someone
+      </a>
+      <a class="btn primary" href="/admin/apps?new=1">
+        <Icon name="plus" size="sm" />
+        Add app
+      </a>
+    </>
+  );
+}
+
+function StatGrid(props: {
+  users: number;
+  admins: number;
+  total14: number;
+  days: number[];
+  apps: number;
+  clients: number;
+  dynClients: number;
+  sessions: number;
+}) {
+  return (
+    <div class="grid-4">
+      <Stat
+        label="People"
+        icon="users"
+        value={props.users}
+        sub={`${props.admins} admin${props.admins === 1 ? "" : "s"}`}
+        href="/admin/users"
+      />
+      <Stat
+        label="Sign-ins · 14 days"
+        icon="logIn"
+        value={props.total14}
+        spark={props.days}
+        href="/admin/audit?event=SIGN_IN"
+      />
+      <Stat
+        label="Apps"
+        icon="grid"
+        value={props.apps}
+        sub={`${props.clients} OAuth client${props.clients === 1 ? "" : "s"}${props.dynClients ? ` · ${props.dynClients} connected` : ""}`}
+        href="/admin/apps"
+      />
+      <Stat
+        label="Active sessions"
+        icon="monitor"
+        value={props.sessions}
+        sub="Browser sessions on this IdP"
+      />
+    </div>
+  );
+}
+
+function AttentionList({ items }: { items: Attention[] }) {
+  return (
+    <section class="stack-sm">
+      {items.map((a) => (
+        <a key={a.href} class="attention" href={a.href}>
+          <Callout tone={a.tone} icon={a.icon}>
+            <div class="row between">
+              <span>{a.text}</span>
+              <Icon name="chevronRight" size="sm" />
+            </div>
+          </Callout>
+        </a>
+      ))}
+    </section>
+  );
+}
+
 dashboardAdmin.get("/", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
@@ -286,64 +361,21 @@ dashboardAdmin.get("/", async (c) => {
       <PageHead
         title="Overview"
         lede={`Everything happening on ${c.env.RP_NAME}.`}
-        actions={
-          <>
-            <a class="btn" href="/admin/users?invite=1">
-              <Icon name="userPlus" size="sm" />
-              Invite someone
-            </a>
-            <a class="btn primary" href="/admin/apps?new=1">
-              <Icon name="plus" size="sm" />
-              Add app
-            </a>
-          </>
-        }
+        actions={<OverviewActions />}
       />
       <div class="stack-lg">
-        <div class="grid-4">
-          <Stat
-            label="People"
-            icon="users"
-            value={users}
-            sub={`${admins} admin${admins === 1 ? "" : "s"}`}
-            href="/admin/users"
-          />
-          <Stat
-            label="Sign-ins · 14 days"
-            icon="logIn"
-            value={total14}
-            spark={days}
-            href="/admin/audit?event=SIGN_IN"
-          />
-          <Stat
-            label="Apps"
-            icon="grid"
-            value={apps}
-            sub={`${clients} OAuth client${clients === 1 ? "" : "s"}${dynClients ? ` · ${dynClients} connected` : ""}`}
-            href="/admin/apps"
-          />
-          <Stat
-            label="Active sessions"
-            icon="monitor"
-            value={sessions}
-            sub="Browser sessions on this IdP"
-          />
-        </div>
+        <StatGrid
+          users={users}
+          admins={admins}
+          total14={total14}
+          days={days}
+          apps={apps}
+          clients={clients}
+          dynClients={dynClients}
+          sessions={sessions}
+        />
 
-        {attention.length ? (
-          <section class="stack-sm">
-            {attention.map((a) => (
-              <a key={a.href} class="attention" href={a.href}>
-                <Callout tone={a.tone} icon={a.icon}>
-                  <div class="row between">
-                    <span>{a.text}</span>
-                    <Icon name="chevronRight" size="sm" />
-                  </div>
-                </Callout>
-              </a>
-            ))}
-          </section>
-        ) : null}
+        {attention.length ? <AttentionList items={attention} /> : null}
 
         <ActivityGrid recent={recent.results} topClients={topClients.results} maxTop={maxTop} />
       </div>

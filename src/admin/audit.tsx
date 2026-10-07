@@ -175,6 +175,58 @@ const CATEGORIES: Record<string, string[]> = {
   ],
 };
 
+function AuditFilters({
+  category,
+  event,
+  q,
+  eventTypes,
+}: {
+  category: string;
+  event: string;
+  q: string;
+  eventTypes: { event: string }[];
+}) {
+  return (
+    <div class="filters">
+      <div class="segmented">
+        {[
+          ["", "All"],
+          ["signins", "Sign-ins"],
+          ["security", "Security"],
+          ["passkeys", "Passkeys"],
+          ["admin", "Admin"],
+          ["oauth", "OAuth"],
+        ].map(([k, label]) => (
+          <a key={k} href={catLink(k ?? "")} class={category === k && !event ? "active" : ""}>
+            {label}
+          </a>
+        ))}
+      </div>
+      <form method="get" action="/admin/audit" class="row-sm right wrap">
+        {category ? <input type="hidden" name="category" value={category} /> : null}
+        <div class="input-search">
+          <Icon name="search" size="sm" />
+          <input
+            type="search"
+            name="q"
+            value={q}
+            placeholder="Person or app…"
+            aria-label="Search"
+          />
+        </div>
+        <select name="event" aria-label="Event" data-autosubmit>
+          <option value="">Any event</option>
+          {eventTypes.map((e) => (
+            <option key={e.event} value={e.event} selected={e.event === event}>
+              {eventMeta(e.event).label}
+            </option>
+          ))}
+        </select>
+      </form>
+    </div>
+  );
+}
+
 auditAdmin.get("/", async (c) => {
   const db = c.env.DB;
   const pageNo = Math.max(1, parseInt(c.req.query("page") ?? "1", 10) || 1);
@@ -256,43 +308,7 @@ auditAdmin.get("/", async (c) => {
           </a>
         }
       />
-      <div class="filters">
-        <div class="segmented">
-          {[
-            ["", "All"],
-            ["signins", "Sign-ins"],
-            ["security", "Security"],
-            ["passkeys", "Passkeys"],
-            ["admin", "Admin"],
-            ["oauth", "OAuth"],
-          ].map(([k, label]) => (
-            <a key={k} href={catLink(k ?? "")} class={category === k && !event ? "active" : ""}>
-              {label}
-            </a>
-          ))}
-        </div>
-        <form method="get" action="/admin/audit" class="row-sm right wrap">
-          {category ? <input type="hidden" name="category" value={category} /> : null}
-          <div class="input-search">
-            <Icon name="search" size="sm" />
-            <input
-              type="search"
-              name="q"
-              value={q}
-              placeholder="Person or app…"
-              aria-label="Search"
-            />
-          </div>
-          <select name="event" aria-label="Event" data-autosubmit>
-            <option value="">Any event</option>
-            {eventTypes.results.map((e) => (
-              <option key={e.event} value={e.event} selected={e.event === event}>
-                {eventMeta(e.event).label}
-              </option>
-            ))}
-          </select>
-        </form>
-      </div>
+      <AuditFilters category={category} event={event} q={q} eventTypes={eventTypes.results} />
       <AuditTable rows={rows.results} total={total} pageNo={pageNo} pages={pages} qs={qs} />
     </>,
   );

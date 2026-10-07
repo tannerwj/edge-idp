@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getUser, listGroups, listUsers } from "../db";
-import type { Group } from "../db";
+import type { Group, User } from "../db";
 import * as ops from "../ops";
 import type { AdminVars, ACtx } from "./shell";
 import { act, actor, field, fields, page } from "./shell";
@@ -62,6 +62,85 @@ export const usersAdmin = new Hono<AdminVars>();
 const FILTERS = ["all", "admins", "pending", "disabled"] as const;
 type Filter = (typeof FILTERS)[number];
 
+function FilterBar({ filter, n }: { filter: Filter; n: Record<Filter, number> }) {
+  return (
+    <div class="filters">
+      <div class="input-search">
+        <Icon name="search" size="sm" />
+        <input
+          type="search"
+          placeholder="Filter by name, email or group…"
+          data-filter-table="people"
+          aria-label="Filter people"
+        />
+      </div>
+      <div class="segmented right">
+        {(["all", "admins", "pending", "disabled"] as const).map((f) => (
+          <a
+            key={f}
+            href={f === "all" ? "/admin/users" : `/admin/users?filter=${f}`}
+            class={filter === f ? "active" : ""}
+          >
+            {f === "all"
+              ? "All"
+              : f === "admins"
+                ? "Admins"
+                : f === "pending"
+                  ? "No passkey"
+                  : "Disabled"}{" "}
+            <span class="muted">{n[f]}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PersonRow({ u, k, groups }: { u: User; k: number; groups: string[] }) {
+  return (
+    <tr
+      data-href={`/admin/users/${u.id}`}
+      data-filter-text={`${u.name} ${u.email} ${groups.join(" ")}`.toLowerCase()}
+    >
+      <td>
+        <div class="cell-user">
+          <Avatar name={u.name} seed={u.id} />
+          <div class="truncate">
+            <a class="name" href={`/admin/users/${u.id}`}>
+              {u.name}
+            </a>{" "}
+            {u.is_admin ? <span class="badge accent">Admin</span> : null}
+            <div class="sub truncate">{u.email}</div>
+          </div>
+        </div>
+      </td>
+      <td>
+        <GroupChips groups={groups} empty="—" />
+      </td>
+      <td>
+        {k ? (
+          <span class="row-sm">
+            <Icon name="fingerprint" size="sm" class="muted" />
+            {k}
+          </span>
+        ) : (
+          <span class="badge warn">Not set up</span>
+        )}
+      </td>
+      <td class="muted small nowrap">
+        <Time ts={u.last_sign_in_at} empty="Never" />
+      </td>
+      <td>
+        {u.disabled ? (
+          <span class="badge bad dot">Disabled</span>
+        ) : (
+          <span class="badge ok dot">Active</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 usersAdmin.get("/", async (c) => {
   const db = c.env.DB;
   const filter: Filter = FILTERS.find((f) => f === c.req.query("filter")) ?? "all";
@@ -110,35 +189,7 @@ usersAdmin.get("/", async (c) => {
           </button>
         }
       />
-      <div class="filters">
-        <div class="input-search">
-          <Icon name="search" size="sm" />
-          <input
-            type="search"
-            placeholder="Filter by name, email or group…"
-            data-filter-table="people"
-            aria-label="Filter people"
-          />
-        </div>
-        <div class="segmented right">
-          {(["all", "admins", "pending", "disabled"] as const).map((f) => (
-            <a
-              key={f}
-              href={f === "all" ? "/admin/users" : `/admin/users?filter=${f}`}
-              class={filter === f ? "active" : ""}
-            >
-              {f === "all"
-                ? "All"
-                : f === "admins"
-                  ? "Admins"
-                  : f === "pending"
-                    ? "No passkey"
-                    : "Disabled"}{" "}
-              <span class="muted">{n[f]}</span>
-            </a>
-          ))}
-        </div>
-      </div>
+      <FilterBar filter={filter} n={n} />
       <div class="card">
         {shown.length ? (
           <div class="table-wrap">
@@ -153,52 +204,9 @@ usersAdmin.get("/", async (c) => {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((u) => {
-                  const k = keyCount.get(u.id) ?? 0;
-                  return (
-                    <tr
-                      key={u.id}
-                      data-href={`/admin/users/${u.id}`}
-                      data-filter-text={`${u.name} ${u.email} ${groupsOf(u.id).join(" ")}`.toLowerCase()}
-                    >
-                      <td>
-                        <div class="cell-user">
-                          <Avatar name={u.name} seed={u.id} />
-                          <div class="truncate">
-                            <a class="name" href={`/admin/users/${u.id}`}>
-                              {u.name}
-                            </a>{" "}
-                            {u.is_admin ? <span class="badge accent">Admin</span> : null}
-                            <div class="sub truncate">{u.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <GroupChips groups={groupsOf(u.id)} empty="—" />
-                      </td>
-                      <td>
-                        {k ? (
-                          <span class="row-sm">
-                            <Icon name="fingerprint" size="sm" class="muted" />
-                            {k}
-                          </span>
-                        ) : (
-                          <span class="badge warn">Not set up</span>
-                        )}
-                      </td>
-                      <td class="muted small nowrap">
-                        <Time ts={u.last_sign_in_at} empty="Never" />
-                      </td>
-                      <td>
-                        {u.disabled ? (
-                          <span class="badge bad dot">Disabled</span>
-                        ) : (
-                          <span class="badge ok dot">Active</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {shown.map((u) => (
+                  <PersonRow key={u.id} u={u} k={keyCount.get(u.id) ?? 0} groups={groupsOf(u.id)} />
+                ))}
               </tbody>
             </table>
           </div>
