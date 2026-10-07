@@ -10,6 +10,7 @@ import { auditAdmin } from "./audit";
 import { themeAdmin } from "./theme";
 import { tokensAdmin } from "./tokens";
 import { accessAdmin } from "./access";
+import { mcpMetricsAdmin } from "./mcp-metrics";
 
 /**
  * Admin router. The middleware is the entire authorization story: an
@@ -32,7 +33,8 @@ admin.route("/users", usersAdmin);
 admin.route("/users/:id", userDetailAdmin);
 admin.route("/groups", groupsAdmin);
 admin.route("/clients", clientsAdmin);
+admin.route("/access", accessAdmin);
 admin.route("/audit", auditAdmin);
 admin.route("/theme", themeAdmin);
 admin.route("/tokens", tokensAdmin);
-admin.route("/access", accessAdmin);
+admin.route("/mcp", mcpMetricsAdmin);
