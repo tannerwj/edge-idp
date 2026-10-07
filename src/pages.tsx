@@ -10,6 +10,8 @@ export function Layout(props: {
   children: unknown;
   page?: string;
   theme?: string;
+  /** Navigation: show account/admin links when the user is signed in. */
+  nav?: { isAdmin: boolean; active?: string };
 }) {
   const theme = THEMES.includes(props.theme as Theme) ? props.theme : "obsidian";
   return (
@@ -30,6 +32,24 @@ export function Layout(props: {
                 ◆
               </span>
               <span class="brand-name">{props.rpName}</span>
+              {props.nav ? (
+                <nav class="topnav">
+                  <a
+                    href="/account"
+                    class={props.nav.active === "account" ? "active" : ""}
+                  >
+                    Account
+                  </a>
+                  {props.nav.isAdmin ? (
+                    <a
+                      href="/admin/"
+                      class={props.nav.active === "admin" ? "active" : ""}
+                    >
+                      Admin
+                    </a>
+                  ) : null}
+                </nav>
+              ) : null}
             </div>
             {props.children}
           </div>
@@ -101,10 +121,17 @@ export function AccountPage(props: {
   theme?: string;
   name: string;
   email: string;
+  isAdmin: boolean;
   credentials: { id: string; name: string; created: string; lastUsed: string }[];
 }) {
   return (
-    <Layout title={`Your account — ${props.rpName}`} rpName={props.rpName} page="account" theme={props.theme}>
+    <Layout
+      title={`Your account — ${props.rpName}`}
+      rpName={props.rpName}
+      page="account"
+      theme={props.theme}
+      nav={{ isAdmin: props.isAdmin, active: "account" }}
+    >
       <h1>Your account</h1>
       <h2>Profile</h2>
       <form method="post" action="/account/profile" class="stack">

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { audit, getSetting, setSetting } from "../db";
+import { invalidateThemeCache } from "../theme-cache";
 import { nowSec } from "../util";
 import { THEMES } from "../pages";
 import type { AdminVars } from "./shell";
@@ -66,6 +67,7 @@ themeAdmin.post("/", async (c) => {
     return c.text("Unknown theme", 400);
   }
   await setSetting(c.env.DB, "theme", choice);
+  invalidateThemeCache();
   await audit(c.env.DB, "THEME_CHANGED", {
     userId: c.get("admin").id,
     detail: { theme: choice, at: nowSec() },

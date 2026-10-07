@@ -67,12 +67,14 @@ export async function sessionUser<E extends { Bindings: Env }>(
   }
   const user = await getUser(c.env.DB, row.user_id);
   if (!user || user.disabled) return null;
-  // Slide the session; cheap single write, keeps "remember me" honest.
-  await c.env.DB.prepare(
+  // Slide the session in the background — don't block the response on it.
+  const slide = c.env.DB.prepare(
     "UPDATE sessions SET expires_at = ?1, last_seen_at = ?2 WHERE id_hash = ?3",
   )
     .bind(nowSec() + SESSION_TTL, nowSec(), hash)
-    .run();
+    .run()
+    .catch(() => {});
+  c.executionCtx.waitUntil(slide);
   return user;
 }
 

@@ -94,7 +94,7 @@ usersAdmin.get("/", async (c) => {
   );
 });
 
-usersAdmin.post("/users", async (c) => {
+usersAdmin.post("/", async (c) => {
   const form = await c.req.parseBody();
   const name = field(form, "name").trim().slice(0, 120);
   const email = field(form, "email").trim().slice(0, 254);
@@ -141,7 +141,7 @@ usersAdmin.post("/users", async (c) => {
         <input readonly value={link} data-select />
       </label>
       <p>
-        <a class="btn" href="/admin/">
+        <a class="btn" href="/admin/users">
           Back to users
         </a>
       </p>
@@ -150,7 +150,7 @@ usersAdmin.post("/users", async (c) => {
 });
 
 
-usersAdmin.post("/users/:id/profile", async (c) => {
+usersAdmin.post("/:id/profile", async (c) => {
   const id = c.req.param("id");
   const form = await c.req.parseBody();
   const name = field(form, "name").trim().slice(0, 120);
@@ -176,7 +176,7 @@ usersAdmin.post("/users/:id/profile", async (c) => {
   return c.redirect(`/admin/users/${id}`, 303);
 });
 
-usersAdmin.post("/users/:id/groups", async (c) => {
+usersAdmin.post("/:id/groups", async (c) => {
   const id = c.req.param("id");
   const form = await c.req.parseBody();
   const raw = form.groups;
@@ -201,7 +201,7 @@ usersAdmin.post("/users/:id/groups", async (c) => {
   return c.redirect(`/admin/users/${id}`, 303);
 });
 
-usersAdmin.post("/users/:id/role", async (c) => {
+usersAdmin.post("/:id/role", async (c) => {
   const id = c.req.param("id");
   if (id === c.get("admin").id) return c.text("Cannot change your own role", 400);
   const form = await c.req.parseBody();
@@ -218,7 +218,7 @@ usersAdmin.post("/users/:id/role", async (c) => {
   return c.redirect(`/admin/users/${id}`, 303);
 });
 
-usersAdmin.post("/users/:id/enrollment", async (c) => {
+usersAdmin.post("/:id/enrollment", async (c) => {
   const id = c.req.param("id");
   const link = await mintEnrollmentLink(c.env.DB, id, c.env.ISSUER);
   await audit(c.env.DB, "ENROLLMENT_STARTED", {
@@ -240,7 +240,7 @@ usersAdmin.post("/users/:id/enrollment", async (c) => {
         <input readonly value={link} data-select />
       </label>
       <p>
-        <a class="btn" href="/admin/">
+        <a class="btn" href="/admin/users">
           Back to users
         </a>
       </p>
@@ -248,7 +248,7 @@ usersAdmin.post("/users/:id/enrollment", async (c) => {
   );
 });
 
-usersAdmin.post("/users/:id/sessions/:sid/revoke", async (c) => {
+usersAdmin.post("/:id/sessions/:sid/revoke", async (c) => {
   const id = c.req.param("id");
   const sid = c.req.param("sid");
   await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?1 AND user_id = ?2")
@@ -261,7 +261,7 @@ usersAdmin.post("/users/:id/sessions/:sid/revoke", async (c) => {
   return c.redirect(`/admin/users/${id}`, 303);
 });
 
-usersAdmin.post("/users/:id/revoke-keys", async (c) => {
+usersAdmin.post("/:id/revoke-keys", async (c) => {
   const id = c.req.param("id");
   await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?1")
     .bind(id)
@@ -275,10 +275,10 @@ usersAdmin.post("/users/:id/revoke-keys", async (c) => {
     userId: id,
     detail: { by: c.get("admin").id },
   });
-  return c.redirect("/admin/", 303);
+  return c.redirect("/admin/users", 303);
 });
 
-usersAdmin.post("/users/:id/disable", async (c) => {
+usersAdmin.post("/:id/disable", async (c) => {
   const id = c.req.param("id");
   if (id === c.get("admin").id) return c.text("Cannot disable yourself", 400);
   await c.env.DB.prepare(
@@ -293,10 +293,10 @@ usersAdmin.post("/users/:id/disable", async (c) => {
     userId: id,
     detail: { by: c.get("admin").id },
   });
-  return c.redirect("/admin/", 303);
+  return c.redirect("/admin/users", 303);
 });
 
-usersAdmin.post("/users/:id/enable", async (c) => {
+usersAdmin.post("/:id/enable", async (c) => {
   const id = c.req.param("id");
   await c.env.DB.prepare(
     "UPDATE users SET disabled = 0, updated_at = ?1 WHERE id = ?2",
@@ -307,5 +307,5 @@ usersAdmin.post("/users/:id/enable", async (c) => {
     userId: id,
     detail: { by: c.get("admin").id },
   });
-  return c.redirect("/admin/", 303);
+  return c.redirect("/admin/users", 303);
 });

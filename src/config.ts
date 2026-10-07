@@ -10,6 +10,8 @@ export interface Env {
   RP_NAME: string;
   /** Secret: RS256 private key as a JSON JWK string. */
   SIGNING_KEY_JWK: string;
+  /** Optional: Sentry DSN for error tracking. */
+  SENTRY_DSN?: string;
 }
 
 /** Fail closed at the edge: refuse to serve if instance config is missing. */
