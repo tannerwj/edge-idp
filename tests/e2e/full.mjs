@@ -394,6 +394,28 @@ try {
     check("scheduled handler runs", r.ok, String(r.status));
   }
 
+  step("feedback + update notice");
+  {
+    if (!instance.remote) {
+      const stamped = (await sql("SELECT value FROM instance_settings WHERE key = 'upstream_checked_at'"))[0]?.value;
+      check("cron ran the daily update check", Number(stamped) > 0, String(stamped));
+      if (!process.env.E2E_OFFLINE) {
+        const seen = (await sql("SELECT value FROM instance_settings WHERE key = 'upstream_version'"))[0]?.value;
+        check("…and recorded upstream's version", /^\d+\.\d+\.\d+/.test(seen ?? ""), String(seen));
+      }
+    }
+    await page.goto(`${BASE}/admin/settings`);
+    const bug = await page.getAttribute("#about a[href*='template=bug.yml']", "href");
+    const version = (await page.textContent("#about .badge.mono"))?.replace(/^v/, "");
+    check("About shows the version and a pre-filled bug link", !!version && !!bug && new URL(bug).searchParams.get("version") === version, { bug, version });
+    check("feature link goes upstream", !!(await page.$("#about a[href^='https://github.com/tannerwj/edge-idp/issues/new?template=feature.yml']")));
+    await sql("INSERT INTO instance_settings (key, value, updated_at) VALUES ('upstream_version', '999.0.0', 0) ON CONFLICT(key) DO UPDATE SET value = '999.0.0'");
+    await page.goto(`${BASE}/admin`);
+    check("overview says a newer version is out", (await page.textContent("body")).includes("v999.0.0 is available"));
+    await page.goto(`${BASE}/admin/settings`);
+    check("settings links to how to update", !!(await page.$("#about a[href$='DEPLOY.md#staying-up-to-date']")));
+  }
+
   check("no uncaught browser errors", pageErrors.length === 0, pageErrors);
 } catch (e) {
   failures++;

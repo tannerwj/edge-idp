@@ -36,6 +36,34 @@ first use and kept in D1. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
 for the trade-off. To use your own key instead, set the `SIGNING_KEY_JWK`
 secret; it always wins.
 
+## Staying up to date
+
+The button made your repo as a copy, not a GitHub fork, so it doesn't follow
+upstream on its own. Admin → Overview tells you when a newer version is out
+(the hourly job checks this repo's version once a day; set the `UPSTREAM_REPO`
+var to `off` to disable). To update:
+
+```bash
+git clone https://github.com/<you>/<your-copy> && cd <your-copy>
+git remote add upstream https://github.com/tannerwj/edge-idp.git
+git fetch upstream
+git merge upstream/master
+# First time only, if Git refuses with "unrelated histories":
+#   git merge upstream/master --allow-unrelated-histories
+# Keep your own wrangler.jsonc on a conflict (it holds your database id),
+# then copy over any new bindings from upstream's version:
+#   git checkout --ours wrangler.jsonc && git add wrangler.jsonc && git commit
+git push
+```
+
+The push redeploys through Workers Builds, and `npm run deploy` applies any
+new migrations first.
+
+**Feedback goes upstream without a fork:** Admin → Settings → About has
+"Report a bug" (it fills in your version) and "Suggest a feature", both
+opening issues on [tannerwj/edge-idp](https://github.com/tannerwj/edge-idp).
+To contribute code, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## By hand, with the cf CLI
 
 A friend should be able to go from clone to a live personal identity provider

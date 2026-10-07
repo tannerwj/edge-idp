@@ -1,0 +1,20 @@
+name: Feature request
+description: Something edge-idp should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation and why it matters to you. Problems beat solutions here.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: Your idea, if you have one.
+  - type: markdown
+    attributes:
+      value: |
+        edge-idp is deliberately passkey-only and small: no passwords, TOTP, magic links, SAML or LDAP (see docs/THREAT_MODEL.md).

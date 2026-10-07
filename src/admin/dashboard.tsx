@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { VERSION } from "../assets.gen";
+import { availableUpdate } from "../upstream";
 import { count } from "../db";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
@@ -88,6 +90,29 @@ function Stat(props: { label: string; value: string | number; icon: IconName; su
   );
 }
 
+type Attention = { tone: "warn" | "bad" | "accent"; icon: IconName; text: unknown; href: string };
+
+/** "Needs attention" cards on the overview, most actionable first. */
+function attentionItems(x: { update: string | null; admins: number; pending: string[]; expiringTokens: number; denied: number }): Attention[] {
+  const out: Attention[] = [];
+  if (x.update) {
+    out.push({ tone: "accent", icon: "sparkles", text: <><b>edge-idp v{x.update} is available.</b> You're on v{VERSION}.</>, href: "/admin/settings#about" });
+  }
+  if (x.admins < 2) {
+    out.push({ tone: "warn", icon: "shield", text: <><b>Only one admin.</b> Promote a second person so a lost device never locks you out of admin.</>, href: "/admin/users" });
+  }
+  if (x.pending.length) {
+    out.push({ tone: "accent", icon: "userPlus", text: <><b>{x.pending.length === 5 ? "5+" : x.pending.length} {x.pending.length === 1 ? "person hasn't" : "people haven't"}</b> set up a passkey yet: {x.pending.join(", ")}.</>, href: "/admin/users?filter=pending" });
+  }
+  if (x.expiringTokens) {
+    out.push({ tone: "warn", icon: "key", text: <><b>{x.expiringTokens} API token{x.expiringTokens === 1 ? "" : "s"}</b> expire within a week.</>, href: "/admin/tokens" });
+  }
+  if (x.denied) {
+    out.push({ tone: "bad", icon: "alert", text: <><b>{x.denied} security event{x.denied === 1 ? "" : "s"}</b> in the last 7 days (denied access, token replay, or cloned-key signals).</>, href: "/admin/audit?category=security" });
+  }
+  return out;
+}
+
 dashboardAdmin.get("/", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
@@ -151,19 +176,7 @@ dashboardAdmin.get("/", async (c) => {
   const total14 = days.reduce((a, b) => a + b, 0);
   const maxTop = Math.max(1, ...topClients.results.map((r) => r.n));
 
-  const attention: { tone: "warn" | "bad" | "accent"; icon: IconName; text: unknown; href: string }[] = [];
-  if (admins < 2) {
-    attention.push({ tone: "warn", icon: "shield", text: <><b>Only one admin.</b> Promote a second person so a lost device never locks you out of admin.</>, href: "/admin/users" });
-  }
-  if (noKeys.results.length) {
-    attention.push({ tone: "accent", icon: "userPlus", text: <><b>{noKeys.results.length === 5 ? "5+" : noKeys.results.length} {noKeys.results.length === 1 ? "person hasn't" : "people haven't"}</b> set up a passkey yet: {noKeys.results.map((u) => u.name).join(", ")}.</>, href: "/admin/users?filter=pending" });
-  }
-  if (expiringTokens) {
-    attention.push({ tone: "warn", icon: "key", text: <><b>{expiringTokens} API token{expiringTokens === 1 ? "" : "s"}</b> expire within a week.</>, href: "/admin/tokens" });
-  }
-  if (denied) {
-    attention.push({ tone: "bad", icon: "alert", text: <><b>{denied} security event{denied === 1 ? "" : "s"}</b> in the last 7 days (denied access, token replay, or cloned-key signals).</>, href: "/admin/audit?category=security" });
-  }
+  const attention = attentionItems({ update: await availableUpdate(c.env), admins, pending: noKeys.results.map((u) => u.name), expiringTokens, denied });
 
   return await page(
     c,

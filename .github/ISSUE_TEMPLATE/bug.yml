@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in edge-idp is broken or behaves unexpectedly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please leave out anything private: no tokens, keys, enrollment links, emails or hostnames you don't want public.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Admin → Settings → About shows it (the "Report a bug" button fills this in).
+      placeholder: "2.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it deployed?
+      options:
+        - Deploy to Cloudflare button
+        - By hand (cf CLI / wrangler)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sign-in / passkeys
+        - Setup / first admin
+        - Admin UI
+        - OIDC app or Cloudflare Access
+        - MCP / AI tools (claude.ai, Claude Code, Cursor, …)
+        - Deploying / updating
+        - Something else
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got instead. Exact error text helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+  - type: input
+    id: client
+    attributes:
+      label: Browser / device / passkey provider
+      placeholder: "Safari 19 on iPhone, iCloud Keychain"

@@ -8,20 +8,80 @@ import type { AdminVars } from "./shell";
 import { act, field, page } from "./shell";
 import { PageHead } from "../ui/components";
 import { Icon } from "../ui/icons";
+import { VERSION } from "../assets.gen";
+import { availableUpdate, upstreamLinks, upstreamRepo } from "../upstream";
 
 export const settingsAdmin = new Hono<AdminVars>();
 
 /** On/off status badge. */
 const ok = (on: boolean, yes: string, no: string) => (on ? <span class="badge ok dot">{yes}</span> : <span class="badge">{no}</span>);
 
+/** Version, update status and the way to send feedback upstream. */
+function About(props: { version: string; repo: string | null; update: string | null; checkedAt: number | null }) {
+  const links = props.repo ? upstreamLinks(props.repo) : null;
+  return (
+    <section class="card" id="about">
+      <div class="card-head">
+        <Icon name="info" />
+        <div class="grow">
+          <h2>About & feedback</h2>
+          <div class="sub">
+            {links ? (
+              <>
+                Built from <a href={links.source}>{props.repo}</a>. Found a bug or want something? Tell upstream; no fork needed.
+              </>
+            ) : (
+              "Update checks and feedback links are off (UPSTREAM_REPO=off)."
+            )}
+          </div>
+        </div>
+      </div>
+      <div class="card-body stack">
+        <dl class="kv">
+          <dt>Version</dt>
+          <dd class="row-sm wrap">
+            <span class="badge mono">v{props.version}</span>
+            {props.update && links ? (
+              <a class="badge accent dot" href={links.updating}>
+                v{props.update} available
+              </a>
+            ) : links ? (
+              <span class="badge ok dot">{props.checkedAt ? "Up to date" : "Not checked yet"}</span>
+            ) : null}
+          </dd>
+        </dl>
+        {links ? (
+          <div class="row-sm wrap">
+            <a class="btn" href={links.bug} target="_blank" rel="noopener">
+              <Icon name="alert" />
+              <span>Report a bug</span>
+            </a>
+            <a class="btn" href={links.feature} target="_blank" rel="noopener">
+              <Icon name="sparkles" />
+              <span>Suggest a feature</span>
+            </a>
+            <a class="btn ghost" href={props.update ? links.updating : links.changes} target="_blank" rel="noopener">
+              <Icon name="arrowUpRight" />
+              <span>{props.update ? "How to update" : "What's new"}</span>
+            </a>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 settingsAdmin.get("/", async (c) => {
   const db = c.env.DB;
-  const [accent, dcr, cimd, jwks] = await Promise.all([
+  const [accent, dcr, cimd, jwks, update, checkedAt] = await Promise.all([
     getSetting(db, "accent", "indigo"),
     getSetting(db, "dcr_enabled", "1"),
     getSetting(db, "cimd_enabled", "1"),
     jwksDocument(c.env),
+    availableUpdate(c.env),
+    getSetting(db, "upstream_checked_at", ""),
   ]);
+  const repo = upstreamRepo(c.env);
   return await page(
     c,
     { active: "settings", title: "Settings", narrow: true },
@@ -77,6 +137,8 @@ settingsAdmin.get("/", async (c) => {
             </button>
           </div>
         </form>
+
+        <About version={VERSION} repo={repo} update={update} checkedAt={Number(checkedAt) || null} />
 
         <section class="card">
           <div class="card-head">

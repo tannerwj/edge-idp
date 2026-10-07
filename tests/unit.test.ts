@@ -6,6 +6,7 @@ import {
   sha256Hex,
   timingSafeEqualHex,
 } from "../src/util";
+import { newerVersion } from "../src/upstream";
 
 describe("base64url", () => {
   it("encodes without padding or url-unsafe chars", () => {
@@ -67,5 +68,35 @@ describe("rpIdFromIssuer", () => {
 describe("emailKey", () => {
   it("lowercases and trims", () => {
     expect(emailKey("  Ada@Example.COM ")).toBe("ada@example.com");
+  });
+});
+
+describe("newerVersion", () => {
+  // Expected values by hand from semver ordering of MAJOR.MINOR.PATCH.
+  it("compares numerically, not lexically", () => {
+    expect(newerVersion("2.10.0", "2.9.9")).toBe(true);
+    expect(newerVersion("2.9.9", "2.10.0")).toBe(false);
+  });
+
+  it("orders major, then minor, then patch", () => {
+    expect(newerVersion("3.0.0", "2.99.99")).toBe(true);
+    expect(newerVersion("2.1.1", "2.1.0")).toBe(true);
+    expect(newerVersion("2.1.0", "2.1.1")).toBe(false);
+  });
+
+  it("equal versions are not newer", () => {
+    expect(newerVersion("2.1.0", "2.1.0")).toBe(false);
+  });
+
+  it("ignores pre-release / build suffixes", () => {
+    expect(newerVersion("2.2.0-beta.1", "2.1.0")).toBe(true);
+    expect(newerVersion("2.1.0+build.5", "2.1.0")).toBe(false);
+  });
+
+  it("never claims an update from garbage", () => {
+    expect(newerVersion("", "2.1.0")).toBe(false);
+    expect(newerVersion("latest", "2.1.0")).toBe(false);
+    expect(newerVersion("2.1", "2.0.0")).toBe(false);
+    expect(newerVersion("9.9.9", "not-a-version")).toBe(false);
   });
 });
