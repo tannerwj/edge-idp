@@ -139,7 +139,7 @@ export function AccountPage(props: {
     userName: props.name,
     userEmail: props.email,
     isAdmin: props.isAdmin,
-    active: "profile",
+    active: "account",
     nav: accountNav(props.isAdmin),
     children: (
       <>

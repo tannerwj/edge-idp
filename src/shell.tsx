@@ -104,21 +104,18 @@ export function AppShell(props: {
 /** Standard nav for account pages. */
 export function accountNav(isAdmin: boolean): NavItem[] {
   const nav: NavItem[] = [
-    { id: "profile", label: "Profile", href: "/account", section: "Personal" },
-    { id: "passkeys", label: "Passkeys", href: "/account#passkeys", section: "Personal" },
-    { id: "sessions", label: "Sessions", href: "/account#sessions", section: "Personal" },
+    { id: "account", label: "Account", href: "/account", section: "Personal" },
+    { id: "tokens", label: "API Tokens", href: "/admin/tokens", section: "Personal" },
+    { id: "preferences", label: "Preferences", href: "/admin/preferences", section: "Personal" },
   ];
   if (isAdmin) {
     nav.push(
       { id: "dashboard", label: "Dashboard", href: "/admin", section: "Administration" },
-      { id: "users", label: "Users", href: "/admin/users", section: "Administration" },
-      { id: "groups", label: "Groups", href: "/admin/groups", section: "Administration" },
+      { id: "users", label: "Users & Groups", href: "/admin/users", section: "Administration" },
       { id: "clients", label: "Apps", href: "/admin/clients", section: "Administration" },
       { id: "access", label: "Access", href: "/admin/access", section: "Administration" },
       { id: "audit", label: "Audit log", href: "/admin/audit", section: "Administration" },
-      { id: "theme", label: "Theme", href: "/admin/theme", section: "Administration" },
-      { id: "tokens", label: "API Tokens", href: "/admin/tokens", section: "Administration" },
-      { id: "mcp", label: "MCP", href: "/admin/mcp", section: "Administration" },
+      { id: "metrics", label: "Metrics", href: "/admin/metrics", section: "Administration" },
     );
   }
   return nav;

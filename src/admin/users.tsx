@@ -19,10 +19,15 @@ usersAdmin.get("/", async (c) => {
       keys: (await getCredentialsForUser(c.env.DB, u.id)).length,
     })),
   );
+  const { results: groups } = await c.env.DB.prepare(
+    `SELECT g.id, g.name, g.description, COUNT(m.user_id) AS members
+     FROM groups g LEFT JOIN group_members m ON m.group_id = g.id
+     GROUP BY g.id ORDER BY g.name ASC`,
+  ).all<{ id: string; name: string; description: string | null; members: number }>();
   return await p(
     c,
     "users",
-    "Users",
+    "Users & Groups",
     <>
       <form method="post" action="/admin/users" class="row wrap">
         <label class="field inline">
@@ -91,6 +96,52 @@ usersAdmin.get("/", async (c) => {
         </tbody>
       </table>
       </div>
+      <h2>Groups</h2>
+      <form method="post" action="/admin/users/groups" class="row wrap">
+        <label class="field inline">
+          <span>Name</span>
+          <input name="name" required maxLength={60} placeholder="family" pattern="[a-z0-9_-]+" />
+        </label>
+        <label class="field inline">
+          <span>Description</span>
+          <input name="description" maxLength={200} placeholder="Optional" />
+        </label>
+        <button class="btn primary" type="submit">
+          Create group
+        </button>
+      </form>
+      {groups.length === 0 ? (
+        <p class="muted small">No groups yet.</p>
+      ) : (
+        <div class="table-wrap">
+          <table class="table compact">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Members</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((g) => (
+                <tr key={g.id}>
+                  <td class="mono small">{g.name}</td>
+                  <td class="muted small">{g.description ?? "—"}</td>
+                  <td>{g.members}</td>
+                  <td class="actions">
+                    <form method="post" action={`/admin/users/groups/${g.id}/delete`}>
+                      <button class="btn danger ghost small" type="submit">
+                        Delete
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>,
   );
 });
@@ -306,6 +357,33 @@ usersAdmin.post("/:id/enable", async (c) => {
     .run();
   await audit(c.env.DB, "USER_ENABLED", {
     userId: id,
+    detail: { by: c.get("admin").id },
+  });
+  return c.redirect("/admin/users", 303);
+});
+
+usersAdmin.post("/groups", async (c) => {
+  const form = await c.req.parseBody();
+  const name = field(form, "name").trim().toLowerCase().slice(0, 60);
+  if (!/^[a-z0-9_-]{1,60}$/.test(name)) {
+    return c.text("Group names: lowercase letters, numbers, dash, underscore.", 400);
+  }
+  await c.env.DB.prepare(
+    "INSERT INTO groups (id, name, description, created_at) VALUES (?1, ?2, ?3, ?4)",
+  )
+    .bind(newId(), name, field(form, "description").slice(0, 200) || null, nowSec())
+    .run();
+  await audit(c.env.DB, "GROUP_CREATED", {
+    detail: { by: c.get("admin").id, name },
+  });
+  return c.redirect("/admin/users", 303);
+});
+
+usersAdmin.post("/groups/:id/delete", async (c) => {
+  const id = c.req.param("id");
+  await c.env.DB.prepare("DELETE FROM group_members WHERE group_id = ?1").bind(id).run();
+  await c.env.DB.prepare("DELETE FROM groups WHERE id = ?1").bind(id).run();
+  await audit(c.env.DB, "GROUP_DELETED", {
     detail: { by: c.get("admin").id },
   });
   return c.redirect("/admin/users", 303);
