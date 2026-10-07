@@ -1,4 +1,3 @@
-/** Audit-event vocabulary and the activity feed. */
 import { Icon } from "./icons";
 import type { IconName } from "./icons";
 import { Time } from "./components";
@@ -102,7 +101,6 @@ export function Feed(props: { rows: FeedRow[]; showWho?: boolean }) {
   );
 }
 
-/** Best-effort device label from a user-agent string. */
 export function deviceLabel(ua: string | null | undefined): { label: string; icon: IconName } {
   if (!ua) return { label: "Unknown device", icon: "monitor" };
   const browser = /Edg\//.test(ua)

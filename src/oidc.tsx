@@ -18,34 +18,11 @@ import { nowSec, randomToken, sha256Hex } from "./util";
 import { ConsentPage, ErrorPage, SignOutPage } from "./pages";
 import { uiFor } from "./ui/layout";
 
-/**
- * OIDC provider + OAuth 2.1 authorization server.
- *
- * Threat notes:
- * - Consent: admin-registered first-party clients skip it (the passkey
- *   ceremony is the intent — the original design). Dynamic (DCR) and CIMD
- *   clients are third-party, so they always get a consent screen, and the
- *   decision is remembered per (user, client) until revoked.
- * - PKCE S256 is required for every public client and, by default, every
- *   confidential one. Confidential server-side clients that can't send it
- *   (Cloudflare Access) may opt out per client — they still prove their
- *   secret at /token, and the code is bound to the exact redirect URI.
- * - Codes: single-use (atomic UPDATE … WHERE used = 0), 60s, bound to
- *   (client, redirect_uri, challenge, resource).
- * - Audience: an access token's `aud` is the RFC 8707 resource it was minted
- *   for. The MCP endpoint only accepts aud = `${ISSUER}/mcp` with the `mcp`
- *   scope, so a token some app received at sign-in can't drive the admin API.
- * - Token endpoint, refresh rotation and userinfo live in oauth-token.ts.
- * - Refresh tokens exist only for `mcp` / `offline_access` grants, rotate on
- *   every use, and a replayed (already-rotated) token revokes its family.
- */
-
 const CODE_TTL = 60;
 
 export const oidc = new Hono<{ Bindings: Env }>();
 
 oidc.get("/.well-known/openid-configuration", (c) => c.json(discovery(c.env)));
-// RFC 8414. MCP clients try this first; same document, OAuth flavored.
 oidc.get("/.well-known/oauth-authorization-server", (c) => c.json(discovery(c.env)));
 
 oidc.get("/jwks", async (c) => c.json(await jwksDocument(c.env)));
@@ -53,8 +30,6 @@ oidc.get("/.well-known/jwks.json", async (c) => c.json(await jwksDocument(c.env)
 
 oidc.get("/.well-known/oauth-protected-resource/mcp", (c) => c.json(protectedResource(c.env)));
 oidc.get("/.well-known/oauth-protected-resource", (c) => c.json(protectedResource(c.env)));
-
-/* ──────────────────────────── /authorize ──────────────────────────── */
 
 interface AuthzRequest {
   client: OidcClient;
@@ -71,7 +46,6 @@ interface AuthzRequest {
 
 type Validated = { ok: true; req: AuthzRequest } | { ok: false; response: Response };
 
-/** Normalize an RFC 8707 resource: ours only, trailing slash forgiven. */
 function normalizeResource(env: Env, raw: string | undefined): string | null | false {
   if (!raw) return null;
   const r = raw.replace(/\/+$/, "");
@@ -88,31 +62,22 @@ async function errorPage(
   return c.html(<ErrorPage ui={await uiFor(c)} title={title} message={message} />, status);
 }
 
-/** PKCE is mandatory for public clients and (by default) everyone else;
- *  when sent at all it must be a well-formed S256 challenge. */
 function pkceOk(q: Record<string, string>, client: OidcClient): boolean {
   const required = client.require_pkce || client.client_type === "public";
   if (!q.code_challenge && !required) return true;
   return q.code_challenge_method === "S256" && /^[A-Za-z0-9_-]{43}$/.test(q.code_challenge ?? "");
 }
 
-/** Requested scopes, de-duplicated; the OIDC default when none are given. */
 function parseScopes(raw: string | undefined): string[] {
   const scopes = [...new Set((raw ?? "openid profile email").trim().split(/\s+/).filter(Boolean))];
   return scopes.length ? scopes : ["openid"];
 }
 
-/**
- * Validate an authorization request (shared by GET /authorize and the
- * consent POST, which re-validates everything — the form is untrusted).
- */
 async function validateAuthorize(
   c: Context<{ Bindings: Env }>,
   q: Record<string, string>,
 ): Promise<Validated> {
   const resolved = await resolveClient(c.env.DB, q.client_id ?? "");
-  // Without a valid client + exact redirect match we cannot safely redirect
-  // the error anywhere, so these fail as pages, not redirects.
   if (!resolved) {
     return {
       ok: false,
@@ -188,7 +153,6 @@ function redirectWith(
   return c.redirect(u.toString(), 302);
 }
 
-/** Can this user use this client at all? Returns a reason when not. */
 async function accessProblem(
   db: D1Database,
   user: User,
@@ -241,7 +205,6 @@ async function issueCode(
   return redirectWith(c, req, { code });
 }
 
-/** URL to resume this exact request after sign-in, minus prompt=login. */
 function resumeUrl(c: Context): string {
   const u = new URL(c.req.url);
   const prompts = (u.searchParams.get("prompt") ?? "")
@@ -289,7 +252,6 @@ oidc.get("/authorize", async (c) => {
   return issueCode(c, req, session);
 });
 
-/** Consent decision. Re-validates the whole request from the form. */
 oidc.post("/authorize/decision", async (c) => {
   const form = await c.req.parseBody();
   const q: Record<string, string> = {};
@@ -322,10 +284,6 @@ oidc.post("/authorize/decision", async (c) => {
   return issueCode(c, req, session);
 });
 
-/* ──────────────────────── RP-initiated logout ──────────────────────── */
-
-/** Where may we send the user after logout? Same origin as one of the
- *  client's registered redirect URIs — never an arbitrary URL. */
 async function postLogoutTarget(
   c: Context<{ Bindings: Env }>,
   q: Record<string, string>,

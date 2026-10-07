@@ -1,8 +1,3 @@
-/**
- * Page chrome + shared components. Server-rendered with hono/jsx; all
- * behavior lives in /app.js and is wired through data-* attributes (the CSP
- * forbids inline script and style).
- */
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Env } from "../config";
@@ -19,14 +14,9 @@ export interface Ui {
   rpName: string;
   accent: string;
   mode: Mode;
-  /** One-shot message from the previous POST (see setFlash). */
   flash?: { m: string; t: "ok" | "bad" };
 }
 
-/**
- * One-shot flash message carried across a POST→redirect→GET. `__Host-`
- * prefixed so no sibling subdomain can plant text on our pages.
- */
 const FLASH_COOKIE = "__Host-flash";
 
 export function setFlash(c: Context, message: string, tone: "ok" | "bad" = "ok"): void {
@@ -69,7 +59,6 @@ export async function uiFor<E extends { Bindings: Env }>(c: Context<E>): Promise
   };
 }
 
-/** Fixed flash dictionary — never echo arbitrary text from the URL. */
 const FLASH: Record<string, string> = {
   saved: "Changes saved",
   created: "Created",
@@ -85,8 +74,6 @@ const FLASH: Record<string, string> = {
   imported: "Imported from Cloudflare Access",
 };
 
-/* ───────────────────────────── document ───────────────────────────── */
-
 function Document(props: {
   ui: Ui;
   title: string;
@@ -98,8 +85,6 @@ function Document(props: {
   const v = `?v=${BUILD_HASH}`;
   const coded = props.flash ? FLASH[props.flash] : undefined;
   const flash = props.ui.flash ?? (coded ? { m: coded, t: "ok" as const } : undefined);
-  // hono/jsx never emits a doctype; without it browsers render in quirks
-  // mode (forms grow margins, box sizing differs).
   return (
     <>
       {raw("<!DOCTYPE html>")}
@@ -144,8 +129,6 @@ export function BrandMark() {
   );
 }
 
-/* ───────────────────────────── centered auth layout ───────────────────────────── */
-
 export function AuthLayout(props: {
   ui: Ui;
   title: string;
@@ -171,8 +154,6 @@ export function AuthLayout(props: {
     </Document>
   );
 }
-
-/* ───────────────────────────── app shell ───────────────────────────── */
 
 export interface NavItem {
   id: string;

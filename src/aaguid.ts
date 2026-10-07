@@ -1,8 +1,3 @@
-/**
- * Friendly names for common passkey providers, keyed by AAGUID (from the
- * community passkey-authenticator-aaguids list). Display only — with
- * attestation "none" the AAGUID is self-reported and never used for trust.
- */
 const NAMES: Record<string, string> = {
   "fbfc3007-154e-4ecc-8c0b-6e020557d7bd": "iCloud Keychain",
   "dd4ec289-e01d-41c9-bb89-70fa845d4bf2": "iCloud Keychain (Managed)",

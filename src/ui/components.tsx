@@ -1,4 +1,3 @@
-/** Shared server-rendered UI components (no behavior; app.js wires data-*). */
 import { Icon } from "./icons";
 import type { IconName } from "./icons";
 
@@ -9,7 +8,6 @@ export function initials(name: string): string {
   return (a + b).toUpperCase();
 }
 
-/** Stable 0–11 hue bucket from any string. */
 export function hueOf(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
@@ -28,7 +26,6 @@ export function Avatar(props: { name: string; seed?: string; size?: "sm" | "lg" 
   );
 }
 
-/** Timestamp rendered relative in the viewer's locale by app.js. */
 export function Time(props: { ts: number | null | undefined; empty?: string; abs?: boolean }) {
   if (!props.ts) return <span class="muted">{props.empty ?? "—"}</span>;
   const iso = new Date(props.ts * 1000).toISOString();
@@ -109,7 +106,6 @@ export function Callout(props: {
   );
 }
 
-/** Modal (or side sheet) opened by any element with data-open="<id>". */
 export function Dialog(props: {
   id: string;
   title: string;
@@ -157,7 +153,6 @@ export function Dialog(props: {
   );
 }
 
-/** A POST button (optionally confirmed) — every mutation is a form. */
 export function PostButton(props: {
   action: string;
   label: string;
@@ -198,7 +193,6 @@ export function GroupChips(props: { groups: string[] | null | undefined; empty?:
   );
 }
 
-/** Multi-select group picker as toggle chips. */
 export function GroupPicker(props: {
   name: string;
   all: { name: string }[];

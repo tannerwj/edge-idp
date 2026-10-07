@@ -5,33 +5,14 @@ import type { Env } from "./config";
 import type { User } from "./db";
 import { nowSec, randomToken, sha256Hex } from "./util";
 
-/**
- * IdP browser sessions.
- *
- * Threat note: the cookie carries a random 256-bit token; the DB stores only
- * its SHA-256 hash, so a database read never yields a live session. The
- * cookie is `__Host-` prefixed (Secure, Path=/, no Domain — no sibling
- * subdomain can set or shadow it), HttpOnly, and SameSite=Lax. Sessions
- * slide (30d) on use and die with the user row (ON DELETE CASCADE).
- * SameSite is per *site* (eTLD+1), so every other host on the same domain is
- * "same-site": state-changing routes are additionally guarded by the
- * same-origin check in index.tsx, not by SameSite alone.
- *
- * `created_at` doubles as the OIDC `auth_time`: a session is only ever
- * created by a passkey ceremony, so its birth IS the authentication time.
- */
-
 export const SESSION_COOKIE = "__Host-idp_session";
 const SESSION_TTL = 30 * 24 * 3600;
 const STEP_UP_TTL = 5 * 60;
 
 export interface Session {
   user: User;
-  /** SHA-256 of the cookie token — the row's primary key. */
   idHash: string;
-  /** Unix seconds of the passkey ceremony that created this session. */
   authTime: number;
-  /** Set only by an explicit passkey recheck while already signed in. */
   stepUpAt: number | null;
 }
 
@@ -71,7 +52,6 @@ export async function createSession(
   return raw;
 }
 
-/** Validate the session cookie; returns the session or null. Slides expiry. */
 export async function getSession<E extends { Bindings: Env }>(
   c: Context<E>,
 ): Promise<Session | null> {
@@ -98,8 +78,6 @@ export async function getSession<E extends { Bindings: Env }>(
   }
   const user = await getUser(c.env.DB, row.user_id);
   if (!user || user.disabled) return null;
-  // Slide at most once a minute, in the background — a page with several
-  // fetches shouldn't write the same row several times.
   if (now - row.last_seen_at > 60) {
     const slide = c.env.DB.prepare(
       "UPDATE sessions SET expires_at = ?1, last_seen_at = ?2 WHERE id_hash = ?3",
@@ -112,7 +90,6 @@ export async function getSession<E extends { Bindings: Env }>(
   return { user, idHash: hash, authTime: row.created_at, stepUpAt: row.step_up_at };
 }
 
-/** Convenience: just the user. */
 export async function sessionUser<E extends { Bindings: Env }>(
   c: Context<E>,
 ): Promise<User | null> {

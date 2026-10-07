@@ -1,14 +1,3 @@
-/**
- * First-run setup for one-click installs: create the first admin, then hand
- * off to the normal passkey enrollment page.
- *
- * Threat note: /setup exists only while the users table is empty, and only
- * with the SETUP_TOKEN secret the installer typed at deploy time. It's on the
- * AUTH rate limit, compared in constant time, and the insert itself is
- * conditional on "no users yet", so two racing requests can't both win. Once
- * any user exists it 404s for good (instances seeded with scripts/seed-admin
- * never see it).
- */
 import { Hono } from "hono";
 import type { Env } from "./config";
 import { audit } from "./db";
@@ -23,7 +12,6 @@ const MIN_TOKEN = 43;
 
 let done = false;
 
-/** True until the first user exists (then cached for the isolate's lifetime). */
 export async function setupPending(db: D1Database): Promise<boolean> {
   if (done) return false;
   const any = await db.prepare("SELECT 1 AS x FROM users LIMIT 1").first();
@@ -128,8 +116,6 @@ setup.post("/setup", async (c) => {
   const now = nowSec();
   const token = randomToken(32);
   const tokenHash = await sha256Hex(token);
-  // D1 batch is transactional: a missing audit/enrollment table or failed
-  // write rolls back the first-admin row, so setup remains recoverable.
   const results = await c.env.DB.batch([
     c.env.DB.prepare(
       "INSERT INTO users (id, created_at, name, email, is_admin, updated_at) SELECT ?1, ?2, ?3, ?4, 1, ?2 WHERE NOT EXISTS (SELECT 1 FROM users)",

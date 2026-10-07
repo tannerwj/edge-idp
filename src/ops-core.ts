@@ -1,4 +1,3 @@
-/** Shared pieces of the domain operations (see ops.ts). */
 import { validRedirectUri } from "./oauth-clients";
 
 export class OpError extends Error {}
@@ -13,8 +12,6 @@ export const by = (a: Actor, extra: Record<string, unknown> = {}) => ({
   via: a.via,
   ...extra,
 });
-
-/* ───────────────────────────── input parsing ───────────────────────────── */
 
 export function parseRedirectUris(input: string | string[]): string[] {
   const list = (Array.isArray(input) ? input : input.split(/[\r\n,]+/))

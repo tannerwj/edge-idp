@@ -1,22 +1,3 @@
-/**
- * MCP (Model Context Protocol) server for edge-idp administration.
- *
- * Streamable HTTP at POST /mcp, JSON responses only, stateless. Speaks both
- * protocol eras: the `initialize` handshake (2024-11-05 … 2025-11-25) that
- * every shipping client uses today, and the stateless 2026-07-28 revision
- * (header/body agreement, server/discover).
- *
- * Auth (Bearer), either:
- *  1. An API token (Admin → API tokens): `admin` or `read` scope, optional
- *     expiry, re-checked against its creator on every call (a demoted or
- *     disabled admin's tokens die with their rights).
- *  2. An OAuth access token minted by this IdP for THIS resource: aud must be
- *     `${ISSUER}/mcp` and scope must include `mcp` (full) or `mcp:read`.
- *     Tokens issued to other apps at sign-in are rejected (no passthrough).
- *
- * Read-only callers hitting a write tool get a 403 insufficient_scope
- * challenge, which MCP clients turn into a step-up re-authorization.
- */
 import { Hono } from "hono";
 import { VERSION } from "./assets.gen";
 import type { Context } from "hono";
@@ -34,7 +15,6 @@ export { IdCodeSandbox } from "./mcp/sandbox";
 
 export const mcp = new Hono<{ Bindings: Env }>();
 
-/** API token by hash → auth, re-checking expiry and the creator's rights. */
 export async function authApiToken(db: D1Database, hash: string): Promise<McpAuth | null> {
   const row = await db
     .prepare("SELECT id, created_by, scope, expires_at FROM api_tokens WHERE token_hash = ?1")
@@ -52,7 +32,6 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
   const raw = header.slice(7).trim();
   if (!raw) return null;
 
-  // API tokens are opaque; JWTs have two dots. Try the cheap path first.
   if (raw.split(".").length !== 3) {
     const auth = await authApiToken(c.env.DB, await sha256Hex(raw));
     if (auth) {
@@ -80,8 +59,6 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
   }
 }
 
-/* ───────────────────────────── protocol ───────────────────────────── */
-
 const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const MODERN_VERSION = "2026-07-28";
 const SERVER_INFO = { name: "edge-idp", title: "edge-idp admin", version: VERSION };
@@ -92,7 +69,6 @@ const INSTRUCTIONS =
 
 type RpcId = string | number | null;
 interface RpcBody {
-  /** undefined for notifications. */
   id: RpcId | undefined;
   method: string;
   params: Record<string, unknown>;
@@ -120,7 +96,6 @@ function rpcError(
   );
 }
 
-/** Parse a single JSON-RPC message (batches are refused). */
 async function readBody(c: C): Promise<RpcBody | Response> {
   let parsed: unknown;
   try {
@@ -139,11 +114,6 @@ async function readBody(c: C): Promise<RpcBody | Response> {
   };
 }
 
-/**
- * Protocol era: the 2026-07-28 revision is stateless and requires the
- * routing headers to agree with the body. Returns whether the request is
- * modern, or an error response.
- */
 function checkProtocol(c: C, body: RpcBody): boolean | Response {
   const id = body.id ?? null;
   const version = c.req.header("mcp-protocol-version");
@@ -171,8 +141,6 @@ function checkProtocol(c: C, body: RpcBody): boolean | Response {
   return modern;
 }
 
-/** Results for the simple (non tools/call) methods; undefined = unknown method. */
-/** `sandbox`: whether this Worker has a LOADER binding (the `execute` tool needs one). */
 function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
   switch (body.method) {
     case "initialize": {
@@ -224,7 +192,6 @@ async function callTool(
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) return rpcError(c, id, -32602, `Unknown tool: ${name}`);
   if (tool.write && auth.readOnly) {
-    // MCP step-up: clients re-authorize with the scopes we name here.
     return c.json(
       {
         jsonrpc: "2.0",
@@ -266,8 +233,6 @@ mcp.get("/", (c) =>
 mcp.delete("/", (c) => c.body(null, 405, { allow: "POST" }));
 
 mcp.post("/", async (c) => {
-  // Browsers must not drive this endpoint cross-origin (DNS-rebinding /
-  // drive-by): any Origin that isn't ours is refused outright.
   const origin = c.req.header("origin");
   if (origin && origin !== c.env.ISSUER)
     return rpcError(c, null, -32000, "Origin not allowed.", 403);
@@ -291,7 +256,6 @@ mcp.post("/", async (c) => {
   if (body instanceof Response) return body;
   const modern = checkProtocol(c, body);
   if (modern instanceof Response) return modern;
-  // Notifications (no id) get 202 and no body.
   if (body.id === undefined && body.method.startsWith("notifications/")) return c.body(null, 202);
   const id = body.id ?? null;
   if (body.method === "tools/call") return callTool(c, auth, id, body.params);
@@ -300,7 +264,6 @@ mcp.post("/", async (c) => {
   return rpcError(c, id, -32601, `Method not found: ${body.method}`, modern ? 404 : 200);
 });
 
-/** structuredContent must be an object. */
 function wrapStructured(result: unknown): Record<string, unknown> {
   return isRecord(result) ? result : { result };
 }

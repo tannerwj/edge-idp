@@ -37,7 +37,6 @@ test("OAuth metadata advertises what MCP clients need", async () => {
   const { status, body: doc } = await getJson("/.well-known/oauth-authorization-server");
   expect(status).toBe(200);
   expect(doc.issuer).toBe(base);
-  // claude.ai only uses CIMD when BOTH of these are present.
   expect(doc.client_id_metadata_document_supported).toBe(true);
   expect(doc.token_endpoint_auth_methods_supported).toContain("none");
   expect(doc.grant_types_supported).toContain("refresh_token");

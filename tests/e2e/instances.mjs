@@ -34,9 +34,7 @@ function server(cmd, args, work, base) {
     for (;;) {
       try {
         if ((await fetch(`${base}/healthz`, { redirect: "manual" })).ok) return;
-      } catch {
-        /* not listening yet */
-      }
+      } catch {}
       if (Date.now() > deadline) throw new Error(`${cmd} dev did not start\n${log.slice(-3000)}`);
       await new Promise((r) => setTimeout(r, 300));
     }

@@ -1,9 +1,3 @@
-/**
- * Inline SVG icons (24px grid, stroke-based; shapes after Lucide, ISC).
- * Inline so they inherit currentColor and need no extra requests or CSP
- * allowances.
- */
-
 const P: Record<string, string[]> = {
   home: ["M3 10.5 12 3l9 7.5", "M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"],
   user: ["M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],

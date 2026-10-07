@@ -1,14 +1,3 @@
-/* ------------------------------------------------------------------ */
-/* Code mode: run model-written JS in an isolated Dynamic Worker.      */
-/*                                                                     */
-/* The `execute` tool takes a JS snippet that calls the IdP tools via  */
-/* the `id` proxy. Intermediate results never re-enter model context — */
-/* only the final return value comes back. The sandbox has no network  */
-/* (globalOutbound: null), no env vars, and never sees the credential. */
-/* Every call re-enters IdCodeSandbox, which re-checks the caller's    */
-/* rights (admin, not disabled, scope) before running a tool.          */
-/* ------------------------------------------------------------------ */
-
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "../config";
 import { resolveEnv } from "../instance";
@@ -21,7 +10,6 @@ interface SandboxProps {
   adminId: string;
   readOnly: boolean;
   tokenId: string;
-  /** Resolved per request host-side; the entrypoint's own env may not have ISSUER (see instance.ts). */
   issuer: string;
 }
 
@@ -43,14 +31,12 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** RPC stub the sandbox calls to invoke tools host-side. */
 export class IdCodeSandbox extends WorkerEntrypoint<Env> {
   async callTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
     const name = toolName;
     if (name === "execute") throw new Error("execute is not available inside execute");
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
-    // Props are set host-side and are invisible/unforgeable from the sandbox.
     const props: unknown = this.ctx.props;
     if (!isSandboxProps(props) || !(await activeAdmin(this.env.DB, props.adminId)))
       throw new Error("credential rejected");
@@ -131,7 +117,6 @@ export class Agent extends WorkerEntrypoint {
 }
 `;
 
-/** Minimal JSON-schema → TypeScript declaration renderer for tool docs. */
 function schemaToTs(schema: Record<string, unknown>, indent = ""): string {
   const t = schema.type;
   if (t === "string") {
@@ -158,7 +143,6 @@ function schemaToTs(schema: Record<string, unknown>, indent = ""): string {
   return "unknown";
 }
 
-/** Generate typed TS declarations for every tool (for the `execute` docs). */
 function toolDeclarations(): string {
   return TOOLS.filter((t) => t.name !== "execute")
     .map((t) => {
@@ -168,14 +152,13 @@ function toolDeclarations(): string {
     .join("\n\n");
 }
 
-// Built after every other tool is registered so its docs list them all.
 const EXECUTE_TOOL: ToolDef = {
   name: "execute",
   write: false,
   description:
     "Run JavaScript in an isolated sandbox with a typed `id` proxy for every IdP tool. " +
     "Write one async snippet: `const users = await id.users_list({}); return users.filter(u => !u.passkeys)`. " +
-    "Chain calls, filter in code — only your return value comes back. No network, no env. Max 200KB code, 25s.\n\n" +
+    "Chain calls, filter in code — only your return value comes back. No network, no env. Max 200KB code, 10s, 50 tool calls.\n\n" +
     "Available tools:\n```ts\n" +
     toolDeclarations() +
     "\n```",
@@ -208,7 +191,6 @@ interface Outcome {
   toolCalls: ToolCallLog[];
 }
 
-/** The sandbox's return value, checked rather than trusted (it ran user code). */
 function parseOutcome(v: unknown): Outcome {
   if (!isRecord(v))
     return { ok: false, error: "sandbox returned nothing", logs: [], toolCalls: [] };
@@ -232,8 +214,6 @@ function parseOutcome(v: unknown): Outcome {
   };
 }
 
-/** Run the execute tool: validate, sandbox, return {value, logs, toolCalls}. */
-/** The sandbox's bootstrap entrypoint, as seen from the host. */
 type AgentEntrypoint = WorkerEntrypoint & { run(): Promise<unknown> };
 
 export async function runExecute(

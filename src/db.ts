@@ -54,10 +54,6 @@ interface Row {
   [k: string]: unknown;
 }
 
-/**
- * D1 returns untyped rows; these validators fail fast on schema drift
- * instead of letting `undefined` masquerade as a string downstream.
- */
 function str(v: unknown): string {
   if (typeof v !== "string") throw new Error("db: expected string column");
   return v;
@@ -78,7 +74,6 @@ function numOrNull(v: unknown): number | null {
   return num(v);
 }
 
-/** JSON-encoded string[] columns (redirect URIs, transports, groups). */
 function strArray(v: unknown): string[] {
   const parsed: unknown = typeof v === "string" ? JSON.parse(v) : v;
   if (!Array.isArray(parsed)) throw new Error("db: expected string[] column");
@@ -109,8 +104,6 @@ export async function getUser(db: D1Database, id: string): Promise<User | null> 
 }
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<User | null> {
-  // SQLite LIKE is case-insensitive for ASCII; emails are stored as-given but
-  // looked up by lowercased key so admin typos in case can't create duplicates.
   const r = await db
     .prepare("SELECT * FROM users WHERE lower(email) = ?1")
     .bind(emailKey(email))
@@ -123,7 +116,6 @@ export async function listUsers(db: D1Database): Promise<User[]> {
   return results.map(rowToUser);
 }
 
-/** Group names for the ID token `groups` claim. Sorted for stable tokens. */
 export async function getUserGroups(db: D1Database, userId: string): Promise<string[]> {
   const { results } = await db
     .prepare(
@@ -136,12 +128,6 @@ export async function getUserGroups(db: D1Database, userId: string): Promise<str
   return results.map((r) => r.name);
 }
 
-/**
- * D1 BLOB columns don't come back as a single type: local miniflare returns
- * ArrayBuffer while production D1 returns a plain Array of byte values.
- * Normalize either (or a view) to a fresh Uint8Array; anything else is a
- * schema violation, not an empty credential.
- */
 function blobBytes(v: unknown, column: string): Uint8Array<ArrayBuffer> {
   if (v instanceof Uint8Array) return v.slice();
   if (v instanceof ArrayBuffer) return new Uint8Array(v.slice(0));
@@ -192,9 +178,7 @@ function rowToClient(r: Row): OidcClient {
     secret_hash: str(r.secret_hash),
     secret_prefix: str(r.secret_prefix),
     allowed_groups: typeof r.allowed_groups === "string" ? strArray(r.allowed_groups) : null,
-    // Column added in 0002; default true for rows predating it.
     require_pkce: r.require_pkce === undefined ? true : num(r.require_pkce) === 1,
-    // Column added in 0005; default production for rows predating it.
     environment: typeof r.environment === "string" ? r.environment : "production",
     created_at: num(r.created_at),
     created_by: strOrNull(r.created_by),
@@ -223,7 +207,6 @@ export async function listClients(db: D1Database): Promise<OidcClient[]> {
 
 export { rowToClient };
 
-/** Count helper: `SELECT COUNT(*) AS n …` → number. */
 export async function count(db: D1Database, sql: string, ...binds: unknown[]): Promise<number> {
   const r = await db
     .prepare(sql)
@@ -293,11 +276,6 @@ export async function getApp(db: D1Database, id: string): Promise<App | null> {
   return r ? rowToApp(r) : null;
 }
 
-/**
- * Apps a user may see in their launcher. Client-linked apps follow the
- * client's allowed_groups (that's what /authorize enforces); the rest follow
- * the app's own list. NULL/empty = everyone.
- */
 export async function appsForUser(db: D1Database, userGroups: string[]): Promise<App[]> {
   const [apps, clients] = await Promise.all([listApps(db), listClients(db)]);
   const byId = new Map(clients.map((c) => [c.id, c]));
@@ -333,11 +311,8 @@ export async function audit(
       opts.detail ? JSON.stringify(opts.detail) : null,
     )
     .run();
-  // Retention is enforced by the hourly cron (maintenance.ts), not here: a
-  // NOT IN (… LIMIT 20000) on every write reads the whole table each time.
 }
 
-/** Instance settings: get a setting, falling back to the default. */
 export async function getSetting(db: D1Database, key: string, fallback: string): Promise<string> {
   const row = await db
     .prepare("SELECT value FROM instance_settings WHERE key = ?1")
@@ -346,7 +321,6 @@ export async function getSetting(db: D1Database, key: string, fallback: string):
   return row?.value ?? fallback;
 }
 
-/** Instance settings: set a setting. */
 export async function setSetting(db: D1Database, key: string, value: string): Promise<void> {
   await db
     .prepare(

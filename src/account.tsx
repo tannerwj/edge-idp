@@ -1,7 +1,3 @@
-/**
- * Signed-in user surface: Account & security (profile, passkeys, devices,
- * connected apps, recent activity). The home launcher lives in home.tsx.
- */
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
@@ -38,8 +34,6 @@ async function requireSession(c: C): Promise<Session | Response> {
   if (!s) return c.redirect(`/login?next=${encodeURIComponent(new URL(c.req.url).pathname)}`, 302);
   return s;
 }
-
-/* ───────────────────────────── account & security ───────────────────────────── */
 
 function loadAccount(db: D1Database, userId: string) {
   return Promise.all([
@@ -138,7 +132,6 @@ account.post("/account/keys/:id/remove", async (c) => {
     return c.redirect(`/login?reauth=1&next=${encodeURIComponent("/account#passkeys")}`, 303);
   const creds = await getCredentialsForUser(c.env.DB, s.user.id);
   const target = creds.find((k) => k.id === c.req.param("id"));
-  // Fail safe: never let a user strand themselves with zero passkeys.
   if (!target || creds.length <= 1) return c.redirect("/account#passkeys", 303);
   await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE id = ?1 AND user_id = ?2")
     .bind(target.id, s.user.id)

@@ -1,11 +1,3 @@
-/* edge-idp — one design system, light + dark.
- *
- * Tokens first; components below. No inline styles anywhere (the CSP forbids
- * them), so every variant is a class or a data-attribute.
- */
-
-/* ─────────────────────────── tokens ─────────────────────────── */
-
 :root {
   --font:
     "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system, "SF Pro Text",
@@ -20,7 +12,6 @@
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ah: 260;
 
-  /* accent (overridden by [data-accent]) */
   --h: 258;
   --c: 0.19;
 }
@@ -166,8 +157,6 @@
   --shadow-lg: 0 2px 8px oklch(0 0 0 / 0.4), 0 32px 80px oklch(0 0 0 / 0.55);
   --glow: oklch(0.6 var(--c) var(--h) / 0.2);
 }
-
-/* ─────────────────────────── base ─────────────────────────── */
 
 *,
 *::before,
@@ -355,8 +344,6 @@ code {
   }
 }
 
-/* ─────────────────────────── icons ─────────────────────────── */
-
 .i {
   width: 16px;
   height: 16px;
@@ -380,8 +367,6 @@ code {
   height: 28px;
   stroke-width: 1.5;
 }
-
-/* ─────────────────────────── buttons ─────────────────────────── */
 
 .btn {
   --btn-bg: var(--surface);
@@ -489,8 +474,6 @@ code {
   align-items: center;
 }
 
-/* ─────────────────────────── forms ─────────────────────────── */
-
 .field {
   display: flex;
   flex-direction: column;
@@ -592,7 +575,6 @@ textarea.mono {
   margin-top: 2px;
 }
 
-/* switch: <label class="switch"><input type=checkbox><span></span> text</label> */
 .switch {
   display: inline-flex;
   align-items: center;
@@ -636,7 +618,6 @@ textarea.mono {
   box-shadow: 0 0 0 3px var(--ring);
 }
 
-/* chip toggles for multi-select (groups) */
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -686,7 +667,6 @@ textarea.mono {
   box-shadow: 0 0 0 3px var(--ring);
 }
 
-/* swatches (accent / tile color pickers) */
 .swatches {
   display: flex;
   flex-wrap: wrap;
@@ -723,8 +703,6 @@ textarea.mono {
     0 0 0 2px var(--bg),
     0 0 0 4px var(--ring);
 }
-
-/* ─────────────────────────── surfaces ─────────────────────────── */
 
 .card {
   background: var(--surface);
@@ -782,7 +760,6 @@ textarea.mono {
   font-size: 13px;
 }
 
-/* key/value description list */
 .kv {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
@@ -806,7 +783,6 @@ textarea.mono {
   }
 }
 
-/* list rows inside cards */
 .list {
   list-style: none;
   margin: 0;
@@ -827,8 +803,6 @@ textarea.mono {
   color: var(--muted);
   font-size: 12.5px;
 }
-
-/* ─────────────────────────── badges ─────────────────────────── */
 
 .badge {
   display: inline-flex;
@@ -877,8 +851,6 @@ textarea.mono {
   font-family: var(--mono);
   font-size: 11px;
 }
-
-/* ─────────────────────────── avatar ─────────────────────────── */
 
 .avatar {
   width: 32px;
@@ -962,8 +934,6 @@ textarea.mono {
   --ah: 350;
 }
 
-/* ─────────────────────────── tables ─────────────────────────── */
-
 .table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -1028,8 +998,6 @@ textarea.mono {
 .table tr.is-hidden {
   display: none;
 }
-
-/* ─────────────────────────── app shell ─────────────────────────── */
 
 .app {
   background: linear-gradient(to right, var(--bg-sunk) 252px, var(--bg) 252px);
@@ -1337,8 +1305,6 @@ textarea.mono {
   }
 }
 
-/* ─────────────────────────── stats ─────────────────────────── */
-
 .stat {
   padding: 16px 18px;
   display: flex;
@@ -1386,7 +1352,6 @@ textarea.mono {
   background: var(--line-strong);
   opacity: 0.6;
 }
-/* bar heights in 5% steps — set via data-v (CSP: no inline styles) */
 .spark span[data-v="0"] {
   --bar: 6%;
 }
@@ -1451,7 +1416,6 @@ textarea.mono {
   --bar: 100%;
 }
 
-/* horizontal meter */
 .meter {
   height: 6px;
   border-radius: 99px;
@@ -1499,8 +1463,6 @@ textarea.mono {
 .meter > span[data-w="10"] {
   --w: 100%;
 }
-
-/* ─────────────────────────── launcher ─────────────────────────── */
 
 .launcher {
   display: grid;
@@ -1610,8 +1572,6 @@ textarea.mono {
   border-color: var(--accent);
 }
 
-/* ─────────────────────────── callouts / empty ─────────────────────────── */
-
 .callout {
   display: flex;
   gap: 12px;
@@ -1685,8 +1645,6 @@ textarea.mono {
   max-width: 380px;
 }
 
-/* ─────────────────────────── secret reveal ─────────────────────────── */
-
 .secret {
   display: flex;
   align-items: center;
@@ -1725,8 +1683,6 @@ pre.code {
   color: var(--text-2);
   white-space: pre;
 }
-
-/* ─────────────────────────── tabs ─────────────────────────── */
 
 .tabs {
   display: flex;
@@ -1789,8 +1745,6 @@ pre.code {
   color: var(--text);
   box-shadow: var(--shadow-sm);
 }
-
-/* ─────────────────────────── dialog / sheet ─────────────────────────── */
 
 dialog {
   padding: 0;
@@ -1917,8 +1871,6 @@ dialog.sheet .dlg-foot {
   }
 }
 
-/* ─────────────────────────── command palette ─────────────────────────── */
-
 dialog.palette {
   width: min(620px, calc(100vw - 32px));
   margin-top: 12vh;
@@ -1984,8 +1936,6 @@ dialog.palette {
   background: var(--surface-2);
 }
 
-/* ─────────────────────────── toasts ─────────────────────────── */
-
 .toasts {
   position: fixed;
   z-index: 100;
@@ -2017,8 +1967,6 @@ dialog.palette {
   transform: translateY(6px);
   transition: all 0.3s var(--ease);
 }
-
-/* ─────────────────────────── timeline / activity ─────────────────────────── */
 
 .feed {
   list-style: none;
@@ -2081,8 +2029,6 @@ dialog.palette {
   font-size: 12px;
   white-space: nowrap;
 }
-
-/* ─────────────────────────── auth (centered) layout ─────────────────────────── */
 
 .auth {
   min-height: 100vh;
@@ -2211,7 +2157,6 @@ dialog.palette {
   background: var(--accent);
 }
 
-/* consent */
 .consent-apps {
   display: flex;
   align-items: center;
@@ -2281,8 +2226,6 @@ dialog.palette {
   color: var(--muted);
   font-size: 12.5px;
 }
-
-/* ─────────────────────────── misc ─────────────────────────── */
 
 .divider {
   height: 1px;
@@ -2409,7 +2352,6 @@ details.disclose[open] summary {
   margin-bottom: 16px;
 }
 
-/* ── round 2 fixes ── */
 @media (max-width: 900px) {
   .app {
     background: var(--bg);
@@ -2543,7 +2485,6 @@ a.group-card:hover {
   margin-bottom: 16px;
 }
 
-/* numbered steps */
 .steps-list {
   list-style: none;
   margin: 0;
@@ -2574,7 +2515,6 @@ a.group-card:hover {
   line-height: 26px;
 }
 
-/* launcher glyph in admin lists */
 .tile-mini {
   display: inline-grid;
 }
@@ -2618,7 +2558,6 @@ a.group-card:hover {
   background: oklch(0.6 var(--c) var(--h));
 }
 
-/* switch with sub-label */
 .switch .sub {
   display: block;
   color: var(--muted);
@@ -2631,7 +2570,6 @@ a.group-card:hover {
   margin-top: 1px;
 }
 
-/* busy buttons */
 .btn.busy {
   position: relative;
   color: transparent !important;

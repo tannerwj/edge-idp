@@ -14,15 +14,8 @@ import { tokensAdmin } from "./tokens";
 import { metricsAdmin } from "./metrics";
 import { settingsAdmin } from "./settings";
 
-/**
- * Admin router. The middleware is the entire authorization story: an
- * authenticated session AND is_admin, or 403. There is no self-service path
- * to admin — the first admin comes from the seed script. (State-changing
- * requests are additionally same-origin checked in index.tsx.)
- */
 export const admin = new Hono<AdminVars>();
 
-// Hono middleware intentionally returns Response | void (short-circuit or pass-through).
 // eslint-disable-next-line typescript/consistent-return
 admin.use("*", async (c, next) => {
   const user = await sessionUser(c);
@@ -33,7 +26,6 @@ admin.use("*", async (c, next) => {
   await next();
 });
 
-/** Command-palette index: pages + people + apps + clients + groups. */
 admin.get("/palette.json", async (c) => {
   const db = c.env.DB;
   const [users, apps, clients, groups] = await Promise.all([
@@ -91,7 +83,6 @@ admin.route("/connect", connectAdmin);
 admin.route("/tokens", tokensAdmin);
 admin.route("/metrics", metricsAdmin);
 admin.route("/settings", settingsAdmin);
-// Old URLs from the previous UI.
 admin.get("/access", (c) => c.redirect("/admin/connect", 301));
 admin.get("/preferences", (c) => c.redirect("/admin/settings", 301));
 admin.get("/theme", (c) => c.redirect("/admin/settings", 301));

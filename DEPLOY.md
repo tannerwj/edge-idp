@@ -9,10 +9,17 @@ database from `wrangler.jsonc`, and asks for one secret:
 
 - **SETUP_TOKEN**: generate a 32-byte random base64url value with
   `node scripts/gen-setup-token.mjs`. Back it up in a password manager. The
-  Worker retains it to encrypt its D1-held signing key after setup.
+  Worker retains it to encrypt its D1-held signing key after setup. It must
+  match `^[A-Za-z0-9_-]{43,}$` (43 characters is what 32 random bytes
+  encode to). Length is only a minimum: always generate it, never pick one by
+  hand. `/setup` stays closed until a token of that length is set.
 
-Every deploy (including later pushes to your copy) runs `npm run deploy`,
-which applies the D1 migrations and then `wrangler deploy`. When it's live:
+Every deploy (including later pushes to your copy) runs `npm run deploy`.
+Under Workers Builds (`WORKERS_CI=1`) that builds the browser bundle, applies
+the D1 migrations with `wrangler d1 migrations apply DB --remote`, and runs
+`wrangler deploy` with `wrangler.jsonc`. Migrations are addressed by the
+binding name `DB`, so they work whatever you named the database. When it's
+live:
 
 1. Choose the permanent hostname first. For a custom domain, configure it and
    set `ISSUER` in `wrangler.jsonc` before enrollment. Otherwise open
@@ -41,7 +48,9 @@ origin. The token-signing key is generated on first use and AES-GCM encrypted
 in D1 with the `SETUP_TOKEN` Worker secret. D1 read access alone cannot export
 the signing key. To use your own key instead, set the `SIGNING_KEY_JWK`
 secret; it always wins. Do not rotate or remove `SETUP_TOKEN` while that D1
-key is in use; restoring the database also requires the matching secret.
+key is in use; restoring the database also requires the matching secret. If
+the Worker can't decrypt the D1 key, `SETUP_TOKEN` has changed: restore the
+original value, or set `SIGNING_KEY_JWK` to supply a key directly.
 
 Installs from before October 7, 2026 with a plaintext `signing_keys.current`
 row must follow the
@@ -52,8 +61,7 @@ Worker refuses that legacy row rather than keep using an exposed key.
 
 The button made your repo as a copy, not a GitHub fork, so it doesn't follow
 upstream on its own. Admin → Overview tells you when a newer version is out
-(the hourly job checks this repo's version once a day; set the `UPSTREAM_REPO`
-var to `off` to disable). To update:
+(the hourly job checks this repo's version once a day). To update:
 
 ```bash
 git clone https://github.com/<you>/<your-copy> && cd <your-copy>
@@ -70,6 +78,13 @@ git push
 
 The push redeploys through Workers Builds, and `npm run deploy` applies any
 new migrations first.
+
+**The update check and `UPSTREAM_REPO`.** Once a day the cron sends one GET to
+`raw.githubusercontent.com` for upstream's `package.json`, which exposes the
+configured repo name and normal request metadata to GitHub. Set the
+`UPSTREAM_REPO` var to `off` to disable both the check and the feedback links
+below. A fork that becomes its own project should set `UPSTREAM_REPO` to its
+own `owner/repo`.
 
 **Feedback goes upstream without a fork:** Admin → Settings → About has
 "Report a bug" (it fills in your version) and "Suggest a feature", both
@@ -127,7 +142,8 @@ Copy the database `uuid` into `cloudflare.config.ts` → `DB: bindings.d1({ id }
 In `cloudflare.config.ts`:
 
 - `accountId`: your account ID (`npx cf auth whoami`)
-- `ISSUER`: `"https://auth.yourdomain.com"` (no trailing slash; must be https)
+- `ISSUER`: `"https://auth.yourdomain.com"` (no trailing slash, no path; must
+  be https). The passkey RP ID is its hostname, so pick the permanent one now.
 - `RP_NAME`: the name shown on the sign-in pages
 - the `triggers.fetch` route: `auth.yourdomain.com/*` on your zone
 
@@ -141,14 +157,17 @@ npx cf workers secrets update SIGNING_KEY_JWK --worker identity --type secret_te
 rm key.json
 ```
 
-Never commit it or put it in the config. Losing it invalidates every issued
-token. Rotation is covered under _Rotating the signing key_ below.
+The output is an RSA-2048 RS256 private JWK with `use: sig` and a `kid` of
+`sig-<16 hex>`. Never commit it or put it in the config. Losing it invalidates
+every issued token. Rotation is covered under _Rotating the signing key_
+below.
 
 ## 6. Apply the migrations
 
 ```bash
-npm run db:migrate          # remote D1
-npm run db:migrate:local    # local dev database
+npm run db:migrate          # remote D1 (production)
+npm run db:migrate:local    # local dev database (.wrangler/state)
+npm run staging:migrate     # remote staging D1 (same as db:migrate -- --stage=staging)
 ```
 
 Migrations are never applied automatically. Run this again whenever you pull
@@ -163,7 +182,11 @@ npm run deploy         # builds the browser bundle, then cf deploy (wrangler in 
 npm run smoke          # read-only checks against the live issuer
 ```
 
-`cf deploy` attaches the route from `cloudflare.config.ts` and applies the cron
+Outside Workers Builds, `npm run deploy` builds the browser bundle and runs
+`cf deploy` with `cloudflare.config.ts`, passing extra arguments through
+(`npm run deploy -- --mode staging`). Because that config is pinned to one
+account, running it from an unconfigured fork fails safely. `cf deploy`
+attaches the route from `cloudflare.config.ts` and applies the cron
 trigger. The route's hostname needs a proxied DNS record. If there isn't one
 yet, add an `AAAA` record for `auth` pointing to `100::`, with the proxy (orange
 cloud) on.
@@ -175,17 +198,25 @@ npm run seed:admin -- --email=you@example.com --name="Your Name"
 ```
 
 This inserts you as an admin and prints a one-time enrollment link (valid 7
-days). Open it, set up your passkey — you're in. Then visit `/admin` to create
-users, groups, and apps.
+days). Open it, set up your passkey, and you're in. Then visit `/admin` to
+create users, groups, and apps.
+
+Run it after the migrations. It targets remote production by default; add
+`--local` for the local database or `--stage=staging` for staging. The link
+uses `ISSUER` from `.dev.vars` with `--local`, otherwise the stage's issuer in
+`cloudflare.config.ts`, and the script refuses to run while that issuer still
+contains `REPLACE`.
 
 ## 9. Harden the edge (recommended)
 
 `cloudflare.config.ts` declares two Workers Rate Limiting bindings:
 
-- `AUTH_LIMITER`, 30/min per IP: passkey ceremonies, `/register`, consent;
-- `API_LIMITER`, 300/min per IP: `/token`, `/revoke`, `/mcp`.
+- `AUTH_LIMITER`, 30/min per IP: passkey ceremonies, `/register`, consent,
+  `/setup`;
+- `API_LIMITER`, 300/min per IP: `/authorize`, `/token`, `/revoke`, `/mcp`.
 
-Keep both bindings. `/setup` and `/register` return 503 without
+The limits are deliberately generous because Claude's connector egress
+(`160.79.104.0/21`) shares IPs across many users. Keep both bindings. `/setup` and `/register` return 503 without
 `AUTH_LIMITER`; other paths skip a missing limiter. For a hard backstop, add **Security → WAF
 → Rate limiting rules** for `auth.yourdomain.com` on `/webauthn/*` and
 `/token`.
@@ -194,8 +225,13 @@ Don't put a WAF challenge or Bot Fight Mode in front of `/token`,
 `/.well-known/*`, `/register` or `/mcp`. Claude's connector backend calls them
 server-to-server from `160.79.104.0/21` and can't solve challenges.
 
-The hourly cron (`triggers.scheduled` in `cloudflare.config.ts`) purges expired codes,
-sessions, challenges and refresh tokens, and enforces audit retention.
+The hourly cron (`triggers.scheduled` in `cloudflare.config.ts`, minute 17)
+purges expired codes, sessions, challenges, enrollment links and refresh
+tokens, enforces audit retention (365 days or 50,000 events) and MCP call
+metrics retention (30 days), and removes dynamically registered clients that
+are older than 30 days and were never consented to. It also runs the daily
+upstream version check. The full list is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#data-model-and-maintenance).
 
 ## 10. Register it in Cloudflare Access (Zero Trust)
 
@@ -231,12 +267,53 @@ add them to the launcher in one click:
 
 ```bash
 npx cf workers secrets update CF_API_TOKEN --worker identity --type secret_text --text "$CF_ACCESS_READ_TOKEN"
-# token needs: Access: Apps and Policies Read
-                                       # + Access: Organizations, Identity Providers, and Groups Read
 ```
 
-Then add `CF_ACCOUNT_ID: bindings.text("<your account id>")` to the worker's `env` in `cloudflare.config.ts`. The integration
-is read-only: Access stays the source of truth for its policies.
+The API token needs only two read permissions: **Access: Apps and Policies
+Read** and **Access: Organizations, Identity Providers, and Groups Read**.
+Then add `CF_ACCOUNT_ID: bindings.text("<your account id>")` to the worker's
+`env` in `cloudflare.config.ts` (or `"CF_ACCOUNT_ID"` under `vars` in
+`wrangler.jsonc`). The feature turns on only when both are set. The
+integration is read-only: Access stays the source of truth for its policies.
+
+## 12. Optional: error tracking with Sentry
+
+Set a `SENTRY_DSN` secret to send unhandled errors to Sentry (10% of requests
+are traced):
+
+```bash
+npx cf workers secrets update SENTRY_DSN --worker identity --type secret_text --text "<your DSN>"
+```
+
+Admin → Settings shows whether Sentry is on. Without the secret, errors still
+go to Workers Logs.
+
+## Configuration reference
+
+Vars and bindings live in `cloudflare.config.ts` (or `wrangler.jsonc` for
+one-click installs). Secrets are set with `npx cf workers secrets update
+<NAME> --worker identity --type secret_text --text …` (or in the dashboard)
+and are never committed.
+
+| Name                          | Kind                  | Required                                        | Purpose                                                                                                                                          |
+| ----------------------------- | --------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ISSUER`                      | var                   | reference: yes; one-click: no (pinned at setup) | Public base URL, https, no trailing slash or path. Plain-http `localhost` is allowed for local dev.                                              |
+| `RP_NAME`                     | var                   | no (defaults to "Identity")                     | Name shown on sign-in and enrollment pages and in passkey managers.                                                                              |
+| `SIGNING_KEY_JWK`             | secret                | reference: yes; one-click: no                   | RS256 private JWK from `scripts/gen-key.mjs`. Always wins over the D1 key.                                                                       |
+| `SIGNING_KEY_JWK_PREVIOUS`    | secret                | no                                              | Previous key during a rotation; published in JWKS, never used to sign.                                                                           |
+| `SETUP_TOKEN`                 | secret                | one-click: yes                                  | Authorizes `/setup` and encrypts the generated D1 signing key. Keep it after setup and back it up separately from D1.                            |
+| `SENTRY_DSN`                  | secret                | no                                              | Sentry error tracking.                                                                                                                           |
+| `CF_API_TOKEN`                | secret                | no                                              | Read-only Cloudflare Access integration, with `CF_ACCOUNT_ID`.                                                                                   |
+| `CF_ACCOUNT_ID`               | var                   | no                                              | Account for the Access integration.                                                                                                              |
+| `UPSTREAM_REPO`               | var                   | no                                              | `owner/repo` for feedback links and the update check, or `off`. Defaults to the upstream project.                                                |
+| `DB`                          | D1 binding            | yes                                             | The database.                                                                                                                                    |
+| `AUTH_LIMITER`, `API_LIMITER` | rate-limit bindings   | recommended                                     | See section 9. `/setup` and `/register` return 503 without `AUTH_LIMITER`.                                                                       |
+| `LOADER`                      | Worker Loader binding | no                                              | MCP code mode (`execute`). The reference config always binds it; `wrangler.jsonc` leaves it commented out. Without it, `execute` is not offered. |
+
+The Worker refuses to serve if `ISSUER`, `RP_NAME` or the signing key is still
+missing after it fills in defaults, or still contains the placeholder
+`REPLACE`; the error names the key. How defaults are resolved per request is
+in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#configuration-and-per-request-env).
 
 ## Rotating the signing key
 
@@ -301,18 +378,24 @@ locally over plain http, and the issuer check allows it. Seed yourself with
 `.wrangler/state`; the scripts pin it there because `cf dev` reads that
 location while `cf d1 --local` defaults elsewhere (cf beta). Local `cf d1`
 commands also don't exit on their own yet, so `scripts/cf-local.mjs` wraps
-them.
+them. Both workarounds and when to remove them are listed in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tooling).
 
-`npm run test:e2e` runs the full suite in its own throwaway instance:
-real passkey ceremonies via a virtual authenticator, OIDC, OAuth/MCP, and
-security regressions.
+`npm run test:e2e` runs the full suite and the OIDC API suite, each in its own
+throwaway instance: real passkey ceremonies via a virtual authenticator, OIDC,
+OAuth/MCP, and security regressions. All suites are described in
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Staging
 
 A second Worker (`identity-staging`, workers.dev only, its own D1) runs the
 same e2e suite against real Cloudflare: real D1, rate limiters, the sandbox
 loader and the edge. Its values live in the `staging` entry of `STAGES` in
-`cloudflare.config.ts`; `--mode staging` selects it.
+`cloudflare.config.ts`; `--mode staging` selects it, and `--stage=staging`
+does the same for the npm scripts. Scripts read `STAGES` as text, so keep its
+layout (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tooling)). Production
+keeps both its zone route and workers.dev enabled; staging is workers.dev only,
+with no route.
 
 One-time setup:
 
@@ -334,6 +417,10 @@ npm run test:e2e:staging    # wipes staging data first; refuses any other stage
 ```
 
 The cron check is skipped there (it's a local-only trigger); the deployed cron
-fires at :17 and shows up in Workers Logs. Staging uses its own rate-limit
-namespaces (2001/2002) and has preview URLs off, because a preview hostname
-isn't the issuer and passkeys wouldn't work on it.
+fires at :17 and shows up in Workers Logs. Rate-limit namespace ids are unique
+per account, so staging uses its own pair (2001/2002, production 1001/1002).
+Preview URLs are off because a preview hostname isn't the issuer and passkeys
+wouldn't work on it.
+
+Smoke checks work against any stage: `npm run smoke` (production issuer),
+`npm run smoke -- --stage=staging`, or `E2E_BASE_URL=https://… npm run smoke`.

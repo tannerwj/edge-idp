@@ -1,14 +1,8 @@
-/**
- * WebAuthn challenge store (D1). Challenges are single-use, 5-minute, and
- * bound to the user they were issued for — see the threat notes in
- * webauthn.ts.
- */
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { nowSec } from "./util";
 
-const CHALLENGE_TTL = 300; // 5 minutes
+const CHALLENGE_TTL = 300;
 
-/** Type predicate for parsed JSON — no assertions, just narrowing. */
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -24,8 +18,6 @@ export async function storeChallenge(
   challenge: string,
   c: StoredChallenge,
 ): Promise<void> {
-  // The scheduled maintenance job removes expired rows. Each ceremony only
-  // writes its own challenge, avoiding a full-table DELETE on every request.
   await db
     .prepare(
       `INSERT INTO webauthn_challenges (challenge, type, user_id, data, expires_at)
@@ -35,7 +27,6 @@ export async function storeChallenge(
     .run();
 }
 
-/** Fetch-and-delete: challenges are single-use by construction. */
 export async function takeChallenge(
   db: D1Database,
   challenge: string,
@@ -60,7 +51,6 @@ export async function takeChallenge(
   };
 }
 
-/** The challenge the browser answered, from inside clientDataJSON. */
 export function challengeFromResponse(
   response: RegistrationResponseJSON | AuthenticationResponseJSON,
 ): string | null {
@@ -73,7 +63,6 @@ export function challengeFromResponse(
   }
 }
 
-/** Decode a base64url string to bytes (for storing credential IDs as BLOBs). */
 export function b64urlToBytes(s: string): Uint8Array {
   const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
   const bytes = new Uint8Array(bin.length);

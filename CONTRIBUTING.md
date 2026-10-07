@@ -14,6 +14,9 @@ here. Please leave out tokens, keys, enrollment links and anything else private.
 2. `npm install` and `npx playwright install chromium`.
 3. Make the change. Keep it small and in the existing style; the project is
    deliberately passkey-only (see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)).
+   Source code has no comments: put the reasoning in
+   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) or the threat model, and
+   update them when behavior changes.
 4. Before opening a PR:
 
    ```bash
@@ -25,6 +28,7 @@ here. Please leave out tokens, keys, enrollment links and anything else private.
    ```
 
    The e2e suites boot throwaway local instances and leave nothing behind.
+   [docs/TESTING.md](docs/TESTING.md) explains what each one covers.
 
 5. Open a PR describing what changed and why. Auth-relevant changes should
    say what threat they address or touch.

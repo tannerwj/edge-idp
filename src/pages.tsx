@@ -1,4 +1,3 @@
-/** Public pages: sign-in, enrollment, consent, sign-out, errors. */
 import type { OidcClient, User } from "./db";
 import { AuthLayout } from "./ui/layout";
 import { Avatar, Callout, initials } from "./ui/components";

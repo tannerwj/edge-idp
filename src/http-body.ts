@@ -1,4 +1,3 @@
-/** Read a small remote document without buffering an unbounded response. */
 export async function readBodyLimited(
   response: Pick<Response, "headers" | "body">,
   maxBytes: number,

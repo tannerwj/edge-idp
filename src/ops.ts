@@ -1,9 +1,3 @@
-/**
- * Domain operations shared by the admin UI and the MCP tools, so both
- * surfaces enforce the same validation and write the same audit events.
- * Every function takes the acting admin's id for the audit trail and throws
- * OpError (a message safe to show the admin) on invalid input.
- */
 import { audit, getUser, getUserByEmail, listClients } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
 import { by, OpError } from "./ops-core";
@@ -15,8 +9,6 @@ export * from "./ops-apps";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const GROUP_RE = /^[a-z0-9_-]{1,60}$/;
 const ENROLL_TTL = 7 * 86400;
-
-/* ───────────────────────────── users ───────────────────────────── */
 
 export async function mintEnrollmentLink(
   db: D1Database,
@@ -32,7 +24,6 @@ export async function mintEnrollmentLink(
     .bind(await sha256Hex(token), userId, nowSec(), nowSec() + ENROLL_TTL)
     .run();
   await audit(db, "ENROLLMENT_STARTED", { userId, detail: by(a) });
-  // URL fragments stay in the browser; Workers Logs never see this bearer.
   return `${issuer}/enroll#${token}`;
 }
 
@@ -103,7 +94,6 @@ export async function setDisabled(
       .prepare("UPDATE users SET disabled = ?1, updated_at = ?2 WHERE id = ?3")
       .bind(disabled ? 1 : 0, nowSec(), id),
   ];
-  // Disabling kills every way back in: sessions and refresh tokens.
   if (disabled) {
     stmts.push(db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(id));
     stmts.push(db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1").bind(id));
@@ -125,7 +115,6 @@ export async function setAdmin(
       .prepare("UPDATE users SET is_admin = ?1, updated_at = ?2 WHERE id = ?3")
       .bind(isAdmin ? 1 : 0, nowSec(), id),
   ];
-  // Losing admin also loses every admin credential: API tokens and MCP grants.
   if (!isAdmin) {
     stmts.push(db.prepare("DELETE FROM api_tokens WHERE created_by = ?1").bind(id));
     stmts.push(
@@ -144,7 +133,6 @@ export async function deleteUser(db: D1Database, id: string, a: Actor): Promise<
   await audit(db, "USER_DELETED", { detail: by(a, { email: user.email }) });
 }
 
-/** Recovery: remove every passkey and sign the user out everywhere. */
 export async function revokePasskeys(db: D1Database, id: string, a: Actor): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?1").bind(id),
@@ -171,7 +159,6 @@ export async function revokeSessions(
   await audit(db, "SESSION_REVOKED", { userId, detail: by(a, { all: !sessionHash }) });
 }
 
-/** Replace a user's group memberships with exactly these group names. */
 export async function setUserGroupsByName(
   db: D1Database,
   userId: string,
@@ -197,8 +184,6 @@ export async function setUserGroupsByName(
   ]);
   if (log) await audit(db, "USER_GROUPS_UPDATED", { userId, detail: by(a, { groups: wanted }) });
 }
-
-/* ───────────────────────────── groups ───────────────────────────── */
 
 export async function createGroup(
   db: D1Database,
@@ -232,12 +217,6 @@ export async function updateGroup(
   await audit(db, "GROUP_UPDATED", { detail: by(a, { group: id }) });
 }
 
-/**
- * Delete a group. Group names live inside clients' and apps' allowed lists
- * (and inside Cloudflare Access policies, which we can't see), so refuse
- * while anything here still references it rather than silently widening or
- * narrowing access.
- */
 export async function deleteGroup(db: D1Database, id: string, a: Actor): Promise<void> {
   const g = await db
     .prepare("SELECT name FROM groups WHERE id = ?1")

@@ -2,7 +2,6 @@ import { expect, test } from "e2e";
 import { base } from "./http";
 
 test("trailing slashes redirect to the canonical path", async () => {
-  // /admin/ must not 404 — it redirects to /admin.
   const res = await fetch(`${base}/admin/`, { redirect: "manual" });
   expect(res.status).toBe(301);
   const loc = res.headers.get("location") ?? "";
@@ -10,8 +9,6 @@ test("trailing slashes redirect to the canonical path", async () => {
 });
 
 test("admin routes exist and send anonymous visitors to sign in", async () => {
-  // A 404 would mean the route is broken. Anonymous requests are bounced to
-  // /login with a same-origin `next`, so admin content never renders.
   for (const path of [
     "/admin",
     "/admin/users",
@@ -31,7 +28,6 @@ test("admin routes exist and send anonymous visitors to sign in", async () => {
 test("static asset URLs carry a content hash", async () => {
   const res = await fetch(`${base}/login`);
   const html = await res.text();
-  // ?v=<content hash> so every deploy busts caches.
   expect(html).toMatch(/\/app\.css\?v=[a-f0-9]{10}/);
   expect(html).toMatch(/\/app\.js\?v=[a-f0-9]{10}/);
 });

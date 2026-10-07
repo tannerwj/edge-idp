@@ -119,7 +119,6 @@ export const auditAdmin = new Hono<AdminVars>();
 
 const catLink = (cat: string) => (cat ? `/admin/audit?category=${cat}` : "/admin/audit");
 
-/** Event categories for the quick filter. */
 const CATEGORIES: Record<string, string[]> = {
   signins: ["SIGN_IN", "SIGN_OUT", "ACCESS_DENIED"],
   security: [
@@ -314,15 +313,12 @@ auditAdmin.get("/", async (c) => {
   );
 });
 
-/** CSV cell: neutralize spreadsheet formula injection, then quote. */
 const esc = (v: string | number | null) => {
   const s = v === null ? "" : String(v);
-  // Neutralize spreadsheet formula injection, then CSV-quote.
   const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
   return `"${safe.replace(/"/g, '""')}"`;
 };
 
-/** CSV export (newest 10k events), served at /admin/audit.csv. */
 export async function auditCsv(db: D1Database): Promise<string> {
   const { results } = await db
     .prepare(

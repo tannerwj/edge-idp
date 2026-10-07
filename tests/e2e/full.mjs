@@ -1,24 +1,4 @@
 #!/usr/bin/env node
-/**
- * Full end-to-end test: real passkey ceremonies (Chromium virtual
- * authenticator), the admin UI, OIDC, OAuth 2.1 for MCP, and the security
- * regressions this project has already had once.
- *
- * Self-contained and re-runnable: boots a throwaway `cf dev` instance on its
- * own port with http://localhost as the issuer (a secure context, so WebAuthn
- * works), runs, and tears everything down.
- *
- * The instance is isolated (see instances.mjs): nothing touches your
- * .dev.vars or your local database.
- *
- * Usage: npm run test:e2e          (E2E_KEEP=1 keeps the temp dir)
- *        npm run test:e2e:staging        same suite against the deployed
- *                                        staging Worker (E2E_STAGE=staging),
- *                                        real D1/limiters/loader/edge
- * Needs: Playwright's Chromium (npx playwright install chromium).
- * Optional network check: the CIMD test fetches Claude Code's real client
- * metadata document from claude.ai; set E2E_OFFLINE=1 to skip it.
- */
 import { createHash, randomBytes } from "node:crypto";
 import { chromium } from "playwright";
 import { startLocal, startRemote } from "./instances.mjs";
@@ -56,8 +36,6 @@ const pkce = () => {
 };
 const form = (o) => new URLSearchParams(o).toString();
 
-/* ───────────────────────────── boot ───────────────────────────── */
-
 step("setup");
 const sql = instance.sql;
 const now = Math.floor(Date.now() / 1000);
@@ -86,11 +64,6 @@ const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 
-/**
- * Follow /authorize in the browser and capture the redirect back to the
- * client. The client hosts don't exist, so we watch for the outgoing
- * request (fired before DNS fails) instead of loading it.
- */
 async function authorizeInBrowser(params, { approve } = {}) {
   const redirect = new URL(params.redirect_uri);
   let captured = null;
@@ -100,9 +73,6 @@ async function authorizeInBrowser(params, { approve } = {}) {
   };
   page.on("request", onReq);
   await page.goto(`${BASE}/authorize?${new URLSearchParams(params)}`).catch(() => {});
-  // waitForSelector (not page.$) survives a navigation still landing from the
-  // previous call — over a real network the redirect to the dead client host
-  // can commit after goto resolves.
   if (
     !captured &&
     approve !== undefined &&
@@ -114,7 +84,6 @@ async function authorizeInBrowser(params, { approve } = {}) {
     for (let i = 0; i < 50 && !captured; i++) await page.waitForTimeout(100);
   }
   page.off("request", onReq);
-  // Let the browser finish failing on the client host before the next step.
   await page.waitForLoadState("load").catch(() => {});
   return captured;
 }
@@ -133,7 +102,6 @@ async function mcpCall(token, method, params = {}, headers = {}) {
 }
 
 try {
-  /* ───────────────────────────── passkeys ───────────────────────────── */
   step("enroll + sign in with a passkey");
   await page.goto(`${BASE}/enroll/${adminToken}`);
   await page.fill("#key-name", "E2E key");
@@ -152,9 +120,6 @@ try {
   await page.click("form[action='/logout'] button");
   await page.waitForURL(/\/login/);
   check("logout lands on sign-in", page.url().includes("/login"));
-  // With a virtual authenticator, conditional mediation (passkey autofill)
-  // may complete the sign-in on its own before the button is clicked —
-  // that's the real UX on a device with one passkey. Either path is fine.
   await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
   await page.waitForURL(`${BASE}/`, { timeout: 15000 }).catch(() => {});
   check("passkey sign-in works", new URL(page.url()).pathname === "/", page.url());
@@ -178,7 +143,6 @@ try {
   const afterStepUp = await page.request.post(`${BASE}/webauthn/register/options`, { data: {} });
   check("explicit passkey recheck allows add-key options", afterStepUp.status() === 200);
 
-  /* ───────────────────────────── admin UI ───────────────────────────── */
   step("admin UI");
   for (const p of [
     "/admin",
@@ -223,7 +187,6 @@ try {
   const invite = await page.getAttribute("[data-copy]", "data-copy");
   check("invite keeps bearer out of request path", !!invite?.startsWith(`${BASE}/enroll#`), invite);
 
-  // Register a confidential client through the UI and read the one-time secret.
   await page.goto(`${BASE}/admin/clients`);
   await page.click("button[data-open='new-client']");
   await page.fill("#new-client input[name=name]", "Test App");
@@ -255,7 +218,6 @@ try {
     check("…and changed nothing", g === 0);
   }
 
-  /* ───────────────────────────── OIDC ───────────────────────────── */
   step("OIDC authorization code flow");
   const JWKS = createRemoteJWKSet(new URL(`${BASE}/jwks`));
   const { verifier, challenge } = pkce();
@@ -349,9 +311,6 @@ try {
       "prompt=none without a session → login_required",
       (pn.headers.get("location") ?? "").includes("error=login_required"),
     );
-    // Separate tab: the login page arms passkey autofill, which the virtual
-    // authenticator completes on its own and then redirects away — closing
-    // the tab cancels it so it can't race the next step.
     const reauth = await ctx.newPage();
     await reauth.goto(
       `${BASE}/authorize?${new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: "https://app.example.test/callback", response_type: "code", scope: "openid", prompt: "login", code_challenge: challenge, code_challenge_method: "S256" })}`,
@@ -368,7 +327,6 @@ try {
     await reauth.close();
   }
 
-  /* ───────────────────────────── MCP OAuth ───────────────────────────── */
   step("MCP discovery");
   {
     const prm = await (await fetch(`${BASE}/.well-known/oauth-protected-resource/mcp`)).json();
@@ -407,7 +365,7 @@ try {
   check("DCR rejects dangerous redirect schemes", badReg.status === 400);
 
   const p2 = pkce();
-  const redirect = "http://localhost:53682/callback"; // any loopback port matches
+  const redirect = "http://localhost:53682/callback";
   const mcpAuth = {
     client_id: dcr.client_id,
     redirect_uri: redirect,
@@ -418,7 +376,6 @@ try {
     code_challenge: p2.challenge,
     code_challenge_method: "S256",
   };
-  // Consent screen, then deny once.
   await page.goto(`${BASE}/authorize?${new URLSearchParams(mcpAuth)}`);
   check(
     "third-party client gets a consent screen",
@@ -493,8 +450,6 @@ try {
     arguments: { name: "friends" },
   });
   check("write tool works with mcp scope", !created.body?.result?.isError, created.body);
-  // Code mode re-enters the Worker through the sandbox entrypoint, whose env
-  // is the raw one: the invite link must still be on this instance's issuer.
   const exec = await mcpCall(mt.access_token, "tools/call", {
     name: "execute",
     arguments: {
@@ -528,6 +483,21 @@ try {
     "execute: can't call execute",
     (recursion.body?.result?.content?.[0]?.text ?? "").includes("not available inside execute"),
     recursion.body,
+  );
+  await sql(
+    `INSERT INTO mcp_calls (tool_name, started_at, duration_ms, success) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1200) SELECT 'percentile_probe', ${Math.floor(Date.now() / 1000)}, i, 1 FROM n`,
+  );
+  const metrics = await mcpCall(mt.access_token, "tools/call", {
+    name: "metrics_summary",
+    arguments: {},
+  });
+  const probe = (JSON.parse(metrics.body?.result?.content?.[0]?.text ?? "{}").per_tool ?? []).find(
+    (t) => t.tool === "percentile_probe",
+  );
+  check(
+    "metrics_summary percentiles cover every call, not the fastest 1000",
+    probe?.calls === 1200 && probe?.latency_ms?.p50 === 601 && probe?.latency_ms?.p95 === 1141,
+    probe,
   );
   const modern = await mcpCall(
     mt.access_token,
@@ -690,8 +660,6 @@ try {
 
   step("maintenance cron");
   if (instance.remote) {
-    // /cdn-cgi/local/scheduled only exists in local dev; the deployed cron
-    // trigger fires at :17 and shows up in Workers Logs.
     console.log("  skip (local-only trigger; check the :17 run in Workers Logs)");
   } else {
     const r = await fetch(`${BASE}/cdn-cgi/local/scheduled`);
@@ -750,7 +718,6 @@ try {
   instance.stop();
 }
 
-// The recursion check makes the sandbox RPC throw on purpose; workerd logs it.
 const EXPECTED_ERRORS = ["execute is not available inside execute"];
 const serverErrors = instance
   .log()

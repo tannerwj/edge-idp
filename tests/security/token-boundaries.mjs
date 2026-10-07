@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Local-only review reproduction. Creates and destroys an isolated cf dev + D1. */
 import { createHash, randomBytes } from "node:crypto";
 import { startLocal } from "../e2e/instances.mjs";
 
@@ -61,8 +60,6 @@ try {
   });
   check("right client after wrong-client attempt", rightCode.status, 200);
 
-  // The main E2E uses PKCE. Confidential clients may omit it after authenticating;
-  // the database stores that case as an empty challenge string.
   const confidentialSecret = token();
   const confidentialCode = token();
   await instance.sql(`INSERT INTO oidc_clients (id, name, redirect_uris, secret_hash, secret_prefix,

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Asserts a local D1 read cannot reveal the portable signing key. Prints no key or token. */
 import { randomBytes } from "node:crypto";
 import { startPortable } from "../e2e/instances.mjs";
 

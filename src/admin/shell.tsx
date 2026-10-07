@@ -8,7 +8,6 @@ import type { Crumb } from "../ui/layout";
 export type AdminVars = { Bindings: Env; Variables: { admin: User } };
 export type ACtx = Context<AdminVars>;
 
-/** Form fields from parseBody(): File uploads are never valid here. */
 export function field(
   form: Record<string, string | File | (string | File)[] | undefined>,
   key: string,
@@ -17,7 +16,6 @@ export function field(
   return typeof v === "string" ? v : "";
 }
 
-/** Multi-value field (checkbox groups) — parseBody({ all: true }) shape. */
 export function fields(
   form: Record<string, string | File | (string | File)[] | undefined>,
   key: string,
@@ -31,7 +29,6 @@ export function actor(c: ACtx) {
   return { adminId: c.get("admin").id, via: "ui" as const };
 }
 
-/** Render an admin page inside the app shell. */
 export async function page(
   c: ACtx,
   opts: { active: string; title: string; crumbs?: Crumb[]; narrow?: boolean; page?: string },
@@ -54,11 +51,6 @@ export async function page(
   );
 }
 
-/**
- * Run a mutation and redirect back with a flash message. OpErrors (bad
- * input) become a red toast on the same page; anything else is a real bug
- * and propagates to Sentry.
- */
 export async function act(
   c: ACtx,
   back: string,

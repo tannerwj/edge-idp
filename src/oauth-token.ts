@@ -1,7 +1,3 @@
-/**
- * OAuth token endpoint (authorization_code + rotating refresh_token),
- * RFC 7009 revocation, and /userinfo. Threat notes live in oidc.tsx.
- */
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
@@ -16,15 +12,8 @@ const REFRESH_TTL = 30 * 86400;
 
 export const tokens = new Hono<{ Bindings: Env }>();
 
-/* ────────────────────────────── /token ────────────────────────────── */
-
 type TokenBody = Record<string, string | undefined>;
 
-/**
- * Authenticate the client at the token/revocation endpoints. Confidential
- * clients prove their secret (Basic or post); public clients identify by
- * client_id alone and are held to PKCE / refresh-token binding instead.
- */
 async function authenticateClient(
   c: Context<{ Bindings: Env }>,
   body: TokenBody,
@@ -47,12 +36,9 @@ async function authenticateClient(
   const client = await getClient(c.env.DB, clientId);
   if (!client) return null;
   if (client.client_type === "public") {
-    // A public client presenting a secret is confused; refuse rather than guess.
     return clientSecret ? null : client;
   }
   if (!clientSecret) return null;
-  // Threat note: the stored value is a SHA-256 hash, so we hash the presented
-  // secret and compare hashes in constant time.
   const presented = await sha256Hex(clientSecret);
   return timingSafeEqualHex(presented, client.secret_hash) ? client : null;
 }
@@ -135,8 +121,6 @@ async function codeGrant(
 ): Promise<Response> {
   if (!body.code) return tokenError(c, "invalid_request", "code is required");
   const codeHash = await sha256Hex(body.code);
-  // Validate immutable bindings before the single-use transition. A failed
-  // client, redirect, or PKCE attempt must not burn someone else's code.
   const candidate = await c.env.DB.prepare(
     `SELECT client_id, user_id, redirect_uri, code_challenge, scope, nonce, expires_at, resource, auth_time
      FROM auth_codes WHERE code_hash = ?1 AND used = 0`,
@@ -160,8 +144,6 @@ async function codeGrant(
     });
     return tokenError(c, "invalid_grant", "code is invalid, expired, or already used");
   }
-  // redirect_uri is optional in OAuth 2.1 when only one was registered; when
-  // present it must match what /authorize saw.
   if (
     candidate.expires_at < nowSec() ||
     candidate.client_id !== client.id ||
@@ -187,7 +169,6 @@ async function codeGrant(
   ) {
     return tokenError(c, "invalid_grant", "user or client access was removed");
   }
-  // The predicates preserve atomic single use if two valid requests race.
   const row = await c.env.DB.prepare(
     `UPDATE auth_codes SET used = 1
      WHERE code_hash = ?1 AND client_id = ?2 AND redirect_uri = ?3 AND code_challenge = ?4
@@ -260,7 +241,6 @@ async function refreshGrant(
   };
   if (candidate.rotated_at !== null) return replay();
   if (candidate.expires_at < now) return tokenError(c, "invalid_grant");
-  // The user may have revoked this app's access in the meantime.
   if (client.source !== "admin") {
     const grant = await c.env.DB.prepare(
       "SELECT 1 AS ok FROM oauth_grants WHERE user_id = ?1 AND client_id = ?2",
@@ -269,7 +249,6 @@ async function refreshGrant(
       .first();
     if (!grant) return tokenError(c, "invalid_grant", "access was revoked");
   }
-  // Optional scope narrowing (never widening).
   let scope = candidate.scope;
   if (body.scope) {
     const asked = body.scope.split(/\s+/).filter(Boolean);
@@ -340,8 +319,6 @@ tokens.post("/token", async (c) => {
   return tokenError(c, "unsupported_grant_type");
 });
 
-/** RFC 7009. Refresh tokens revoke their whole family; JWT access tokens
- *  are stateless and simply expire (≤1h), so they're acknowledged. */
 tokens.post("/revoke", async (c) => {
   const body = await parseForm(c);
   const client = await authenticateClient(c, body);
@@ -360,8 +337,6 @@ tokens.post("/revoke", async (c) => {
   }
   return c.body(null, 200);
 });
-
-/* ───────────────────────────── /userinfo ───────────────────────────── */
 
 tokens.get("/userinfo", async (c) => userinfo(c));
 tokens.post("/userinfo", async (c) => userinfo(c));
@@ -385,8 +360,6 @@ async function userinfo(c: Context<{ Bindings: Env }>): Promise<Response> {
     payload.aud !== payload.client_id
   )
     return unauthorized();
-  // Fresh from the DB: a disabled user stops resolving immediately, and
-  // profile/group edits show up without waiting for a new token.
   const claims = await claimsFor(c.env.DB, payload.sub, 0);
   if (!claims) return unauthorized();
   return c.json({

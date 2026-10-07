@@ -1,17 +1,11 @@
-/**
- * OAuth/OIDC pieces shared by the authorize, token and MCP modules: scopes,
- * the MCP resource identifier, discovery documents, and fresh user claims.
- */
 import type { Env } from "./config";
 import { getUser, getUserGroups } from "./db";
 import type { OidcClient, User } from "./db";
 import type { TokenClaims } from "./crypto";
 
 export const SCOPES = ["openid", "profile", "email", "groups", "offline_access", "mcp", "mcp:read"];
-/** Scopes that only admins may be granted (they drive the admin MCP). */
 export const ADMIN_SCOPES = ["mcp", "mcp:read"];
 
-/** Apply the same client policy at authorization, code redemption, and refresh. */
 export async function clientAccessProblem(
   db: D1Database,
   user: User,
@@ -80,11 +74,6 @@ export function discovery(env: Env) {
   };
 }
 
-/**
- * RFC 9728 Protected Resource Metadata for the MCP endpoint. Served at the
- * path-inserted location (resource path /mcp) and the root, since clients
- * differ in which they try first.
- */
 export function protectedResource(env: Env) {
   return {
     resource: mcpResource(env),
@@ -95,7 +84,6 @@ export function protectedResource(env: Env) {
     resource_documentation: `${env.ISSUER}/admin/tokens`,
   };
 }
-/** Claims for a user straight from the DB (null when missing or disabled). */
 export async function claimsFor(
   db: D1Database,
   userId: string,

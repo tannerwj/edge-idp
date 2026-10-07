@@ -1,7 +1,3 @@
-/**
- * Instance-wide UI settings cache. The accent color changes rarely (admin
- * action), so it's cached per isolate for 60s instead of a D1 read per page.
- */
 import { getSetting } from "./db";
 import type { Env } from "./config";
 

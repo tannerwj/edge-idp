@@ -1,4 +1,3 @@
-/** Types and helpers shared by the MCP server, its tools, and the code-mode sandbox. */
 import { getClient, getUser, getUserByEmail } from "../db";
 import type { Env } from "../config";
 import * as ops from "../ops";
@@ -18,7 +17,6 @@ export type ToolDef = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  /** Mutates state — needs `admin` / `mcp` scope. */
   write: boolean;
   handler: (ctx: ToolCtx, args: Record<string, unknown>) => Promise<unknown>;
 };
@@ -59,26 +57,19 @@ export const USER_REF = {
   email: { type: "string", description: "…or the user's email" },
 };
 
-/* ───────────────────────────── auth ───────────────────────────── */
-
 export interface McpAuth {
-  /** api_tokens.id, or "oauth:<client_id>" for OAuth access tokens. */
   tokenId: string;
   adminId: string;
   readOnly: boolean;
 }
 
-/** Is this user still allowed to drive the admin API? */
 export async function activeAdmin(db: D1Database, userId: string): Promise<boolean> {
   const u = await getUser(db, userId);
   return !!u && !!u.is_admin && !u.disabled;
 }
 
-/* ───────────────────────────── metrics ───────────────────────────── */
-
 export type WaitCtx = { waitUntil(p: Promise<unknown>): void };
 
-/** Record an MCP tool call for metrics. Fire-and-forget; retention via cron. */
 export function trackCall(
   ctx: WaitCtx,
   db: D1Database,
