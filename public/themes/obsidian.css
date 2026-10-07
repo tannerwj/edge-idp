@@ -541,3 +541,313 @@ code {
     font-size: 23px;
   }
 }
+
+/* ============================================================
+ * App components + responsive (mobile-first fixes, 2026-10-07)
+ * ============================================================ */
+
+/* Top navigation in the brand bar (Account / Admin links). */
+.topnav {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.topnav a {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 8px;
+  white-space: nowrap;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.topnav a:hover {
+  color: var(--text);
+}
+
+.topnav a.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Dashboard stat cards. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s ease, transform 0.06s ease;
+}
+
+.stat-card:hover {
+  border-color: #3a4147;
+}
+
+.stat-card:active {
+  transform: translateY(1px);
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+/* Tables: never crush — scroll horizontally inside a wrapper.
+ * NOTE: HTML must wrap <table class="table"> in <div class="table-wrap">. */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 16px 0;
+  scrollbar-width: thin;
+}
+
+.table-wrap .table {
+  min-width: 620px;
+  margin: 0;
+}
+
+.table td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Key lists: let text wrap instead of shoving buttons off-screen. */
+.key-list li {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.key-list li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.key-name {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Headline / brand overflow guards. */
+h1, h2 {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.brand {
+  min-width: 0;
+}
+
+.brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+@media (max-width: 560px) {
+  /* Tighter shell gutters on phones. */
+  .shell {
+    padding: 24px 12px;
+    gap: 14px;
+  }
+
+  /* Brand bar wraps: nav drops below the name instead of crowding. */
+  .brand {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .topnav {
+    margin-left: 0;
+    width: 100%;
+    order: 3;
+  }
+
+  .topnav a {
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+
+  /* Tabs become a horizontal scroll strip instead of a wrapping block. */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-left: -4px;
+    margin-right: -4px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    white-space: nowrap;
+    padding: 12px 14px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* 44px minimum touch targets for small buttons. */
+  .btn.small {
+    padding: 10px 16px;
+    font-size: 14px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Action clusters stack full-width — no more tiny side-by-side buttons. */
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .actions form {
+    width: 100%;
+  }
+
+  .actions .btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Table action cells: keep buttons usable when the table scrolls. */
+  .table td.actions {
+    white-space: normal;
+  }
+
+  /* Forms: inline fields go full-width instead of squeezing. */
+  .row {
+    flex-wrap: wrap;
+  }
+
+  .field.inline {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  /* Stat cards: 2-up grid on phones. */
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 14px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  /* Theme + check grids collapse to one column. */
+  .theme-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Key list items: text on top, button full-width below. */
+  .key-list .btn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Long enrollment / secret inputs scroll rather than overflow. */
+  input[data-select] {
+    font-size: 13px;
+  }
+}
+
+/* Top navigation (account <-> admin) */
+.topnav {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.topnav a {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 8px;
+}
+
+.topnav a:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.topnav a.active {
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Dashboard stat cards */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 20px 0 28px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.stat-card:hover {
+  border-color: var(--accent);
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}

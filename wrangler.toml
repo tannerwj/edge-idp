@@ -33,3 +33,7 @@ database_id = "832a3094-2375-47b8-aa06-7f146c56eb25"
 # Secrets (set via `wrangler secret put`, never committed):
 #   SIGNING_KEY_JWK  — RS256 private key as JSON JWK (generate: node scripts/gen-key.mjs)
 #   ADMIN_SETUP_TOKEN — one-time token that bootstraps the first admin (seed-admin)
+#   SENTRY_DSN — Sentry DSN for error tracking (optional)
+
+[observability]
+enabled = true

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sessionUser } from "../session";
 import type { AdminVars } from "./shell";
+import { dashboardAdmin } from "./dashboard";
 import { usersAdmin } from "./users";
 import { userDetailAdmin } from "./user-detail";
 import { groupsAdmin } from "./groups";
@@ -24,7 +25,8 @@ admin.use("*", async (c, next) => {
   await next();
 });
 
-admin.route("/", usersAdmin);
+admin.route("/", dashboardAdmin);
+admin.route("/users", usersAdmin);
 admin.route("/users/:id", userDetailAdmin);
 admin.route("/groups", groupsAdmin);
 admin.route("/clients", clientsAdmin);

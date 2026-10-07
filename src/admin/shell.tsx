@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../config";
 import type { User } from "../db";
-import { getSetting } from "../db";
+import { getTheme } from "../theme-cache";
 import { nowSec, randomToken, sha256Hex } from "../util";
 
 export type AdminVars = { Bindings: Env; Variables: { admin: User } };
@@ -22,6 +22,7 @@ export function fmt(ts: number | null): string {
 }
 
 const TABS: [string, string][] = [
+  ["dashboard", "Dashboard"],
   ["users", "Users"],
   ["groups", "Groups"],
   ["clients", "Apps"],
@@ -66,14 +67,14 @@ export function page(
               {TABS.map(([id, label]) => (
                 <a
                   key={id}
-                  href={id === "users" ? "/admin/" : `/admin/${id}`}
+                  href={id === "dashboard" ? "/admin/" : `/admin/${id}`}
                   class={active === id ? "tab active" : "tab"}
                 >
                   {label}
                 </a>
               ))}
-              <a class="tab" href="/">
-                Sign-in page
+              <a class="tab" href="/account">
+                My account
               </a>
             </nav>
             {children}
@@ -96,7 +97,7 @@ export const p = async (
       active,
       c.get("admin").name,
       title,
-      await getSetting(c.env.DB, "theme", "obsidian"),
+      await getTheme(c.env),
       children,
     ),
   );

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import * as Sentry from "@sentry/cloudflare";
 import { assertConfigured } from "./config";
 import type { Env } from "./config";
 import { webauthn, validEnrollmentToken } from "./webauthn";
@@ -13,13 +14,13 @@ import {
 } from "./pages";
 import { destroySession, sessionUser } from "./session";
 import { audit, getCredentialsForUser, getSetting } from "./db";
+import { getTheme } from "./theme-cache";
 import { THEMES_CSS, WEBAUTHN_JS } from "./assets.gen";
 
 const app = new Hono<{ Bindings: Env }>();
 
-/** Current site theme (admin-configurable, defaults to classic). */
 async function theme(c: { env: Env }): Promise<string> {
-  return getSetting(c.env.DB, "theme", "obsidian");
+  return getTheme(c.env);
 }
 
 /**
@@ -117,6 +118,7 @@ app.get("/account", async (c) => {
       rpName={c.env.RP_NAME}
       name={user.name}
       email={user.email}
+      isAdmin={!!user.is_admin}
       theme={await theme(c)}
       credentials={creds.map((k) => ({
         id: k.id,
@@ -225,4 +227,10 @@ app.notFound(async (c) =>
   ),
 );
 
-export default app;
+export default Sentry.withSentry(
+  (env: Env) => ({
+    dsn: env.SENTRY_DSN,
+    tracesSampleRate: 0.1,
+  }),
+  app,
+);
