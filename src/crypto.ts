@@ -8,8 +8,8 @@ import { newId, nowSec } from "./util";
  * Threat note: only RS256 is ever used. Cloudflare Access accepts RSA and
  * ECDSA algorithms but NOT EdDSA or HS256 — signing with anything else
  * would silently break the one integration this server exists for. The key is
- * an RSA-2048 JWK in the SIGNING_KEY_JWK secret, generated once at setup
- * (scripts/gen-key.mjs).
+ * an RSA-2048 JWK in the SIGNING_KEY_JWK secret (reference mode), or one
+ * generated on first use and encrypted in D1 (portable mode).
  *
  * Rotation: move the current key to SIGNING_KEY_JWK_PREVIOUS, put a new key
  * (with a new `kid`) in SIGNING_KEY_JWK, deploy. Both public keys are
@@ -137,12 +137,13 @@ export async function mintAccessToken(
 ): Promise<string> {
   const { key, kid } = await getSigningKey(env);
   const now = nowSec();
+  const scopes = opts.scope.split(" ");
   return await new jose.SignJWT({
     scope: opts.scope,
     client_id: opts.clientId,
-    email: claims.email,
-    name: claims.name,
-    groups: claims.groups,
+    ...(scopes.includes("email") ? { email: claims.email } : {}),
+    ...(scopes.includes("profile") ? { name: claims.name } : {}),
+    ...(scopes.includes("groups") ? { groups: claims.groups } : {}),
     auth_time: claims.authTime,
   })
     .setProtectedHeader({ alg: "RS256", kid, typ: "at+jwt" })

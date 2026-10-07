@@ -1,0 +1,25 @@
+{
+  "commit": "89481cc3aff32dbc02628e16efb73917cc26cdcb",
+  "environment": "local cf dev, Chromium virtual authenticator, isolated D1; network timings include browser transport",
+  "requests": {
+    "/webauthn/register/options": [
+      8.1
+    ],
+    "/webauthn/register/verify": [
+      8.3
+    ],
+    "/webauthn/auth/options": [
+      4.8
+    ],
+    "/webauthn/auth/verify": [
+      7.1
+    ]
+  },
+  "execute_ms": [
+    25,
+    10.4,
+    8.3
+  ],
+  "cron_ms": 147.3,
+  "cron_status": 200
+}

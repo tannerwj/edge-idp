@@ -23,6 +23,7 @@ import { nowSec, randomToken, sha256Hex } from "./util";
 
 export const SESSION_COOKIE = "__Host-idp_session";
 const SESSION_TTL = 30 * 24 * 3600;
+const STEP_UP_TTL = 5 * 60;
 
 export interface Session {
   user: User;
@@ -30,6 +31,12 @@ export interface Session {
   idHash: string;
   /** Unix seconds of the passkey ceremony that created this session. */
   authTime: number;
+  /** Set only by an explicit passkey recheck while already signed in. */
+  stepUpAt: number | null;
+}
+
+export function hasRecentStepUp(session: Session): boolean {
+  return session.stepUpAt !== null && nowSec() - session.stepUpAt <= STEP_UP_TTL;
 }
 
 export async function createSession(
@@ -38,14 +45,15 @@ export async function createSession(
   userAgent: string | null,
   ip: string | null,
   credentialId: string | null = null,
+  stepUp = false,
 ): Promise<string> {
   const raw = randomToken(32);
   const now = nowSec();
   await db.batch([
     db
       .prepare(
-        `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip_hash, credential_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+        `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip_hash, credential_id, step_up_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
       )
       .bind(
         await sha256Hex(raw),
@@ -56,6 +64,7 @@ export async function createSession(
         userAgent?.slice(0, 300) ?? null,
         ip ? await sha256Hex(ip) : null,
         credentialId,
+        stepUp ? now : null,
       ),
     db.prepare("UPDATE users SET last_sign_in_at = ?1 WHERE id = ?2").bind(now, userId),
   ]);
@@ -70,10 +79,10 @@ export async function getSession<E extends { Bindings: Env }>(
   if (!raw) return null;
   const hash = await sha256Hex(raw);
   const row = await c.env.DB.prepare(
-    "SELECT user_id, created_at, expires_at, last_seen_at FROM sessions WHERE id_hash = ?1",
+    "SELECT user_id, created_at, expires_at, last_seen_at, step_up_at FROM sessions WHERE id_hash = ?1",
   )
     .bind(hash)
-    .first<{ user_id: string; created_at: number; expires_at: number; last_seen_at: number }>();
+    .first<{ user_id: string; created_at: number; expires_at: number; last_seen_at: number; step_up_at: number | null }>();
   const now = nowSec();
   if (!row || row.expires_at < now) {
     if (row) {
@@ -94,7 +103,7 @@ export async function getSession<E extends { Bindings: Env }>(
       .catch(() => {});
     c.executionCtx.waitUntil(slide);
   }
-  return { user, idHash: hash, authTime: row.created_at };
+  return { user, idHash: hash, authTime: row.created_at, stepUpAt: row.step_up_at };
 }
 
 /** Convenience: just the user. */

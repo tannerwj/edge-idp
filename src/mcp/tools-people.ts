@@ -20,13 +20,19 @@ export const PEOPLE_TOOLS: ToolDef[] = [
           .all<{ user_id: string; name: string }>(),
       ]);
       const keyCount = new Map(keys.map((k) => [k.user_id, k.n]));
+      const groupsByUser = new Map<string, string[]>();
+      for (const member of members) {
+        const groups = groupsByUser.get(member.user_id) ?? [];
+        groups.push(member.name);
+        groupsByUser.set(member.user_id, groups);
+      }
       return users.map((u) => ({
         id: u.id,
         name: u.name,
         email: u.email,
         is_admin: !!u.is_admin,
         disabled: !!u.disabled,
-        groups: members.filter((m) => m.user_id === u.id).map((m) => m.name),
+        groups: groupsByUser.get(u.id) ?? [],
         passkeys: keyCount.get(u.id) ?? 0,
         last_sign_in_at: u.last_sign_in_at,
       }));

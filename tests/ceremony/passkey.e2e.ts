@@ -4,6 +4,7 @@
 // live deployment; seeds and cleans up a throwaway user via wrangler.
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright';
 import { expect as pwExpect } from 'playwright/test';
 import { expect, test } from 'e2e';
@@ -30,11 +31,14 @@ interface Seed {
 }
 
 function seedUser(): Seed {
+  if (process.env.E2E_REMOTE_D1_DB !== 'identity-staging') {
+    throw new Error('remote D1 fixture requires E2E_REMOTE_D1_DB=identity-staging on a disposable staging database');
+  }
   const userId = randomUUID();
   const email = `e2e-${randomUUID().slice(0, 8)}@example.test`;
-  const token = randomBytes(32).toString('hex');
+  const token = Buffer.from(randomBytes(32)).toString('hex');
   const now = Math.floor(Date.now() / 1000);
-  wrangler(['d1', 'execute', 'identity', '--remote', '--command',
+  wrangler(['d1', 'execute', 'identity-staging', '--remote', '--command',
     `INSERT INTO users (id, created_at, name, email, is_admin, updated_at) VALUES ('${userId}', ${now}, 'E2E Test', '${email}', 0, ${now});` +
     `INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at) VALUES ('${sha256Hex(token)}', '${userId}', ${now}, ${now + 3600});`,
   ]);
@@ -42,7 +46,8 @@ function seedUser(): Seed {
 }
 
 function dropUser(userId: string): void {
-  wrangler(['d1', 'execute', 'identity', '--remote', '--command',
+  if (process.env.E2E_REMOTE_D1_DB !== 'identity-staging') return;
+  wrangler(['d1', 'execute', 'identity-staging', '--remote', '--command',
     `DELETE FROM users WHERE id = '${userId}';`]);
 }
 

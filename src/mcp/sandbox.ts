@@ -63,21 +63,29 @@ export class Agent extends WorkerEntrypoint {
     const ID = this.env.ID;
     const logs = [];
     const toolCalls = [];
+    let logChars = 0;
     const fmt = (a) => {
-      if (typeof a === "string") return a;
-      try { return JSON.stringify(a); } catch (e) { return String(a); }
+      if (typeof a === "string") return a.slice(0, 2000);
+      try { return JSON.stringify(a).slice(0, 2000); } catch (e) { return String(a).slice(0, 2000); }
+    };
+    const captureLog = (line) => {
+      if (logs.length >= 100 || logChars >= 32768) return;
+      const text = line.slice(0, Math.min(2000, 32768 - logChars));
+      logs.push(text);
+      logChars += text.length;
     };
     const capture = {
-      log(...a) { logs.push(a.map(fmt).join(" ")); },
-      info(...a) { logs.push(a.map(fmt).join(" ")); },
-      warn(...a) { logs.push("WARN: " + a.map(fmt).join(" ")); },
-      error(...a) { logs.push("ERROR: " + a.map(fmt).join(" ")); },
+      log(...a) { captureLog(a.map(fmt).join(" ")); },
+      info(...a) { captureLog(a.map(fmt).join(" ")); },
+      warn(...a) { captureLog("WARN: " + a.map(fmt).join(" ")); },
+      error(...a) { captureLog("ERROR: " + a.map(fmt).join(" ")); },
     };
     const id = new Proxy({}, {
       get(t, name) {
         if (name === "then") return undefined;
         const tool = String(name);
         return async (args) => {
+          if (toolCalls.length >= 50) throw new Error("execute tool-call limit reached");
           const t0 = Date.now();
           try {
             const r = await ID.callTool(tool, args || {});
@@ -94,8 +102,11 @@ export class Agent extends WorkerEntrypoint {
     try {
       const value = await run(id, capture);
       let out = null;
-      try { out = value === undefined ? null : JSON.parse(JSON.stringify(value)); }
-      catch (e) { out = String(value); }
+      try {
+        const serialized = JSON.stringify(value);
+        if (serialized && serialized.length > 32768) throw new Error("result too large");
+        out = serialized === undefined ? null : JSON.parse(serialized);
+      } catch (e) { out = "[result omitted: not serializable or too large]"; }
       outcome = { ok: true, value: out, logs, toolCalls };
     } catch (e) {
       outcome = { ok: false, error: String((e && e.message) || e).slice(0, 2000), logs, toolCalls };
@@ -230,10 +241,17 @@ export async function runExecute(
   }
   let result: unknown;
   try {
-    const entry = worker.getEntrypoint<AgentEntrypoint>("Agent", { limits: { cpuMs: 20000, subRequests: 500 } });
+    const entry = worker.getEntrypoint<AgentEntrypoint>("Agent", { limits: { cpuMs: 1000, subRequests: 50 } });
     const run: Promise<unknown> = Promise.resolve(entry.run());
-    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("execution timed out after 25s")), 25000));
-    result = await Promise.race([run, timeout]);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("execution timed out after 10s")), 10000);
+    });
+    try {
+      result = await Promise.race([run, timeout]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
   } catch (e) {
     return fail("Error: " + errMessage(e).slice(0, 500));
   }

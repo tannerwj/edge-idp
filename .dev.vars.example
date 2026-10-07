@@ -1,6 +1,7 @@
 # Secrets for the Deploy to Cloudflare button (it asks for each one below).
 # For local dev, copy to .dev.vars and see DEPLOY.md → Local development.
 
-# Any long random string (12+ characters). You'll type it once at /setup to
-# create the first admin; /setup disappears after that.
+# Generate with `node scripts/gen-setup-token.mjs` (32 random bytes, base64url).
+# Enter it once at /setup and retain it as a Worker secret: portable installs
+# also use it to encrypt their D1-held signing key. Back it up separately.
 SETUP_TOKEN=

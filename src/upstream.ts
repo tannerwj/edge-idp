@@ -5,12 +5,14 @@
  * nothing links them to this repo. Admins get links to file issues upstream,
  * and the hourly cron checks once a day whether upstream master carries a
  * newer package.json version. That's one GET to raw.githubusercontent.com per
- * day, sending nothing about the instance. UPSTREAM_REPO="off" disables both;
+ * day, exposing the configured repo name and request metadata to GitHub.
+ * UPSTREAM_REPO="off" disables both;
  * a fork that becomes its own project sets its own "owner/repo".
  */
 import type { Env } from "./config";
 import { getSetting, setSetting } from "./db";
 import { VERSION } from "./assets.gen";
+import { readBodyLimited } from "./http-body";
 import { nowSec } from "./util";
 
 const DEFAULT_UPSTREAM = "tannerwj/edge-idp";
@@ -68,9 +70,10 @@ export async function checkForUpdate(env: Env): Promise<"skipped" | "checked" | 
   try {
     const r = await fetch(`https://raw.githubusercontent.com/${repo}/master/package.json`, {
       headers: { "user-agent": "edge-idp-update-check" },
+      redirect: "manual",
       signal: AbortSignal.timeout(5000),
     });
-    const v = r.ok ? versionOf(await r.json()) : null;
+    const v = r.ok ? versionOf(JSON.parse(new TextDecoder().decode(await readBodyLimited(r, 16 * 1024)))) : null;
     if (!v) return "failed";
     await setSetting(env.DB, "upstream_version", v);
     return "checked";

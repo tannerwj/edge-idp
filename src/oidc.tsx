@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
-import { audit, getClient, getUserGroups } from "./db";
+import { audit, getClient } from "./db";
 import type { OidcClient, User } from "./db";
 import { jwksDocument, verifyIdToken } from "./crypto";
 import { destroySession, getSession } from "./session";
 import type { Session } from "./session";
 import { redirectMatches, resolveClient } from "./oauth-clients";
-import { ADMIN_SCOPES, discovery, mcpResource, protectedResource, SCOPES } from "./oauth-shared";
+import { clientAccessProblem, discovery, mcpResource, protectedResource, SCOPES } from "./oauth-shared";
 import { nowSec, randomToken, sha256Hex } from "./util";
 import { ConsentPage, ErrorPage, SignOutPage } from "./pages";
 import { uiFor } from "./ui/layout";
@@ -163,20 +163,8 @@ function redirectWith(c: Context<{ Bindings: Env }>, req: AuthzRequest, params: 
 
 /** Can this user use this client at all? Returns a reason when not. */
 async function accessProblem(db: D1Database, user: User, req: AuthzRequest): Promise<string | null> {
-  const { client } = req;
-  if (req.scopes.some((s) => ADMIN_SCOPES.includes(s)) && !user.is_admin) {
-    return `${client.name} asked for admin access (MCP), and your account isn't an admin.`;
-  }
-  if (client.allowed_groups?.length) {
-    const groups = await getUserGroups(db, user.id);
-    if (!client.allowed_groups.some((g) => groups.includes(g))) {
-      return `Your account isn't in a group allowed to use ${client.name}.`;
-    }
-  } else if (client.source !== "admin" && !user.is_admin) {
-    // Third-party clients are admin-only until an admin grants groups.
-    return `${client.name} hasn't been approved for your account yet. Ask your admin.`;
-  }
-  return null;
+  const reason = await clientAccessProblem(db, user, req.client, req.scopes);
+  return reason ? `Your account can no longer use ${req.client.name}: ${reason}.` : null;
 }
 
 async function hasGrant(db: D1Database, userId: string, req: AuthzRequest): Promise<boolean> {

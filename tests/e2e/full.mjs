@@ -139,6 +139,15 @@ try {
   const sess = cookies.find((c) => c.name === "__Host-idp_session");
   check("session cookie is __Host-, HttpOnly, Secure", !!sess && sess.httpOnly && sess.secure && sess.path === "/", sess);
 
+  step("credential changes require a fresh passkey recheck");
+  const beforeStepUp = await page.request.post(`${BASE}/webauthn/register/options`, { data: {} });
+  check("fresh login session alone cannot add a passkey", beforeStepUp.status() === 401 && (await beforeStepUp.json()).error === "reauth_required");
+  await page.goto(`${BASE}/login?reauth=1&next=${encodeURIComponent("/account#passkeys")}`);
+  await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+  await page.waitForURL(/\/account/, { timeout: 15000 });
+  const afterStepUp = await page.request.post(`${BASE}/webauthn/register/options`, { data: {} });
+  check("explicit passkey recheck allows add-key options", afterStepUp.status() === 200);
+
   /* ───────────────────────────── admin UI ───────────────────────────── */
   step("admin UI");
   for (const p of ["/admin", "/admin/users", "/admin/users/admin-1", "/admin/groups", "/admin/apps", "/admin/clients", "/admin/audit", "/admin/connect", "/admin/tokens", "/admin/metrics", "/admin/settings", "/account"]) {
@@ -166,7 +175,7 @@ try {
   await page.click("#invite button[type=submit]");
   await page.waitForLoadState();
   const invite = await page.getAttribute("[data-copy]", "data-copy");
-  check("invite produces an enrollment link", !!invite?.startsWith(`${BASE}/enroll/`), invite);
+  check("invite keeps bearer out of request path", !!invite?.startsWith(`${BASE}/enroll#`), invite);
 
   // Register a confidential client through the UI and read the one-time secret.
   await page.goto(`${BASE}/admin/clients`);
@@ -314,7 +323,7 @@ try {
   // is the raw one: the invite link must still be on this instance's issuer.
   const exec = await mcpCall(mt.access_token, "tools/call", { name: "execute", arguments: { code: `return (await id.users_create({ name: "Cody Mode", email: "cody@example.test" })).enrollment_link;` } });
   const execOut = exec.body?.result?.content?.[0]?.text ?? "";
-  check("execute: tool calls inside the sandbox see the issuer", !exec.body?.result?.isError && execOut.includes(`${BASE}/enroll/`), exec.body);
+  check("execute: tool calls inside the sandbox see the issuer", !exec.body?.result?.isError && execOut.includes(`${BASE}/enroll#`), exec.body);
   const modern = await mcpCall(mt.access_token, "tools/call", { name: "groups_list", arguments: {} }, { "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/call", "mcp-name": "wrong" });
   check("2026-07-28: header/body mismatch → -32020", modern.status === 400 && modern.body?.error?.code === -32020, modern.body);
   const notif = await fetch(MCP, { method: "POST", headers: { authorization: `Bearer ${mt.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });

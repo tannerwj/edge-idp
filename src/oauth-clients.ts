@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { readBodyLimited } from "./http-body";
 import type { Env } from "./config";
 import { audit, getClient, getSetting, rowToClient } from "./db";
 import type { OidcClient } from "./db";
@@ -163,10 +164,7 @@ async function fetchCimd(clientId: string): Promise<{
     signal: AbortSignal.timeout(CIMD_TIMEOUT_MS),
   });
   if (res.status !== 200) throw new Error(`metadata fetch returned ${res.status}`);
-  const declared = parseInt(res.headers.get("content-length") ?? "0", 10);
-  if (declared > CIMD_MAX_BYTES) throw new Error("metadata document too large");
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > CIMD_MAX_BYTES) throw new Error("metadata document too large");
+  const buf = await readBodyLimited(res, CIMD_MAX_BYTES);
   let doc: unknown;
   try {
     doc = JSON.parse(new TextDecoder().decode(buf));
@@ -219,8 +217,9 @@ export async function resolveClient(
   try {
     meta = await fetchCimd(clientId);
   } catch (e) {
-    // A stale cached copy beats a hard failure when the client's site blips.
-    if (stored) return { client: stored };
+    // A short outage may use cached metadata, but a dead publisher cannot
+    // retain redirects and display names indefinitely.
+    if (stored && (stored.metadata_expires_at ?? 0) + 86400 > nowSec()) return { client: stored };
     return { error: `Couldn't load the client's metadata: ${e instanceof Error ? e.message : "unknown error"}.` };
   }
   const now = nowSec();
@@ -253,7 +252,7 @@ registration.post("/register", async (c) => {
   }
   let body: Record<string, unknown>;
   try {
-    const parsed: unknown = await c.req.json();
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(await readBodyLimited(c.req.raw, 16 * 1024)));
     if (!isRecord(parsed)) throw new Error("not an object");
     body = parsed;
   } catch {

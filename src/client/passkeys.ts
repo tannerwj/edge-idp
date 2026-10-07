@@ -55,12 +55,12 @@ const isRegOptions = (v: unknown): v is PublicKeyCredentialCreationOptionsJSON =
   isRecord(v) && typeof v.challenge === "string" && isRecord(v.rp) && isRecord(v.user);
 
 /** One login attempt. Returns true when the session cookie is set. */
-async function attemptLogin(email: string | undefined, autofill: boolean): Promise<boolean> {
+async function attemptLogin(email: string | undefined, autofill: boolean, stepUp: boolean): Promise<boolean> {
   const raw = await postJSON("/webauthn/auth/options", email ? { email } : {});
   if (!isAuthOptions(raw)) throw new Error("bad_response");
   const resp = await startAuthentication({ optionsJSON: raw, useBrowserAutofill: autofill });
   if (!resp) return false;
-  const result = await postJSON("/webauthn/auth/verify", { response: resp, email });
+  const result = await postJSON("/webauthn/auth/verify", { response: resp, email, stepUp });
   return result.ok === true;
 }
 
@@ -75,6 +75,7 @@ export async function initLogin(): Promise<void> {
   const box = $("login-box");
   if (!box) return;
   const next = box.getAttribute("data-next") || "/";
+  const stepUp = box.getAttribute("data-reauth") === "1";
   const btn = $("passkey-btn");
   if (!browserSupportsWebAuthn()) {
     status("login-status", "This browser doesn't support passkeys. Try Safari, Chrome, Edge or Firefox.", "error");
@@ -87,23 +88,23 @@ export async function initLogin(): Promise<void> {
   };
   // Conditional mediation: passkeys offered inline in the email field.
   if (await browserSupportsWebAuthnAutofill()) {
-    attemptLogin(undefined, true)
+    attemptLogin(undefined, true, stepUp)
       .then((ok) => {
         if (ok) finish();
         return ok;
       })
       .catch(() => false);
   }
-  btn?.addEventListener("click", () => void onLoginClick(btn, finish));
+  btn?.addEventListener("click", () => void onLoginClick(btn, finish, stepUp));
 }
 
-async function onLoginClick(btn: HTMLElement, finish: () => void): Promise<void> {
+async function onLoginClick(btn: HTMLElement, finish: () => void, stepUp: boolean): Promise<void> {
   const emailEl = $("email");
   const email = emailEl instanceof HTMLInputElement ? emailEl.value.trim() : "";
   status("login-status", "Waiting for your device…");
   setBusy(btn, true);
   try {
-    if (await attemptLogin(email || undefined, false)) finish();
+    if (await attemptLogin(email || undefined, false, stepUp)) finish();
     else status("login-status", "Sign-in didn't complete. Try again?", "error");
   } catch (e) {
     status("login-status", friendlyError(e), "error");
@@ -123,8 +124,13 @@ async function register(body: Record<string, unknown>, name: string): Promise<bo
 export function initEnroll(): void {
   const box = $("enroll-box");
   if (!box) return;
-  const token = box.getAttribute("data-enrollment-token") ?? "";
+  const token = window.location.hash.slice(1) || box.getAttribute("data-enrollment-token") || "";
   const btn = $("enroll-btn");
+  if (!token) {
+    status("enroll-status", "Open the enrollment link your admin sent you.", "error");
+    setBusy(btn, true);
+    return;
+  }
   btn?.addEventListener("click", () => void onEnrollClick(btn, token));
 }
 
@@ -165,4 +171,3 @@ async function onAddKeyClick(btn: HTMLElement): Promise<void> {
     setBusy(btn, false);
   }
 }
-

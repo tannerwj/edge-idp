@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
 import { audit, getCredentialsForUser } from "./db";
-import { getSession, SESSION_COOKIE } from "./session";
+import { getSession, hasRecentStepUp, SESSION_COOKIE } from "./session";
 import type { Session } from "./session";
 import * as ops from "./ops";
 import { nowSec, sha256Hex } from "./util";
@@ -319,6 +319,7 @@ account.post("/account/profile", async (c) => {
 account.post("/account/keys/:id/remove", async (c) => {
   const s = await requireSession(c);
   if (s instanceof Response) return s;
+  if (!hasRecentStepUp(s)) return c.redirect(`/login?reauth=1&next=${encodeURIComponent("/account#passkeys")}`, 303);
   const creds = await getCredentialsForUser(c.env.DB, s.user.id);
   const target = creds.find((k) => k.id === c.req.param("id"));
   // Fail safe: never let a user strand themselves with zero passkeys.

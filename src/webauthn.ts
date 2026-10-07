@@ -12,7 +12,7 @@ import type {
 import type { Env } from "./config";
 import { audit, getCredentialsForUser, getUser, getUserByEmail } from "./db";
 import type { User, WebAuthnCredential } from "./db";
-import { createSession, destroySession, getSession, setSessionCookie } from "./session";
+import { createSession, destroySession, getSession, hasRecentStepUp, setSessionCookie } from "./session";
 import { base64url, newId, nowSec, rpIdFromIssuer, sha256Hex } from "./util";
 import { aaguidName } from "./aaguid";
 import { b64urlToBytes, challengeFromResponse, storeChallenge, takeChallenge } from "./webauthn-challenges";
@@ -31,16 +31,12 @@ import type { StoredChallenge } from "./webauthn-challenges";
  * - supportedAlgorithmIDs is pinned to [-7 (ES256), -257 (RS256)]: v14
  *   otherwise offers ML-DSA first on runtimes with PQC WebCrypto, which would
  *   make behavior runtime-dependent.
- * - userVerification is "preferred", not "required": Apple enforces biometrics
- *   when available anyway; "required" would lock out devices without
- *   biometrics for zero phishing-resistance gain (the key never leaves the
- *   authenticator either way).
+ * - User verification is required: possession or a touch alone must not
+ *   authenticate to this root-of-trust service.
  * - Counters: synced passkeys report counter=0 forever, so we only enforce
  *   strict counter increments for credentials that have previously reported a
  *   nonzero counter (the standard exemption).
  */
-
-const REAUTH_WINDOW = 15 * 60;
 
 export async function validEnrollmentToken(
   db: D1Database,
@@ -89,9 +85,8 @@ webauthn.post("/register/options", async (c) => {
   } else {
     const session = await getSession(c);
     if (!session) return c.json({ error: "unauthorized" }, 401);
-    // Adding a credential is persistence: a stolen session cookie must not be
-    // enough. Require a passkey ceremony in the last 15 minutes.
-    if (nowSec() - session.authTime > REAUTH_WINDOW) {
+    // Session age alone is insufficient: require an explicit passkey recheck.
+    if (!hasRecentStepUp(session)) {
       return c.json({ error: "reauth_required" }, 401);
     }
     user = session.user;
@@ -112,7 +107,7 @@ webauthn.post("/register/options", async (c) => {
     })),
     authenticatorSelection: {
       residentKey: "preferred",
-      userVerification: "preferred",
+      userVerification: "required",
     },
     supportedAlgorithmIDs: [-7, -257],
   });
@@ -224,6 +219,12 @@ webauthn.post("/register/verify", async (c) => {
   if (!(await checkEnrollmentBinding(c.env.DB, body.enrollmentToken, stored))) {
     return c.json({ error: "invalid_enrollment_token" }, 400);
   }
+  if (!body.enrollmentToken) {
+    const session = await getSession(c);
+    if (!session || session.user.id !== stored.userId || !hasRecentStepUp(session)) {
+      return c.json({ error: "reauth_required" }, 401);
+    }
+  }
 
   const rpID = rpIdFromIssuer(c.env.ISSUER);
   let verification;
@@ -233,7 +234,7 @@ webauthn.post("/register/verify", async (c) => {
       expectedChallenge: challenge,
       expectedOrigin: c.env.ISSUER,
       expectedRPID: rpID,
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
   } catch {
     return c.json({ error: "verification_failed" }, 400);
@@ -296,7 +297,7 @@ webauthn.post("/auth/options", async (c) => {
       id: credIdB64(cred),
       transports: cred.transports,
     })),
-    userVerification: "preferred",
+    userVerification: "required",
   });
   await storeChallenge(c.env.DB, options.challenge, {
     type: "authentication",
@@ -332,6 +333,7 @@ webauthn.post("/auth/verify", async (c) => {
   const body = await c.req.json<{
     response: AuthenticationResponseJSON;
     email?: string;
+    stepUp?: boolean;
   }>();
   if (!body.response) return c.json({ error: "bad_request" }, 400);
 
@@ -366,13 +368,17 @@ webauthn.post("/auth/verify", async (c) => {
         counter: cred.counter,
         transports: cred.transports,
       },
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
   } catch {
     return c.json({ error: "auth_failed" }, 401);
   }
   if (!verification.verified || !verification.authenticationInfo) {
     return c.json({ error: "auth_failed" }, 401);
+  }
+  if (body.stepUp) {
+    const prior = await getSession(c);
+    if (!prior || prior.user.id !== user.id) return c.json({ error: "auth_failed" }, 401);
   }
 
   // Counter discipline: only credentials that have previously reported a
@@ -406,6 +412,7 @@ webauthn.post("/auth/verify", async (c) => {
     c.req.header("user-agent") ?? null,
     ip,
     cred.id,
+    body.stepUp === true,
   );
   setSessionCookie(c, raw);
   return c.json({ ok: true, name: user.name });

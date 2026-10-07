@@ -127,29 +127,38 @@ enrollment — user creation is the admin's explicit intent.
 
 `/setup` creates the first admin, then hands off to normal passkey
 enrollment. It exists only while the users table is empty and only when the
-installer set a `SETUP_TOKEN` secret (12+ characters) at deploy time. The
+installer set a generated 32-byte base64url `SETUP_TOKEN` secret (43
+characters) at deploy time. The
 token is compared in constant time, the endpoint is on the AUTH rate limit and
 the same-origin guard, wrong guesses are audited (`SETUP_REJECTED`), and the
 insert is conditional on "no users yet", so two racing requests can't both
-create an admin. After the first user exists it 404s permanently. The window
+create an admin. The admin, enrollment link, audit rows and issuer pin are
+committed in one D1 transaction. After the first user exists it 404s. The window
 is the gap between deploy and the installer's first visit, and the attacker
-would need both the Worker's hostname and the token. Instances seeded with
-`scripts/seed-admin.mjs` never expose it.
+would need both the Worker's hostname and the token. A restored empty database
+reopens setup, so keep the setup secret and database backups together and
+control who can restore them. Instances seeded with `scripts/seed-admin.mjs`
+never expose setup while their users remain.
 
 ## Issuer and signing key defaults
 
-So a one-click install needs no configuration:
+The portable installation uses these defaults:
 
-- **ISSUER** falls back to the request's origin. Only hostnames routed to this
-  Worker reach it, so a client can't choose the issuer. Each hostname is its
-  own issuer and its own passkey RP ID, so setting ISSUER after adding a custom
-  domain is documented as required.
+- **ISSUER** falls back to the request's origin before setup. Setup pins that
+  origin in D1. Later requests on aliases redirect to the canonical origin;
+  non-idempotent requests to aliases return 421. An explicit `ISSUER` overrides
+  the pin. Choose the permanent hostname before enrollment: moving the issuer
+  changes token identity and the passkey RP ID and requires a client/passkey
+  migration. Existing portable databases created before issuer pinning need
+  an explicit `ISSUER` for the upgrade or the Worker fails closed.
 - **The signing key** falls back to one generated on first use and stored in
-  D1 (`signing_keys`; never exposed by the UI, MCP or the code sandbox).
-  Trade-off, accepted: D1 read access now yields a token-forging key. But D1
-  access already means total control (insert an admin, mint a session), so
-  the exposure barely moves. Setting the `SIGNING_KEY_JWK` secret always wins,
-  and the reference instance does.
+  D1 (`signing_keys`), encrypted with AES-GCM under a key derived from the
+  long-lived `SETUP_TOKEN` Worker secret. A D1 read alone no longer exports
+  signing authority. D1 writes can still change users, sessions and keys;
+  Worker secret compromise remains critical. D1 backups and the matching
+  `SETUP_TOKEN` are both required to recover this key. The reference instance
+  uses the `SIGNING_KEY_JWK` secret, which takes precedence. Legacy plaintext
+  portable rows fail closed until the operator rotates to a secret-held key.
 
 ## Admin surface
 
@@ -174,14 +183,25 @@ every call. A token handed to some app at sign-in is therefore useless against
 the admin API. That was a real hole in v1. `/userinfo` re-reads the user from
 the DB, so disabled users stop resolving immediately.
 
-Authorization codes are redeemed with a single atomic `UPDATE … WHERE used =
-0 RETURNING`, so two concurrent `/token` calls can't both win.
+Authorization codes are validated against client, redirect and PKCE before a
+single atomic `UPDATE … WHERE used = 0 RETURNING`, so wrong-client attempts
+cannot burn a legitimate code and two valid concurrent `/token` calls cannot
+both win. Code and refresh redemption also recheck the user's current client
+group/admin eligibility.
 
 Refresh tokens exist only for `offline_access` / `mcp` grants. They rotate on
 every use, inside a family with an absolute 30-day lifetime. Presenting an
-already-rotated token deletes the whole family and writes a
+already-rotated token by its own client deletes the whole family and writes a
 `REFRESH_REUSE_DETECTED` audit event (RFC 9700 §4.14). They also die with the
-user's consent, admin role, or account.
+user's consent, admin role, group eligibility, or account. Wrong-client
+presentations do not consume or revoke another client's grant.
+
+Passkey ceremonies require user verification. A fresh login session alone
+cannot add or remove a credential: the user must explicitly recheck a passkey
+in that same session, giving a five-minute step-up window. New enrollment
+links put the bearer token in a URL fragment so the Worker does not receive it
+on the page request. Previously issued path-token links remain usable until
+they expire; replace outstanding links if their URL was logged.
 
 ## Admin API (MCP) credentials
 
@@ -196,10 +216,11 @@ again.
 
 ## What v1 does NOT do (and why that's fine)
 
-- **Rate limiting is best-effort.** The Workers Rate Limiting bindings (per IP,
-  per location) slow ceremony and registration spam. WAF rules remain the hard
-  backstop (DEPLOY.md). An hourly cron purges expired rows, so spam can't grow
-  D1 without bound.
+- **Rate limiting is layered.** The Workers Rate Limiting bindings (per IP,
+  per location) slow ceremony, authorization and registration spam. `/setup`
+  and `/register` fail closed when `AUTH_LIMITER` is absent; other endpoints
+  still benefit from an edge WAF backstop (DEPLOY.md). An hourly cron purges
+  expired rows, so transient spam is bounded by storage quota and cleanup.
 - **Key rotation is two secrets, not a UI.** Publish the old key as
   `SIGNING_KEY_JWK_PREVIOUS` while the new one signs (DEPLOY.md). Tokens last
   1 hour, which bounds the overlap.

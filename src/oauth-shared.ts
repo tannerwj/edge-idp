@@ -4,11 +4,26 @@
  */
 import type { Env } from "./config";
 import { getUser, getUserGroups } from "./db";
+import type { OidcClient, User } from "./db";
 import type { TokenClaims } from "./crypto";
 
 export const SCOPES = ["openid", "profile", "email", "groups", "offline_access", "mcp", "mcp:read"];
 /** Scopes that only admins may be granted (they drive the admin MCP). */
 export const ADMIN_SCOPES = ["mcp", "mcp:read"];
+
+/** Apply the same client policy at authorization, code redemption, and refresh. */
+export async function clientAccessProblem(db: D1Database, user: User, client: OidcClient, scopes: string[]): Promise<string | null> {
+  if (scopes.some((scope) => ADMIN_SCOPES.includes(scope)) && !user.is_admin) {
+    return "admin access was removed";
+  }
+  if (client.allowed_groups?.length) {
+    const groups = await getUserGroups(db, user.id);
+    if (!client.allowed_groups.some((group) => groups.includes(group))) return "group access was removed";
+  } else if (client.source !== "admin" && !user.is_admin) {
+    return "client access was removed";
+  }
+  return null;
+}
 
 export function mcpResource(env: Env): string {
   return `${env.ISSUER}/mcp`;

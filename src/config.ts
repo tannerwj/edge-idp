@@ -15,8 +15,9 @@ export interface Env {
   /** Secret: RS256 private key as a JSON JWK string. */
   SIGNING_KEY_JWK: string;
   /**
-   * Optional: lets the first visitor who knows it create the first admin at
-   * /setup (one-click installs). /setup is gone once any user exists.
+   * Required for portable installs: generated 32-byte base64url secret.
+   * Authorizes first-run /setup and encrypts the generated D1 signing key.
+   * Keep it after setup and back it up separately from D1.
    */
   SETUP_TOKEN?: string;
   /**

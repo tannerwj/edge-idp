@@ -24,12 +24,8 @@ export async function storeChallenge(
   challenge: string,
   c: StoredChallenge,
 ): Promise<void> {
-  // Opportunistic cleanup: expired challenges are dead weight and a (bounded)
-  // DoS vector if an attacker spams the /options endpoints.
-  await db
-    .prepare("DELETE FROM webauthn_challenges WHERE expires_at < ?1")
-    .bind(nowSec())
-    .run();
+  // The scheduled maintenance job removes expired rows. Each ceremony only
+  // writes its own challenge, avoiding a full-table DELETE on every request.
   await db
     .prepare(
       `INSERT INTO webauthn_challenges (challenge, type, user_id, data, expires_at)
@@ -51,8 +47,9 @@ export async function takeChallenge(
   challenge: string,
 ): Promise<StoredChallenge | null> {
   const row = await db
-    .prepare("SELECT * FROM webauthn_challenges WHERE challenge = ?1")
-    .bind(challenge)
+    .prepare(`DELETE FROM webauthn_challenges WHERE challenge = ?1 AND expires_at >= ?2
+              RETURNING type, user_id, data, expires_at`)
+    .bind(challenge, nowSec())
     .first<{
       type: string;
       user_id: string | null;
@@ -60,11 +57,6 @@ export async function takeChallenge(
       expires_at: number;
     }>();
   if (!row) return null;
-  await db
-    .prepare("DELETE FROM webauthn_challenges WHERE challenge = ?1")
-    .bind(challenge)
-    .run();
-  if (row.expires_at < nowSec()) return null;
   if (row.type !== "registration" && row.type !== "authentication") return null;
   const data: unknown = JSON.parse(row.data);
   return {

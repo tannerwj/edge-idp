@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import * as Sentry from "@sentry/cloudflare";
-import { assertConfigured } from "./config";
+import { assertConfigured, isLocalIssuer } from "./config";
 import { resolveEnv } from "./instance";
 import type { Env } from "./config";
 import { webauthn, validEnrollmentToken } from "./webauthn";
@@ -52,8 +52,16 @@ function crossOrigin(c: Context<{ Bindings: Env }>): boolean {
  */
 function limiterFor(env: Env, path: string): RateLimit | undefined {
   if (path.startsWith("/webauthn/") || path === "/register" || path === "/authorize/decision" || path === "/setup") return env.AUTH_LIMITER;
-  if (path === "/token" || path === "/revoke" || path.startsWith("/mcp")) return env.API_LIMITER;
+  if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp")) return env.API_LIMITER;
   return undefined;
+}
+
+function canonicalResponse(c: Context<{ Bindings: Env }>, url: URL): Response | null {
+  if (url.origin === c.env.ISSUER || isLocalIssuer(c.env.ISSUER)) return null;
+  if (c.req.method === "GET" || c.req.method === "HEAD") {
+    return c.redirect(`${c.env.ISSUER}${url.pathname}${url.search}`, 308);
+  }
+  return c.text("Use the configured issuer hostname.", 421);
 }
 
 // Hono middleware intentionally returns Response | void (short-circuit or pass-through).
@@ -72,16 +80,22 @@ app.use("*", async (c, next) => {
     console.error(e);
     return c.text("Server misconfigured — see DEPLOY.md.", 500);
   }
+  const canonical = canonicalResponse(c, url);
+  if (canonical) return canonical;
   const path = url.pathname;
   const mutating = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
   const tokenEndpoint = TOKEN_ENDPOINTS.some((p) => path === p || path.startsWith(`${p}/`));
+
+  if ((path === "/setup" || path === "/register") && !c.env.AUTH_LIMITER) {
+    return c.json({ error: "temporarily_unavailable" }, 503);
+  }
 
   if (mutating && !tokenEndpoint && crossOrigin(c)) {
     return c.text("Cross-origin request refused.", 403);
   }
 
   const limiter = limiterFor(c.env, path);
-  if (limiter && mutating) {
+  if (limiter && (mutating || path === "/authorize")) {
     const { success } = await limiter.limit({ key: `${path.split("/")[1]}:${clientIp(c)}` });
     if (!success) return c.json({ error: "rate_limited", error_description: "Too many requests — slow down." }, 429, { "retry-after": "60" });
   }
@@ -164,6 +178,13 @@ app.get("/login", async (c) => {
   );
 });
 
+app.get("/enroll", async (c) => c.html(<EnrollPage ui={await uiFor(c)} />, 200, {
+  "referrer-policy": "no-referrer",
+  "cache-control": "no-store",
+}));
+
+// Existing invitation links remain usable until they expire. New links carry
+// the bearer in a fragment, which is never part of a Worker request URL.
 app.get("/enroll/:token", async (c) => {
   const v = await validEnrollmentToken(c.env.DB, c.req.param("token"));
   const ui = await uiFor(c);

@@ -9,7 +9,7 @@
  *
  * Losing it invalidates every issued token (see DEPLOY.md for rotation).
  */
-import { webcrypto } from "node:crypto";
+import { randomBytes, webcrypto } from "node:crypto";
 
 const { privateKey } = await webcrypto.subtle.generateKey(
   {
@@ -23,7 +23,7 @@ const { privateKey } = await webcrypto.subtle.generateKey(
 );
 
 const jwk = await webcrypto.subtle.exportKey("jwk", privateKey);
-jwk.kid = "sig-1";
+jwk.kid = `sig-${randomBytes(8).toString("hex")}`;
 jwk.alg = "RS256";
 jwk.use = "sig";
 
