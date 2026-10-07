@@ -1,4 +1,4 @@
-# Identity — “Sign in with Johnson”
+# Identity — "Johnson ID"
 
 A minimal, passkey-only OIDC identity provider on Cloudflare Workers + D1.
 Users authenticate once with a passkey; Cloudflare Access — configured with
