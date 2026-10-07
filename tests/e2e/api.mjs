@@ -218,6 +218,31 @@ try {
     });
     check("userinfo bogus token -> 401", r.status === 401);
   }
+
+  console.log("== no-PKCE client (require_pkce=0) ==");
+  {
+    // A confidential client that opts out of PKCE: authorize without a
+    // challenge, exchange without a verifier.
+    const noPkceId = "test-nopkce-" + randomUUID().slice(0, 8);
+    const noPkceSecret = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+    wrangler("d1", "execute", "identity", "--local", "--command",
+      `INSERT INTO oidc_clients (id, name, redirect_uris, secret_hash, secret_prefix, require_pkce, created_at) VALUES ('${noPkceId}', 'NoPKCE App', '${JSON.stringify([REDIRECT_URI])}', '${sha256Hex(noPkceSecret)}', '${noPkceSecret.slice(0, 6)}', 0, ${Math.floor(Date.now() / 1000)});`);
+    const authUrl = `${BASE}/authorize?` + new URLSearchParams({
+      client_id: noPkceId, redirect_uri: REDIRECT_URI,
+      response_type: "code", scope: "openid", state: "np",
+    });
+    const r = await fetch(authUrl, { redirect: "manual", headers: sessionHeaders });
+    const loc = new URL(r.headers.get("location"));
+    check("no-PKCE authorize -> code redirect", r.status === 302 && loc.searchParams.has("code"), `${r.status} ${loc.searchParams.get("error") || ""}`);
+    const code = loc.searchParams.get("code");
+    const tr = await fetch(`${BASE}/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", authorization: "Basic " + Buffer.from(`${noPkceId}:${noPkceSecret}`).toString("base64") },
+      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }),
+    });
+    const tj = await tr.json();
+    check("no-PKCE token 200 without verifier", tr.status === 200 && typeof tj.id_token === "string", `${tr.status} ${JSON.stringify(tj).slice(0, 100)}`);
+  }
 } finally {
   server.kill();
 }
