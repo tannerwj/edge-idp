@@ -1,7 +1,4 @@
-/** ⌘K command palette: sidebar pages, quick actions, and (for admins) people/apps/clients. */
 import { $, $$ } from "./dom";
-
-/* ───────────────────────────── command palette ───────────────────────────── */
 
 interface Cmd {
   kind: string;
@@ -12,7 +9,6 @@ interface Cmd {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
-/** Validate the palette index instead of trusting its shape. */
 function toCmds(data: unknown): Cmd[] {
   if (!Array.isArray(data)) return [];
   return data.flatMap((r: unknown) => {
@@ -108,9 +104,7 @@ export function initPalette(): void {
         const res = await fetch("/admin/palette.json", { credentials: "same-origin" });
         if (res.ok) remote = toCmds(await res.json());
         render();
-      } catch {
-        /* palette still works for pages */
-      }
+      } catch {}
     }
   };
 

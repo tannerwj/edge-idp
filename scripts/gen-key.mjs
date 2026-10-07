@@ -1,14 +1,3 @@
-/**
- * Generate the RS256 signing key for a fresh instance.
- * Prints the private JWK JSON. Save a copy offline (e.g. in 1Password), then
- * store it as the Worker secret:
- *
- *   node scripts/gen-key.mjs > key.json
- *   npx cf workers secrets update SIGNING_KEY_JWK --worker identity --type secret_text --text "$(cat key.json)"
- *   rm key.json
- *
- * Losing it invalidates every issued token (see DEPLOY.md for rotation).
- */
 import { randomBytes, webcrypto } from "node:crypto";
 
 const { privateKey } = await webcrypto.subtle.generateKey(

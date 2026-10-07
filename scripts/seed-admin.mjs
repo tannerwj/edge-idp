@@ -1,13 +1,3 @@
-/**
- * Create the first admin user and print their enrollment link.
- *
- * Usage: node scripts/seed-admin.mjs --email=you@example.com --name="Your Name" [--local | --stage=staging]
- *
- * Runs SQL with the cf CLI against the D1 database in cloudflare.config.ts
- * (remote by default; --local targets the `cf dev` database in
- * .wrangler/state), so run it after migrations. The printed link uses
- * ISSUER from .dev.vars (--local) or the stage in cloudflare.config.ts.
- */
 import { sqlRows, stageArg, stageConfig } from "./cf-local.mjs";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";

@@ -1,10 +1,8 @@
-/** The MCP tool catalog. `execute` is appended by sandbox.ts. */
 import { obj } from "./common";
 import type { ToolDef } from "./common";
 import { PEOPLE_TOOLS } from "./tools-people";
 import { APP_TOOLS } from "./tools-apps";
 
-/** metrics_summary: per-tool calls, latency p50/p95, errors, execute composition. */
 const METRICS_TOOL: ToolDef = {
   name: "metrics_summary",
   description:
@@ -25,19 +23,19 @@ const METRICS_TOOL: ToolDef = {
       )
       .bind(dayAgo)
       .all<{ tool_name: string; calls: number; errors: number; avg_ms: number; max_ms: number }>();
-    // p50/p95 need ordered values; fetch durations per tool (bounded).
     const withPercentiles = await Promise.all(
       perTool.results.map(async (r) => {
-        const durs = await db
-          .prepare(
-            `SELECT duration_ms FROM mcp_calls
-             WHERE started_at >= ?1 AND tool_name = ?2 ORDER BY duration_ms ASC LIMIT 1000`,
-          )
-          .bind(dayAgo, r.tool_name)
-          .all<{ duration_ms: number }>();
-        const vals = durs.results.map((d) => d.duration_ms).sort((a, b) => a - b);
-        const pct = (p: number) =>
-          vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * p))] : 0;
+        const pct = async (p: number) => {
+          if (!r.calls) return 0;
+          const row = await db
+            .prepare(
+              `SELECT duration_ms FROM mcp_calls
+               WHERE started_at >= ?1 AND tool_name = ?2 ORDER BY duration_ms ASC LIMIT 1 OFFSET ?3`,
+            )
+            .bind(dayAgo, r.tool_name, Math.min(r.calls - 1, Math.floor(r.calls * p)))
+            .first<{ duration_ms: number }>();
+          return row?.duration_ms ?? 0;
+        };
         const topErrors = await db
           .prepare(
             `SELECT error, COUNT(*) AS n FROM mcp_calls
@@ -52,15 +50,14 @@ const METRICS_TOOL: ToolDef = {
           errors: r.errors,
           latency_ms: {
             avg: Math.round(r.avg_ms),
-            p50: pct(0.5),
-            p95: pct(0.95),
+            p50: await pct(0.5),
+            p95: await pct(0.95),
             max: r.max_ms,
           },
           top_errors: topErrors.results,
         };
       }),
     );
-    // Execute composition: how many inner calls per execute run.
     const execStats = await db
       .prepare(
         `SELECT COUNT(*) AS runs FROM mcp_calls

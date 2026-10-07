@@ -1,29 +1,11 @@
 import type { Env } from "./config";
 import { base64url, nowSec } from "./util";
 
-/**
- * Per-request instance config, so a one-click install (Deploy to Cloudflare
- * button) runs with nothing to configure:
- *
- * - Before setup, ISSUER falls back to the request's own origin. Setup pins
- *   that origin in D1; later requests use it across routes and aliases.
- *   Set an explicit ISSUER before enrollment if using a custom domain.
- * - RP_NAME falls back to "Identity".
- * - With no SIGNING_KEY_JWK secret, a key is generated and encrypted in D1
- *   using the high-entropy SETUP_TOKEN Worker secret. Reading D1 alone must
- *   not disclose signing authority. The reference instance's secret wins.
- *
- * The resolved values replace the raw ones on c.env for the request, so every
- * consumer keeps reading env.ISSUER / env.SIGNING_KEY_JWK unchanged.
- */
-
 const KEY_PREFIX = "enc:v1:";
 const KEY_CONTEXT = "edge-idp signing key v1\0";
 
 function encryptionSecret(env: Env): string {
   const secret = env.SETUP_TOKEN ?? "";
-  // A 32-byte base64url token from scripts/gen-setup-token.mjs is 43 chars.
-  // Length is only a floor; operators must generate this randomly.
   if (!/^[A-Za-z0-9_-]{43,}$/.test(secret)) {
     throw new Error(
       "identity: SETUP_TOKEN must be a generated 32-byte-or-longer base64url secret for D1 key encryption",
@@ -96,8 +78,6 @@ async function generateSigningJwk(): Promise<string> {
   });
 }
 
-/** Concurrent first requests converge on one encrypted D1 row. Read each time
- * so key replacement is visible across isolates instead of cached forever. */
 async function storedSigningKey(db: D1Database, secret: string): Promise<string> {
   const read = () =>
     db.prepare("SELECT jwk FROM signing_keys WHERE id = 'current'").first<{ jwk: string }>();
@@ -115,7 +95,6 @@ async function storedSigningKey(db: D1Database, secret: string): Promise<string>
   return openKey(row.jwk, secret);
 }
 
-/** Fill in whatever the deployment left unset. Values may be missing at runtime even though Env types them. */
 export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
   const pinned = env.ISSUER
     ? null

@@ -65,7 +65,6 @@ export const dashboardAdmin = new Hono<AdminVars>();
 
 const DAY = 86400;
 
-/** 0–19 bar buckets for the sparkline CSS (data-v), scaled to the max. */
 function bars(values: number[]): { day: number; v: string; zero: boolean; n: number }[] {
   const max = Math.max(1, ...values);
   return values.map((n, day) => ({ day, v: String(Math.round((n / max) * 19)), zero: n === 0, n }));
@@ -107,7 +106,6 @@ function Stat(props: {
 
 type Attention = { tone: "warn" | "bad" | "accent"; icon: IconName; text: unknown; href: string };
 
-/** "Needs attention" cards on the overview, most actionable first. */
 function attentionItems(x: {
   update: string | null;
   admins: number;

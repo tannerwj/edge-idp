@@ -1,4 +1,3 @@
-/** The signed-in home page: app launcher, backup-passkey nudge, activity. */
 import { Hono } from "hono";
 import type { Env } from "./config";
 import { appsForUser, getCredentialsForUser, getUserGroups } from "./db";
@@ -14,7 +13,6 @@ import { viewerOf } from "./account";
 export const home = new Hono<{ Bindings: Env }>();
 
 function greeting(): string {
-  // Time-neutral on purpose: the server only knows UTC, not the viewer's clock.
   return "Welcome back";
 }
 
@@ -189,8 +187,6 @@ function SecurityCard({ creds, authTime }: { creds: WebAuthnCredential[]; authTi
     </div>
   );
 }
-
-/* ───────────────────────────── home ───────────────────────────── */
 
 home.get("/", async (c) => {
   const s = await getSession(c);

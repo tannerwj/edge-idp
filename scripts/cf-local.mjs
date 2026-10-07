@@ -1,18 +1,6 @@
-/**
- * Helpers for driving the `cf` CLI from scripts and the e2e harness.
- *
- * Workaround (cf 1.0.0-beta.13): `cf d1 … --local` prints its JSON result
- * but leaves the local Miniflare instance running, so the process never
- * exits. We read stdout until it parses as JSON, then stop the process.
- * Delete this shim when cf exits cleanly on its own.
- */
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-/**
- * One stage's values from the STAGES table in cloudflare.config.ts (single
- * source of truth): Worker name, ISSUER and D1 id.
- */
 export function stageConfig(stage = "production", configPath = "cloudflare.config.ts") {
   const src = readFileSync(configPath, "utf8");
   const start = src.indexOf(`\n  ${stage}: {`);
@@ -31,18 +19,15 @@ export function stageConfig(stage = "production", configPath = "cloudflare.confi
   };
 }
 
-/** The D1 database id for a stage. */
 export function d1Id(stage = "production") {
   return stageConfig(stage).d1Id;
 }
 
-/** `--stage=staging` from argv (default production), as cf's --mode. */
 export function stageArg(argv = process.argv) {
   const m = argv.map((a) => /^--stage=(.+)$/.exec(a)).find(Boolean);
   return m ? m[1] : "production";
 }
 
-/** Run `cf <args>` and resolve with its parsed JSON output. */
 export function cfJson(args, { timeoutMs = 60_000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn("npx", ["cf", ...args], { stdio: ["ignore", "pipe", "pipe"] });
@@ -61,9 +46,7 @@ export function cfJson(args, { timeoutMs = 60_000 } = {}) {
       if (start < 0) return;
       try {
         finish(resolve, JSON.parse(out.slice(start)));
-      } catch {
-        /* not complete yet */
-      }
+      } catch {}
     };
     const timer = setTimeout(
       () => finish(reject, new Error(`cf ${args.join(" ")} timed out\n${err.slice(-2000)}`)),
@@ -85,7 +68,6 @@ export function cfJson(args, { timeoutMs = 60_000 } = {}) {
   });
 }
 
-/** Apply migrations to local D1 state. */
 export function migrateLocal(persistTo) {
   return cfJson([
     "d1",
@@ -97,22 +79,33 @@ export function migrateLocal(persistTo) {
   ]);
 }
 
-/**
- * Run SQL against local (or remote) D1 and return the LAST statement's rows
- * as objects. cf's `d1 raw` returns columns + rows arrays.
- */
+const LOCAL_TRANSIENT = /\[10000\] Network connection lost/;
+
+async function withLocalRetry(local, run) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (e) {
+      if (!local || attempt >= 4 || !LOCAL_TRANSIENT.test(String(e))) throw e;
+      await new Promise((r) => setTimeout(r, 750 * attempt));
+    }
+  }
+}
+
 export async function sqlRows(sql, { local = true, persistTo, stage = "production" } = {}) {
-  const res = await cfJson([
-    "d1",
-    "raw",
-    d1Id(stage),
-    "--sql",
-    sql,
-    "--mode",
-    stage,
-    ...(local ? ["--local"] : []),
-    ...(local && persistTo ? ["--persist-to", persistTo] : []),
-  ]);
+  const res = await withLocalRetry(local, () =>
+    cfJson([
+      "d1",
+      "raw",
+      d1Id(stage),
+      "--sql",
+      sql,
+      "--mode",
+      stage,
+      ...(local ? ["--local"] : []),
+      ...(local && persistTo ? ["--persist-to", persistTo] : []),
+    ]),
+  );
   const last = Array.isArray(res) ? res[res.length - 1] : res;
   const { columns = [], rows = [] } = last?.results ?? {};
   return rows.map((r) => Object.fromEntries(columns.map((c, i) => [c, r[i]])));

@@ -1,8 +1,5 @@
-/** Progressive-enhancement behaviors wired through data-* attributes. */
 import makeQr from "qrcode-generator";
 import { $, $$, toast } from "./dom";
-
-/* ───────────────────────────── dialogs & forms ───────────────────────────── */
 
 export function initDialogs(): void {
   document.addEventListener("click", (ev) => {
@@ -20,7 +17,6 @@ export function initDialogs(): void {
     }
     const closer = t?.closest("[data-close]");
     if (closer) closer.closest("dialog")?.close();
-    // Click on the backdrop closes.
     if (t instanceof HTMLDialogElement && t.open) {
       const r = t.getBoundingClientRect();
       const e = ev as MouseEvent;
@@ -31,7 +27,6 @@ export function initDialogs(): void {
   $$("[data-autoopen]").forEach((el) => el.click());
   initConfirm();
 
-  // Confirm before destructive submits.
   document.addEventListener("submit", (ev) => {
     const form = ev.target;
     if (!(form instanceof HTMLFormElement)) return;
@@ -42,7 +37,6 @@ export function initDialogs(): void {
       return;
     }
     form.querySelectorAll<HTMLButtonElement>("button[type=submit]").forEach((b) => {
-      // Keep the clicked button's name/value in the submission, then lock.
       setTimeout(() => (b.disabled = true), 0);
     });
   });
@@ -87,8 +81,6 @@ function submitConfirmed(form: HTMLFormElement, submitter: HTMLElement | null): 
   form.dataset.confirmed = "1";
   form.requestSubmit(submitter instanceof HTMLButtonElement ? submitter : undefined);
 }
-
-/* ───────────────────────────── copy / share / qr ───────────────────────────── */
 
 export function initCopy(): void {
   document.addEventListener("click", (ev) => void onCopyClick(ev));
@@ -160,8 +152,6 @@ function qrSvg(text: string): SVGSVGElement {
   return svg;
 }
 
-/* ───────────────────────────── time ───────────────────────────── */
-
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const dtf = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -184,8 +174,6 @@ export function initTimes(): void {
   });
 }
 
-/* ───────────────────────────── color mode ───────────────────────────── */
-
 export function initMode(): void {
   $$("[data-mode-set]").forEach((btn) =>
     btn.addEventListener("click", () => {
@@ -198,10 +186,7 @@ export function initMode(): void {
   );
 }
 
-/* ───────────────────────────── tables ───────────────────────────── */
-
 export function initTables(): void {
-  // Whole-row links (keyboard users still have the real <a> in the row).
   document.addEventListener("click", (ev) => {
     const t = ev.target instanceof Element ? ev.target : null;
     if (!t || t.closest("a, button, input, select, textarea, label, summary, form")) return;

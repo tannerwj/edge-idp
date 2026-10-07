@@ -26,15 +26,12 @@ test("api responses carry security headers too", async () => {
 test("unknown client fails as a page, not a redirect", async () => {
   const url = `${base}/authorize?client_id=nope&redirect_uri=https://evil.test/x&response_type=code`;
   const res = await fetch(url, { redirect: "manual" });
-  // Without a valid client we cannot safely redirect the error anywhere.
   expect(res.status).toBe(400);
   const body = await res.text();
   expect(body).toContain("unknown client_id");
 });
 
 test("unregistered redirect uri fails as a page", async () => {
-  // Use a real client id shape; the client won't exist so this hits
-  // invalid_client first — the point is it never redirects to evil.test.
   const url = `${base}/authorize?client_id=x&redirect_uri=https://evil.test/x&response_type=code`;
   const res = await fetch(url, { redirect: "manual" });
   expect(res.status).toBe(400);
@@ -47,7 +44,6 @@ test("admin pages fail closed without a session", async () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location") ?? "").toMatch(/^\/login\?next=/);
   }
-  // Trailing slash normalizes before auth.
   const slash = await fetch(`${base}/admin/`, { redirect: "manual" });
   expect(slash.status).toBe(301);
 });
@@ -75,8 +71,6 @@ test("token endpoint rejects a bogus client", async () => {
 });
 
 test("cross-origin form posts are refused", async () => {
-  // A sibling subdomain is "same-site", so SameSite=Lax alone would let it
-  // post forms here. The same-origin guard must refuse before any handler.
   const res = await fetch(`${base}/logout`, {
     method: "POST",
     redirect: "manual",

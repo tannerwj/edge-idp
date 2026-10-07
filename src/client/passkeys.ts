@@ -1,4 +1,3 @@
-/** Passkey ceremonies: sign-in (button + autofill), enrollment, add-a-key. */
 import {
   startRegistration,
   startAuthentication,
@@ -9,8 +8,6 @@ import {
 } from "@simplewebauthn/browser";
 
 import { $, $$ } from "./dom";
-
-/* ───────────────────────────── passkeys ───────────────────────────── */
 
 function status(elId: string, msg: string, kind: "" | "error" | "ok" = ""): void {
   const el = $(elId);
@@ -60,7 +57,6 @@ const isAuthOptions = (v: unknown): v is PublicKeyCredentialRequestOptionsJSON =
 const isRegOptions = (v: unknown): v is PublicKeyCredentialCreationOptionsJSON =>
   isRecord(v) && typeof v.challenge === "string" && isRecord(v.rp) && isRecord(v.user);
 
-/** One login attempt. Returns true when the session cookie is set. */
 async function attemptLogin(
   email: string | undefined,
   autofill: boolean,
@@ -100,7 +96,6 @@ export async function initLogin(): Promise<void> {
     status("login-status", "Signed in — one moment…", "ok");
     window.location.href = next;
   };
-  // Conditional mediation: passkeys offered inline in the email field.
   if (await browserSupportsWebAuthnAutofill()) {
     attemptLogin(undefined, true, stepUp)
       .then((ok) => {

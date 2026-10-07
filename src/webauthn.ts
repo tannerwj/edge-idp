@@ -26,26 +26,6 @@ import {
 } from "./webauthn-challenges";
 import type { StoredChallenge } from "./webauthn-challenges";
 
-/**
- * Passkey ceremonies (SimpleWebAuthn v14, pure WebCrypto — no Node-only deps).
- *
- * Threat notes:
- * - Challenges are single-use, 5-minute, server-stored (D1), and bound to the
- *   user they were issued for. takeChallenge() deletes on read and every
- *   verify step re-checks the user binding, so a challenge can never be
- *   replayed or swapped between users.
- * - expectedOrigin is the exact ISSUER origin and expectedRPID its hostname.
- *   A credential registered on a lookalike domain can never verify here.
- * - supportedAlgorithmIDs is pinned to [-7 (ES256), -257 (RS256)]: v14
- *   otherwise offers ML-DSA first on runtimes with PQC WebCrypto, which would
- *   make behavior runtime-dependent.
- * - User verification is required: possession or a touch alone must not
- *   authenticate to this root-of-trust service.
- * - Counters: synced passkeys report counter=0 forever, so we only enforce
- *   strict counter increments for credentials that have previously reported a
- *   nonzero counter (the standard exemption).
- */
-
 export async function validEnrollmentToken(
   db: D1Database,
   token: string,
@@ -71,11 +51,6 @@ function credIdB64(cred: WebAuthnCredential): string {
 
 export const webauthn = new Hono<{ Bindings: Env }>();
 
-/**
- * Registration options. Two doors in:
- *  1. enrollmentToken — a new user enrolling their first passkey;
- *  2. an active session — a signed-in user adding another passkey.
- */
 webauthn.post("/register/options", async (c) => {
   const body = await c.req.json<{ enrollmentToken?: string }>();
   let user: User | null = null;
@@ -89,7 +64,6 @@ webauthn.post("/register/options", async (c) => {
   } else {
     const session = await getSession(c);
     if (!session) return c.json({ error: "unauthorized" }, 401);
-    // Session age alone is insufficient: require an explicit passkey recheck.
     if (!hasRecentStepUp(session)) {
       return c.json({ error: "reauth_required" }, 401);
     }
@@ -124,7 +98,6 @@ webauthn.post("/register/options", async (c) => {
   return c.json(options);
 });
 
-/** The enrollment token at verify time must match the challenge's binding. */
 async function checkEnrollmentBinding(
   db: D1Database,
   enrollmentToken: string | undefined,
@@ -145,7 +118,6 @@ type RegistrationInfo = NonNullable<
   Awaited<ReturnType<typeof verifyRegistrationResponse>>["registrationInfo"]
 >;
 
-/** Persist a verified credential. Counter always starts at 0. */
 async function persistCredential(
   db: D1Database,
   userId: string,
@@ -179,10 +151,6 @@ async function persistCredential(
   return id;
 }
 
-/**
- * Burn an enrollment token atomically BEFORE storing the credential, so two
- * racing ceremonies on one link can't both enroll. False if already used.
- */
 async function burnEnrollmentToken(db: D1Database, token: string): Promise<boolean> {
   const burned = await db
     .prepare("UPDATE enrollment_tokens SET used = 1 WHERE token_hash = ?1 AND used = 0")
@@ -191,7 +159,6 @@ async function burnEnrollmentToken(db: D1Database, token: string): Promise<boole
   return burned.meta.changes > 0;
 }
 
-/** User-chosen label, else the provider's name (AAGUID), else a generic one. */
 function credentialName(requested: string | undefined, info: RegistrationInfo): string {
   const deviceType = info.credentialDeviceType ?? "singleDevice";
   return (
@@ -215,9 +182,6 @@ webauthn.post("/register/verify", async (c) => {
   if (!stored || stored.type !== "registration" || !stored.userId) {
     return c.json({ error: "invalid_challenge" }, 400);
   }
-  // The enrollment token presented at verify time must be the same one the
-  // challenge was issued for — otherwise an attacker could piggyback their
-  // own ceremony onto someone else's enrollment link.
   if (!(await checkEnrollmentBinding(c.env.DB, body.enrollmentToken, stored))) {
     return c.json({ error: "invalid_enrollment_token" }, 400);
   }
@@ -264,7 +228,6 @@ webauthn.post("/register/verify", async (c) => {
     detail: { name, backedUp: info.credentialBackedUp },
   });
 
-  // Enrolling (first or additional key) signs the user in — no extra prompt.
   const raw = await createSession(
     c.env.DB,
     user.id,
@@ -276,20 +239,11 @@ webauthn.post("/register/verify", async (c) => {
   return c.json({ ok: true });
 });
 
-/**
- * Authentication options. With an email we scope to that user's credentials;
- * without one the browser offers discoverable (autofill) credentials.
- */
 webauthn.post("/auth/options", async (c) => {
   const body = await c.req.json<{ email?: string }>();
   let user: User | null = null;
   if (body.email) {
     user = await getUserByEmail(c.env.DB, body.email);
-    // Threat note: this DOES reveal whether an email has passkeys (the allow
-    // list is empty for unknown emails). Accepted: the email path exists only
-    // for non-discoverable security keys, and there is no password to stuff.
-    // The default sign-in button uses discoverable credentials and sends no
-    // email at all.
   }
   const rpID = rpIdFromIssuer(c.env.ISSUER);
   const creds = user ? await getCredentialsForUser(c.env.DB, user.id) : [];
@@ -309,10 +263,6 @@ webauthn.post("/auth/options", async (c) => {
   return c.json(options);
 });
 
-/**
- * Resolve the authenticating user: explicit email, else the challenge
- * binding, else the userHandle from a discoverable credential.
- */
 async function resolveAuthUser(
   db: D1Database,
   email: string | undefined,
@@ -383,8 +333,6 @@ webauthn.post("/auth/verify", async (c) => {
     if (!prior || prior.user.id !== user.id) return c.json({ error: "auth_failed" }, 401);
   }
 
-  // Counter discipline: only credentials that have previously reported a
-  // nonzero counter are held to strict increments (synced passkeys sit at 0).
   const newCounter = verification.authenticationInfo.newCounter;
   if (cred.counter > 0 && newCounter <= cred.counter) {
     await audit(c.env.DB, "PASSKEY_COUNTER_REGRESSION", {

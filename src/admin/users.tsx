@@ -224,7 +224,6 @@ usersAdmin.get("/", async (c) => {
   );
 });
 
-/** One-time reveal of a fresh enrollment link (never stored in plaintext). */
 export async function revealEnrollment(c: ACtx, userId: string, link: string, fresh: boolean) {
   const u = await getUser(c.env.DB, userId);
   const name = u?.name ?? "them";

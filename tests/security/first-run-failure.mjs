@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Local-only first-run partial failure and empty-users recovery check. */
 import { randomBytes } from "node:crypto";
 import { startPortable } from "../e2e/instances.mjs";
 
@@ -8,7 +7,6 @@ const setupToken = randomBytes(32).toString("base64url");
 const inst = await startPortable({ prefix: "first-run", port, vars: { SETUP_TOKEN: setupToken } });
 try {
   await inst.start();
-  // Simulate a dependency failing after the user insert and before link minting.
   inst.wrangler(["d1", "execute", "DB", "--local", "--command", "DROP TABLE audit_log"], false);
   const attempted = await fetch(`${inst.base}/setup`, {
     method: "POST",

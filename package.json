@@ -9,7 +9,7 @@
     "dev": "npm run build:client && cf dev",
     "build:client": "node scripts/build-client.mjs",
     "test": "vitest run",
-    "test:e2e": "node tests/e2e/full.mjs",
+    "test:e2e": "node tests/e2e/full.mjs && node tests/e2e/api.mjs",
     "test:e2e:setup": "node tests/e2e/setup.mjs",
     "test:e2e:staging": "E2E_STAGE=staging node tests/e2e/full.mjs",
     "test:security": "for f in tests/security/*.mjs; do node \"$f\" || exit 1; done",

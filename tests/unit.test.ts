@@ -61,10 +61,14 @@ describe("emailKey", () => {
   it("lowercases and trims", () => {
     expect(emailKey("  Ada@Example.COM ")).toBe("ada@example.com");
   });
+
+  it("folds only ASCII, like SQLite lower(), so the stored address always matches", () => {
+    expect(emailKey(" Émile@Example.com ")).toBe("Émile@example.com");
+    expect(emailKey("ÖSTEN@EXAMPLE.SE")).toBe("Östen@example.se");
+  });
 });
 
 describe("newerVersion", () => {
-  // Expected values by hand from semver ordering of MAJOR.MINOR.PATCH.
   it("compares numerically, not lexically", () => {
     expect(newerVersion("2.10.0", "2.9.9")).toBe(true);
     expect(newerVersion("2.9.9", "2.10.0")).toBe(false);

@@ -1,11 +1,9 @@
-/** MCP tools: users and groups. */
 import { getUserGroups, listGroups, listUsers } from "../db";
 import * as ops from "../ops";
 import { USER_REF, groupByRef, obj, str, strList, userByRef } from "./common";
 import type { ToolDef } from "./common";
 
 export const PEOPLE_TOOLS: ToolDef[] = [
-  /* ── users ── */
   {
     name: "users_list",
     write: false,
@@ -213,7 +211,6 @@ export const PEOPLE_TOOLS: ToolDef[] = [
       return { ok: true };
     },
   },
-  /* ── groups ── */
   {
     name: "groups_list",
     write: false,

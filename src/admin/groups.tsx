@@ -9,7 +9,6 @@ import { Icon } from "../ui/icons";
 
 export const groupsAdmin = new Hono<AdminVars>();
 
-/** Which clients/apps reference each group name. */
 async function usage(db: D1Database) {
   const [clients, apps] = await Promise.all([listClients(db), listApps(db)]);
   return (name: string) => ({

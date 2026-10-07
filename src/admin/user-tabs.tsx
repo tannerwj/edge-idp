@@ -1,4 +1,3 @@
-/** Tab panels for the admin user-detail page. */
 import type { getCredentialsForUser, Group, User } from "../db";
 import { Empty, GroupPicker, PostButton, Time } from "../ui/components";
 import { deviceLabel, Feed } from "../ui/feed";

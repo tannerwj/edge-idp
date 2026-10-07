@@ -5,32 +5,6 @@ import { audit, getClient, getSetting, rowToClient } from "./db";
 import type { OidcClient } from "./db";
 import { nowSec, randomToken, sha256Hex } from "./util";
 
-/**
- * Where OAuth clients come from, beyond the admin UI:
- *
- * 1. Dynamic Client Registration (RFC 7591) at POST /register — what Claude
- *    Code, Cursor and most MCP clients use today.
- * 2. Client ID Metadata Documents (draft-ietf-oauth-client-id-metadata-
- *    document) — the client_id IS an https URL serving the client's metadata.
- *    claude.ai and newer MCP clients prefer this: no registration round trip,
- *    and the client's identity is anchored to a domain the user can see.
- *
- * Threat notes:
- * - Dynamic clients are third-party by definition: they always get the
- *   consent screen (skip_consent = 0), are public (PKCE, no secret) unless
- *   they ask for a secret, and only admins can authorize them (enforced in
- *   oidc.ts) until an admin assigns groups.
- * - CIMD fetches are SSRF-shaped: https only, no credentials, no redirects,
- *   hard size + time limits, hostname must not be an IP literal or
- *   localhost, and the document's client_id must equal the URL exactly.
- *   (Workers' fetch can't reach private networks, which covers DNS names
- *   that resolve to RFC 1918 space.) Unsupported extra grant types in the
- *   document (claude.ai lists jwt-bearer) are ignored, not rejected.
- * - Redirect URIs: https, http loopback (any port, RFC 8252 §7.3), or a
- *   private-use scheme for native apps (cursor://, vscode://). Dangerous
- *   schemes are rejected outright.
- */
-
 const CIMD_MAX_BYTES = 5 * 1024;
 const CIMD_TIMEOUT_MS = 5000;
 const CIMD_DEFAULT_TTL = 24 * 3600;
@@ -55,7 +29,6 @@ function isLoopbackHost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
 
-/** Is this an acceptable redirect URI for a dynamic/CIMD client? */
 export function validRedirectUri(raw: string): boolean {
   let u: URL;
   try {
@@ -69,11 +42,6 @@ export function validRedirectUri(raw: string): boolean {
   return !BLOCKED_SCHEMES.has(u.protocol) && /^[a-z][a-z0-9+.-]*:$/.test(u.protocol);
 }
 
-/**
- * Exact-match a requested redirect_uri against the registered list, with
- * the one RFC 8252 exception: loopback http URIs match on any port, because
- * native apps bind an ephemeral port per sign-in.
- */
 export function redirectMatches(registered: string[], requested: string): boolean {
   if (registered.includes(requested)) return true;
   let req: URL;
@@ -98,13 +66,10 @@ export function redirectMatches(registered: string[], requested: string): boolea
   });
 }
 
-/** A client_id that looks like a CIMD URL. */
 export function isCimdClientId(id: string): boolean {
   if (!id.startsWith("https://")) return false;
   try {
     const u = new URL(id);
-    // draft-ietf-oauth-client-id-metadata-document-02 §3: path required, no
-    // userinfo/fragment/dot segments; compared as a plain string.
     return (
       u.toString() === id &&
       u.pathname.length > 1 &&
@@ -121,9 +86,9 @@ export function isCimdClientId(id: string): boolean {
 
 function cimdHostAllowed(host: string): boolean {
   if (isLoopbackHost(host)) return false;
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false; // IPv4 literal
-  if (host.startsWith("[")) return false; // IPv6 literal
-  if (!host.includes(".")) return false; // single-label / intranet
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
+  if (host.startsWith("[")) return false;
+  if (!host.includes(".")) return false;
   return true;
 }
 
@@ -148,7 +113,6 @@ function cacheTtl(res: Response): number {
   return Math.min(Math.max(ttl, CIMD_MIN_TTL), 7 * 86400);
 }
 
-/** Fetch + validate a Client ID Metadata Document. Throws a short reason. */
 async function fetchCimd(clientId: string): Promise<{
   name: string;
   redirectUris: string[];
@@ -177,8 +141,6 @@ async function fetchCimd(clientId: string): Promise<{
   if ("client_secret" in d || "client_secret_expires_at" in d) {
     throw new Error("metadata must not contain a client secret");
   }
-  // CIMD clients authenticate with nothing (public) or private_key_jwt; we
-  // don't support the latter, and a shared secret is meaningless here.
   const method = d.token_endpoint_auth_method ?? "none";
   if (method !== "none")
     throw new Error(`unsupported token_endpoint_auth_method: ${JSON.stringify(method)}`);
@@ -197,11 +159,6 @@ async function fetchCimd(clientId: string): Promise<{
   };
 }
 
-/**
- * Resolve a client_id to a client: a stored row, or a CIMD URL fetched (and
- * cached as a row) on demand. Returns an error string for display when a
- * CIMD document can't be used.
- */
 export async function resolveClient(
   db: D1Database,
   clientId: string,
@@ -219,8 +176,6 @@ export async function resolveClient(
   try {
     meta = await fetchCimd(clientId);
   } catch (e) {
-    // A short outage may use cached metadata, but a dead publisher cannot
-    // retain redirects and display names indefinitely.
     if (stored && (stored.metadata_expires_at ?? 0) + 86400 > nowSec()) return { client: stored };
     return {
       error: `Couldn't load the client's metadata: ${e instanceof Error ? e.message : "unknown error"}.`,
@@ -254,7 +209,6 @@ export async function resolveClient(
   return { client: rowToClient(row) };
 }
 
-/** RFC 7591 Dynamic Client Registration. */
 export const registration = new Hono<{ Bindings: Env }>();
 
 registration.post("/register", async (c) => {

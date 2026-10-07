@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/**
- * One-click install, end to end: the wrangler.jsonc template exactly as the
- * Deploy to Cloudflare button ships it (no ISSUER, no signing key, no
- * users, only SETUP_TOKEN), run with `wrangler dev` from a temp copy that has
- * no cloudflare.config.ts.
- *
- * Checks: issuer derived from the host, signing key generated once and
- * persisted across restarts, /login → /setup, wrong token refused, right
- * token → passkey enrollment → admin, /setup gone afterwards, no `execute`
- * tool without a Worker Loader. A second boot adds the loader binding (the
- * template's documented opt-in) to prove code mode works with no ISSUER set.
- *
- * Usage: npm run test:e2e:setup   (E2E_KEEP=1 keeps the temp dir)
- */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";

@@ -14,11 +14,9 @@ import { availableUpdate, upstreamLinks, upstreamRepo } from "../upstream";
 
 export const settingsAdmin = new Hono<AdminVars>();
 
-/** On/off status badge. */
 const ok = (on: boolean, yes: string, no: string) =>
   on ? <span class="badge ok dot">{yes}</span> : <span class="badge">{no}</span>;
 
-/** Version, update status and the way to send feedback upstream. */
 function About(props: {
   version: string;
   repo: string | null;

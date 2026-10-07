@@ -1,4 +1,3 @@
-/** Client detail page body + small client display helpers. */
 import type { Group, OidcClient } from "../db";
 import * as ops from "../ops";
 import { Callout, CopyField, GroupPicker, PageHead, PostButton, Time } from "../ui/components";

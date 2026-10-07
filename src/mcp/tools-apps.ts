@@ -1,4 +1,3 @@
-/** MCP tools: OAuth clients, launcher apps, audit log, settings. */
 import { audit, getSetting, listApps, listClients, setSetting } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
@@ -6,7 +5,6 @@ import { clientByRef, obj, str, strList } from "./common";
 import type { ToolDef } from "./common";
 
 export const APP_TOOLS: ToolDef[] = [
-  /* ── OAuth / OIDC clients ── */
   {
     name: "clients_list",
     write: false,
@@ -120,7 +118,6 @@ export const APP_TOOLS: ToolDef[] = [
       return { ok: true };
     },
   },
-  /* ── launcher apps ── */
   {
     name: "apps_list",
     write: false,
@@ -169,7 +166,6 @@ export const APP_TOOLS: ToolDef[] = [
       return { ok: true };
     },
   },
-  /* ── audit / settings ── */
   {
     name: "audit_query",
     write: false,

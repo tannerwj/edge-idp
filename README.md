@@ -79,19 +79,25 @@ nothing behind):
 ```bash
 npm run typecheck && npm run gates   # types, lint, complexity, dead code, secrets, …
 npm test                             # unit tests (parsers / algorithms only)
-npm run test:e2e                     # full flow: passkeys, admin UI, OIDC, OAuth/MCP, regressions
+npm run test:e2e                     # full flow (passkeys, admin UI, OIDC, OAuth/MCP) + OIDC API suite
 npm run test:e2e:setup               # the one-click install path (wrangler.jsonc, /setup)
 npm run test:security                # security-review regressions (tests/security)
 npm run deploy:check                 # build + validate bindings without uploading
 npm run smoke                        # read-only checks against the live deployment
 ```
 
+What each suite covers and needs: [docs/TESTING.md](docs/TESTING.md).
+
 ## Layout
+
+A file-by-file module map and the reasoning behind the design are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
 src/
   index.tsx          app assembly: security headers, same-origin guard, rate limits, cron
-  oidc.tsx           discovery, /authorize (+consent), /token, /userinfo, /revoke, /end-session
+  oidc.tsx           discovery, /authorize (+consent), /end-session
+  oauth-token.ts     /token, /userinfo, /revoke
   oauth-clients.ts   CIMD resolution, dynamic client registration, redirect matching
   webauthn.ts        passkey ceremonies + enrollment
   session.ts         __Host- cookie sessions (hashed at rest)
@@ -117,7 +123,7 @@ tests/
   smoke/             read-only post-deploy checks (tester-army/e2e)
   unit.test.ts       unit tests
 scripts/             build, deploy, migrations, keys, seeding, smoke runner
-docs/                threat model; archive/ holds superseded research and reviews
+docs/                threat model, architecture, testing; archive/ holds superseded research and reviews
 ```
 
 ## Feedback and contributing

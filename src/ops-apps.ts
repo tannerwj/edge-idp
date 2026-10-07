@@ -1,4 +1,3 @@
-/** Domain operations for OAuth clients, launcher apps and API tokens (see ops.ts). */
 import { audit } from "./db";
 import type { OidcClient } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
@@ -10,8 +9,6 @@ export const ENVIRONMENTS = ["production", "staging", "development"] as const;
 function knownEnv(v: string | undefined): v is (typeof ENVIRONMENTS)[number] {
   return (ENVIRONMENTS as readonly (string | undefined)[]).includes(v);
 }
-
-/* ───────────────────────────── clients ───────────────────────────── */
 
 export interface ClientInput {
   name: string;
@@ -117,12 +114,9 @@ export async function rotateClientSecret(
 }
 
 export async function deleteClient(db: D1Database, id: string, a: Actor): Promise<void> {
-  // auth_codes / refresh_tokens / oauth_grants cascade.
   await db.prepare("DELETE FROM oidc_clients WHERE id = ?1").bind(id).run();
   await audit(db, "CLIENT_DELETED", { clientId: id, detail: by(a) });
 }
-
-/* ───────────────────────────── apps ───────────────────────────── */
 
 export interface AppInput {
   name: string;
@@ -217,8 +211,6 @@ export async function deleteApp(db: D1Database, id: string, a: Actor): Promise<v
   await audit(db, "APP_DELETED", { detail: by(a, { app: id }) });
 }
 
-/* ───────────────────────────── API tokens ───────────────────────────── */
-
 export async function createApiToken(
   db: D1Database,
   input: { name: string; scope: "admin" | "read"; expiresInDays: number | null },
@@ -226,7 +218,6 @@ export async function createApiToken(
 ): Promise<string> {
   const name = input.name.trim().slice(0, 60);
   if (!name) throw new OpError("Name is required.");
-  // Prefix makes leaked tokens greppable by secret scanners.
   const raw = `eidp_${randomToken(32)}`;
   const now = nowSec();
   await db
