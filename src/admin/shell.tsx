@@ -22,7 +22,7 @@ export function fmt(ts: number | null): string {
   return new Date(ts * 1000).toLocaleString();
 }
 
-const TABS: [string, string][] = [
+const NAV: [string, string][] = [
   ["dashboard", "Dashboard"],
   ["users", "Users"],
   ["groups", "Groups"],
@@ -33,6 +33,25 @@ const TABS: [string, string][] = [
   ["tokens", "API Tokens"],
   ["mcp", "MCP"],
 ];
+
+function navLinks(active: string) {
+  return (
+    <>
+      {NAV.map(([id, label]) => (
+        <a
+          key={id}
+          href={id === "dashboard" ? "/admin" : `/admin/${id}`}
+          class={active === id ? "nav-link active" : "nav-link"}
+        >
+          {label}
+        </a>
+      ))}
+      <a class="nav-link" href="/account">
+        My account
+      </a>
+    </>
+  );
+}
 
 export function page(
   rpName: string,
@@ -58,39 +77,44 @@ export function page(
         <script src={`/webauthn.js?v=${BUILD_HASH}`} defer></script>
       </head>
       <body>
-        <main class="shell wide">
-          <div class="card">
+        <div class="admin-layout">
+          {/* Mobile top bar with hamburger */}
+          <header class="mobile-bar">
+            <label class="hamburger" for="nav-toggle" aria-label="Menu">
+              <span></span>
+              <span></span>
+              <span></span>
+            </label>
+            <span class="brand-name">{rpName} · Admin</span>
+            <span class="muted small">{adminName}</span>
+          </header>
+          <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+          {/* Sidebar (desktop) / drawer (mobile) */}
+          <aside class="sidebar">
             <div class="brand">
               <span class="brand-mark" aria-hidden="true">
                 ◆
               </span>
               <span class="brand-name">{rpName} · Admin</span>
-              <span class="muted small right">{adminName}</span>
             </div>
-            <nav class="tabs">
-              {TABS.map(([id, label]) => (
-                <a
-                  key={id}
-                  href={id === "dashboard" ? "/admin/" : `/admin/${id}`}
-                  class={active === id ? "tab active" : "tab"}
-                >
-                  {label}
-                </a>
-              ))}
-              <a class="tab" href="/account">
-                My account
-              </a>
-            </nav>
-            {children}
+            <nav class="nav">{navLinks(active)}</nav>
+            <div class="sidebar-foot">
+              <span class="muted small">{adminName}</span>
+            </div>
+          </aside>
+          <label class="scrim" for="nav-toggle"></label>
+          {/* Main content */}
+          <main class="content">
+            <div class="card">{children}</div>
             <footer class="admin-foot">
               <span class="muted small">
-                <a href="https://github.com/tannerwj/identity/issues" target="_blank" rel="noopener">
+                <a href="https://github.com/tannerwj/edge-idp/issues" target="_blank" rel="noopener">
                   Feedback & feature requests
                 </a>
               </span>
             </footer>
-          </div>
-        </main>
+          </main>
+        </div>
       </body>
     </html>
   );
