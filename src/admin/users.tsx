@@ -1,390 +1,278 @@
 import { Hono } from "hono";
-import {
-  audit,
-  getCredentialsForUser,
-  getUserByEmail,
-  listUsers,
-} from "../db";
-import { newId, nowSec } from "../util";
-import type { AdminVars } from "./shell";
-import { field, mintEnrollmentLink, p } from "./shell";
+import { getUser, listGroups, listUsers } from "../db";
+import type { Group } from "../db";
+import * as ops from "../ops";
+import type { AdminVars, ACtx } from "./shell";
+import { act, actor, field, fields, page } from "./shell";
+import { Avatar, CopyField, Dialog, Empty, GroupChips, GroupPicker, PageHead, Time } from "../ui/components";
+import { Icon } from "../ui/icons";
+
+function InviteDialog({ groups }: { groups: Group[] }) {
+  return (
+    <Dialog id="invite" sheet title="Invite a person" lede="They'll get a one-time link (valid 7 days) to create a passkey." action="/admin/users" submit="Create invite link">
+      <label class="field">
+        <span class="label">Name</span>
+        <input name="name" required maxLength={120} placeholder="Ada Lovelace" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="label">Email</span>
+        <input name="email" type="email" required maxLength={254} placeholder="ada@example.com" autocomplete="off" />
+        <span class="hint">Apps see this address. It's not used to sign in — passkeys are.</span>
+      </label>
+      <div class="field">
+        <span class="label">Groups</span>
+        <GroupPicker name="groups" all={groups} selected={[]} />
+      </div>
+      <label class="check">
+        <input type="checkbox" name="isAdmin" value="1" />
+        <span>
+          Make admin
+          <span class="sub">Can manage people, apps and settings, and use the admin API.</span>
+        </span>
+      </label>
+    </Dialog>
+  );
+}
 
 export const usersAdmin = new Hono<AdminVars>();
 
+const FILTERS = ["all", "admins", "pending", "disabled"] as const;
+type Filter = (typeof FILTERS)[number];
+
 usersAdmin.get("/", async (c) => {
-  const users = await listUsers(c.env.DB);
-  const rows = await Promise.all(
-    users.map(async (u) => ({
-      u,
-      keys: (await getCredentialsForUser(c.env.DB, u.id)).length,
-    })),
-  );
-  const { results: groups } = await c.env.DB.prepare(
-    `SELECT g.id, g.name, g.description, COUNT(m.user_id) AS members
-     FROM groups g LEFT JOIN group_members m ON m.group_id = g.id
-     GROUP BY g.id ORDER BY g.name ASC`,
-  ).all<{ id: string; name: string; description: string | null; members: number }>();
-  return await p(
+  const db = c.env.DB;
+  const filter: Filter = FILTERS.find((f) => f === c.req.query("filter")) ?? "all";
+  const [users, groups, { results: keys }, { results: members }] = await Promise.all([
+    listUsers(db),
+    listGroups(db),
+    db.prepare("SELECT user_id, COUNT(*) AS n FROM webauthn_credentials GROUP BY user_id").all<{ user_id: string; n: number }>(),
+    db.prepare("SELECT m.user_id, g.name FROM group_members m JOIN groups g ON g.id = m.group_id ORDER BY g.name").all<{ user_id: string; name: string }>(),
+  ]);
+  const keyCount = new Map(keys.map((k) => [k.user_id, k.n]));
+  const groupsOf = (id: string) => members.filter((m) => m.user_id === id).map((m) => m.name);
+  const shown = users.filter((u) => {
+    if (filter === "admins") return !!u.is_admin;
+    if (filter === "pending") return !keyCount.get(u.id) && !u.disabled;
+    if (filter === "disabled") return !!u.disabled;
+    return true;
+  });
+  const n = {
+    all: users.length,
+    admins: users.filter((u) => u.is_admin).length,
+    pending: users.filter((u) => !keyCount.get(u.id) && !u.disabled).length,
+    disabled: users.filter((u) => u.disabled).length,
+  };
+  return await page(
     c,
-    "users",
-    "Users & Groups",
+    { active: "users", title: "People" },
     <>
-      <form method="post" action="/admin/users" class="row wrap">
-        <label class="field inline">
-          <span>Name</span>
-          <input name="name" required maxLength={120} placeholder="Ada Lovelace" />
-        </label>
-        <label class="field inline">
-          <span>Email</span>
-          <input name="email" type="email" required maxLength={254} />
-        </label>
-        <button class="btn primary" type="submit">
-          Create user
-        </button>
-      </form>
-            <div class="table-wrap">
-<table class="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Passkeys</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ u, keys }) => (
-            <tr key={u.id}>
-              <td>
-                <a href={`/admin/users/${u.id}`}>{u.name}</a>
-                {u.is_admin ? <span class="pill">admin</span> : null}
-              </td>
-              <td class="muted">{u.email}</td>
-              <td>{keys}</td>
-              <td>{u.disabled ? "disabled" : "active"}</td>
-              <td class="actions">
-                <form method="post" action={`/admin/users/${u.id}/enrollment`}>
-                  <button
-                    class="btn ghost small"
-                    type="submit"
-                    title="New enrollment link (first setup or recovery)"
-                  >
-                    Enrollment link
-                  </button>
-                </form>
-                <form method="post" action={`/admin/users/${u.id}/revoke-keys`}>
-                  <button
-                    class="btn ghost small"
-                    type="submit"
-                    title="Delete all passkeys (account recovery)"
-                  >
-                    Revoke keys
-                  </button>
-                </form>
-                <form
-                  method="post"
-                  action={`/admin/users/${u.id}/${u.disabled ? "enable" : "disable"}`}
-                >
-                  <button class="btn ghost small" type="submit">
-                    {u.disabled ? "Enable" : "Disable"}
-                  </button>
-                </form>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-      <h2>Groups</h2>
-      <form method="post" action="/admin/users/groups" class="row wrap">
-        <label class="field inline">
-          <span>Name</span>
-          <input name="name" required maxLength={60} placeholder="family" pattern="[a-z0-9_-]+" />
-        </label>
-        <label class="field inline">
-          <span>Description</span>
-          <input name="description" maxLength={200} placeholder="Optional" />
-        </label>
-        <button class="btn primary" type="submit">
-          Create group
-        </button>
-      </form>
-      {groups.length === 0 ? (
-        <p class="muted small">No groups yet.</p>
-      ) : (
-        <div class="table-wrap">
-          <table class="table compact">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Description</th>
-                <th>Members</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((g) => (
-                <tr key={g.id}>
-                  <td class="mono small">{g.name}</td>
-                  <td class="muted small">{g.description ?? "—"}</td>
-                  <td>{g.members}</td>
-                  <td class="actions">
-                    <form method="post" action={`/admin/users/groups/${g.id}/delete`}>
-                      <button class="btn danger ghost small" type="submit">
-                        Delete
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <PageHead
+        title="People"
+        lede="Everyone who can sign in. Invite someone and they'll set up a passkey from a one-time link."
+        actions={
+          <button class="btn primary" type="button" data-open="invite" {...(c.req.query("invite") ? { "data-autoopen": "" } : {})}>
+            <Icon name="userPlus" size="sm" />
+            Invite person
+          </button>
+        }
+      />
+      <div class="filters">
+        <div class="input-search">
+          <Icon name="search" size="sm" />
+          <input type="search" placeholder="Filter by name, email or group…" data-filter-table="people" aria-label="Filter people" />
         </div>
-      )}
+        <div class="segmented right">
+          {(["all", "admins", "pending", "disabled"] as const).map((f) => (
+            <a key={f} href={f === "all" ? "/admin/users" : `/admin/users?filter=${f}`} class={filter === f ? "active" : ""}>
+              {f === "all" ? "All" : f === "admins" ? "Admins" : f === "pending" ? "No passkey" : "Disabled"} <span class="muted">{n[f]}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+      <div class="card">
+        {shown.length ? (
+          <div class="table-wrap">
+            <table class="table" id="people">
+              <thead>
+                <tr>
+                  <th>Person</th>
+                  <th>Groups</th>
+                  <th>Passkeys</th>
+                  <th>Last sign-in</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((u) => {
+                  const k = keyCount.get(u.id) ?? 0;
+                  return (
+                    <tr key={u.id} data-href={`/admin/users/${u.id}`} data-filter-text={`${u.name} ${u.email} ${groupsOf(u.id).join(" ")}`.toLowerCase()}>
+                      <td>
+                        <div class="cell-user">
+                          <Avatar name={u.name} seed={u.id} />
+                          <div class="truncate">
+                            <a class="name" href={`/admin/users/${u.id}`}>
+                              {u.name}
+                            </a>{" "}
+                            {u.is_admin ? <span class="badge accent">Admin</span> : null}
+                            <div class="sub truncate">{u.email}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <GroupChips groups={groupsOf(u.id)} empty="—" />
+                      </td>
+                      <td>{k ? <span class="row-sm"><Icon name="fingerprint" size="sm" class="muted" />{k}</span> : <span class="badge warn">Not set up</span>}</td>
+                      <td class="muted small nowrap">
+                        <Time ts={u.last_sign_in_at} empty="Never" />
+                      </td>
+                      <td>{u.disabled ? <span class="badge bad dot">Disabled</span> : <span class="badge ok dot">Active</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty icon="users" title={filter === "all" ? "No one here yet" : "Nobody matches"}>
+            {filter === "all" ? "Invite your first person — they'll get a link to set up a passkey." : "Try another filter."}
+          </Empty>
+        )}
+      </div>
+
+      <InviteDialog groups={groups} />
     </>,
   );
 });
+
+/** One-time reveal of a fresh enrollment link (never stored in plaintext). */
+export async function revealEnrollment(c: ACtx, userId: string, link: string, fresh: boolean) {
+  const u = await getUser(c.env.DB, userId);
+  const name = u?.name ?? "them";
+  const first = name.split(" ")[0];
+  const mail = `mailto:${encodeURIComponent(u?.email ?? "")}?subject=${encodeURIComponent(`Your ${c.env.RP_NAME} invite`)}&body=${encodeURIComponent(
+    `Hi ${first},\n\nSet up your passkey for ${c.env.RP_NAME} here (valid for 7 days, works once):\n\n${link}\n`,
+  )}`;
+  return await page(
+    c,
+    { active: "users", title: fresh ? "Invite ready" : "Enrollment link", crumbs: [{ label: "People", href: "/admin/users" }, { label: name, href: `/admin/users/${userId}` }, { label: "Link" }], narrow: true },
+    <div class="card">
+      <div class="card-body stack">
+        <div class="hero-icon ok">
+          <Icon name="check" />
+        </div>
+        <div>
+          <h1>{fresh ? `${first} is invited` : "New enrollment link"}</h1>
+          <p class="muted">
+            Send this link to {first}. It works once, for 7 days, and is shown only now — we store just a hash.
+          </p>
+        </div>
+        <CopyField value={link} big label="enrollment link" />
+        <div class="row wrap">
+          <a class="btn" href={mail}>
+            <Icon name="mail" size="sm" />
+            Email it
+          </a>
+          <button class="btn" type="button" data-share={link} data-share-title={`${c.env.RP_NAME} invite`}>
+            <Icon name="arrowUpRight" size="sm" />
+            Share…
+          </button>
+          <button class="btn" type="button" data-qr={link}>
+            <Icon name="qr" size="sm" />
+            Show QR
+          </button>
+          <a class="btn ghost right" href={`/admin/users/${userId}`}>
+            Done
+          </a>
+        </div>
+        <div class="qr" data-qr-target hidden></div>
+      </div>
+    </div>,
+  );
+}
 
 usersAdmin.post("/", async (c) => {
-  const form = await c.req.parseBody();
-  const name = field(form, "name").trim().slice(0, 120);
-  const email = field(form, "email").trim().slice(0, 254);
-  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return await p(
-      c,
-      "users",
-      "Users",
-      <p class="status error">Name and a valid email are required.</p>,
+  const form = await c.req.parseBody({ all: true });
+  try {
+    const r = await ops.createUser(
+      c.env.DB,
+      c.env.ISSUER,
+      { name: field(form, "name"), email: field(form, "email"), groups: fields(form, "groups"), isAdmin: field(form, "isAdmin") === "1" },
+      actor(c),
     );
+    return revealEnrollment(c, r.id, r.enrollmentLink, true);
+  } catch (e) {
+    if (e instanceof ops.OpError) return act(c, "/admin/users?invite=1", "", async () => { throw e; });
+    throw e;
   }
-  if (await getUserByEmail(c.env.DB, email)) {
-    return await p(
-      c,
-      "users",
-      "Users",
-      <p class="status error">That email already exists.</p>,
-    );
-  }
-  const id = newId();
-  const now = nowSec();
-  await c.env.DB.prepare(
-    "INSERT INTO users (id, created_at, name, email, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-  )
-    .bind(id, now, name, email, now)
-    .run();
-  const link = await mintEnrollmentLink(c.env.DB, id, c.env.ISSUER);
-  await audit(c.env.DB, "USER_CREATED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return await p(
-    c,
-    "users",
-    "User created",
-    <>
-      <h1>User created</h1>
-      <p class="muted">
-        Share this one-time link with {name} (valid 7 days). It lets them set
-        up their passkey — after that, the link is dead.
-      </p>
-      <label class="field">
-        <span>Enrollment link</span>
-        <input readonly value={link} data-select />
-      </label>
-      <p>
-        <a class="btn" href="/admin/users">
-          Back to users
-        </a>
-      </p>
-    </>,
-  );
 });
-
 
 usersAdmin.post("/:id/profile", async (c) => {
   const id = c.req.param("id");
   const form = await c.req.parseBody();
-  const name = field(form, "name").trim().slice(0, 120);
-  const email = field(form, "email").trim().slice(0, 254);
-  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return c.text("Name and a valid email are required.", 400);
-  }
-  const clash = await c.env.DB.prepare(
-    "SELECT id FROM users WHERE lower(email) = lower(?1) AND id != ?2",
-  )
-    .bind(email, id)
-    .first();
-  if (clash) return c.text("That email is already in use.", 400);
-  await c.env.DB.prepare(
-    "UPDATE users SET name = ?1, email = ?2, updated_at = ?3 WHERE id = ?4",
-  )
-    .bind(name, email, nowSec(), id)
-    .run();
-  await audit(c.env.DB, "USER_PROFILE_UPDATED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect(`/admin/users/${id}`, 303);
+  return act(c, `/admin/users/${id}`, "Profile saved", () =>
+    ops.updateUser(c.env.DB, id, { name: field(form, "name"), email: field(form, "email") }, actor(c)),
+  );
 });
 
 usersAdmin.post("/:id/groups", async (c) => {
   const id = c.req.param("id");
-  const form = await c.req.parseBody();
-  const raw = form.groups;
-  const ids = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(
-    (v): v is string => typeof v === "string",
-  );
-  // Replace membership wholesale: delete all, insert selected.
-  await c.env.DB.prepare("DELETE FROM group_members WHERE user_id = ?1")
-    .bind(id)
-    .run();
-  for (const gid of ids) {
-    await c.env.DB.prepare(
-      "INSERT INTO group_members (group_id, user_id, created_at) VALUES (?1, ?2, ?3)",
-    )
-      .bind(gid, id, nowSec())
-      .run();
-  }
-  await audit(c.env.DB, "USER_GROUPS_UPDATED", {
-    userId: id,
-    detail: { by: c.get("admin").id, groups: ids.length },
-  });
-  return c.redirect(`/admin/users/${id}`, 303);
+  const form = await c.req.parseBody({ all: true });
+  return act(c, `/admin/users/${id}`, "Groups updated", () => ops.setUserGroupsByName(c.env.DB, id, fields(form, "groups"), actor(c)));
 });
 
 usersAdmin.post("/:id/role", async (c) => {
   const id = c.req.param("id");
-  if (id === c.get("admin").id) return c.text("Cannot change your own role", 400);
   const form = await c.req.parseBody();
-  const isAdmin = field(form, "isAdmin") === "1" ? 1 : 0;
-  await c.env.DB.prepare(
-    "UPDATE users SET is_admin = ?1, updated_at = ?2 WHERE id = ?3",
-  )
-    .bind(isAdmin, nowSec(), id)
-    .run();
-  await audit(c.env.DB, isAdmin ? "ADMIN_GRANTED" : "ADMIN_REVOKED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect(`/admin/users/${id}`, 303);
+  const makeAdmin = field(form, "isAdmin") === "1";
+  return act(c, `/admin/users/${id}`, makeAdmin ? "Now an admin" : "Admin removed", () => ops.setAdmin(c.env.DB, id, makeAdmin, actor(c)));
 });
 
 usersAdmin.post("/:id/enrollment", async (c) => {
   const id = c.req.param("id");
-  const link = await mintEnrollmentLink(c.env.DB, id, c.env.ISSUER);
-  await audit(c.env.DB, "ENROLLMENT_STARTED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return await p(
-    c,
-    "users",
-    "Enrollment link",
-    <>
-      <h1>Enrollment link</h1>
-      <p class="muted">
-        One-time link, valid 7 days. Previously issued unused links still work
-        until used.
-      </p>
-      <label class="field">
-        <span>Enrollment link</span>
-        <input readonly value={link} data-select />
-      </label>
-      <p>
-        <a class="btn" href="/admin/users">
-          Back to users
-        </a>
-      </p>
-    </>,
-  );
+  const link = await ops.mintEnrollmentLink(c.env.DB, c.env.ISSUER, id, actor(c));
+  return revealEnrollment(c, id, link, false);
 });
 
 usersAdmin.post("/:id/sessions/:sid/revoke", async (c) => {
   const id = c.req.param("id");
-  const sid = c.req.param("sid");
-  await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?1 AND user_id = ?2")
-    .bind(sid, id)
-    .run();
-  await audit(c.env.DB, "SESSION_REVOKED", {
-    userId: id,
-    detail: { by: c.get("admin").id, session: sid.slice(0, 8) },
-  });
-  return c.redirect(`/admin/users/${id}`, 303);
+  return act(c, `/admin/users/${id}?tab=devices`, "Session signed out", () => ops.revokeSessions(c.env.DB, id, actor(c), c.req.param("sid")));
+});
+
+usersAdmin.post("/:id/sign-out", async (c) => {
+  const id = c.req.param("id");
+  return act(c, `/admin/users/${id}?tab=devices`, "Signed out everywhere", () => ops.revokeSessions(c.env.DB, id, actor(c)));
 });
 
 usersAdmin.post("/:id/revoke-keys", async (c) => {
   const id = c.req.param("id");
-  await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?1")
-    .bind(id)
-    .run();
-  // Sessions die too: without a passkey the user cannot re-auth anyway, and
-  // a recovery flow must start from a clean slate.
-  await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1")
-    .bind(id)
-    .run();
-  await audit(c.env.DB, "PASSKEYS_REVOKED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
+  return act(c, `/admin/users/${id}`, "Passkeys reset — send a new enrollment link", () => ops.revokePasskeys(c.env.DB, id, actor(c)));
+});
+
+usersAdmin.post("/:id/keys/:kid/remove", async (c) => {
+  const id = c.req.param("id");
+  return act(c, `/admin/users/${id}?tab=passkeys`, "Passkey removed", async () => {
+    await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE id = ?1 AND user_id = ?2").bind(c.req.param("kid"), id).run();
   });
-  return c.redirect("/admin/users", 303);
 });
 
 usersAdmin.post("/:id/disable", async (c) => {
   const id = c.req.param("id");
-  if (id === c.get("admin").id) return c.text("Cannot disable yourself", 400);
-  await c.env.DB.prepare(
-    "UPDATE users SET disabled = 1, updated_at = ?1 WHERE id = ?2",
-  )
-    .bind(nowSec(), id)
-    .run();
-  await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1")
-    .bind(id)
-    .run();
-  await audit(c.env.DB, "USER_DISABLED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect("/admin/users", 303);
+  return act(c, `/admin/users/${id}`, "User disabled", () => ops.setDisabled(c.env.DB, id, true, actor(c)));
 });
 
 usersAdmin.post("/:id/enable", async (c) => {
   const id = c.req.param("id");
-  await c.env.DB.prepare(
-    "UPDATE users SET disabled = 0, updated_at = ?1 WHERE id = ?2",
-  )
-    .bind(nowSec(), id)
-    .run();
-  await audit(c.env.DB, "USER_ENABLED", {
-    userId: id,
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect("/admin/users", 303);
+  return act(c, `/admin/users/${id}`, "User enabled", () => ops.setDisabled(c.env.DB, id, false, actor(c)));
 });
 
-usersAdmin.post("/groups", async (c) => {
-  const form = await c.req.parseBody();
-  const name = field(form, "name").trim().toLowerCase().slice(0, 60);
-  if (!/^[a-z0-9_-]{1,60}$/.test(name)) {
-    return c.text("Group names: lowercase letters, numbers, dash, underscore.", 400);
-  }
-  await c.env.DB.prepare(
-    "INSERT INTO groups (id, name, description, created_at) VALUES (?1, ?2, ?3, ?4)",
-  )
-    .bind(newId(), name, field(form, "description").slice(0, 200) || null, nowSec())
-    .run();
-  await audit(c.env.DB, "GROUP_CREATED", {
-    detail: { by: c.get("admin").id, name },
-  });
-  return c.redirect("/admin/users", 303);
-});
-
-usersAdmin.post("/groups/:id/delete", async (c) => {
+usersAdmin.post("/:id/delete", async (c) => {
   const id = c.req.param("id");
-  await c.env.DB.prepare("DELETE FROM group_members WHERE group_id = ?1").bind(id).run();
-  await c.env.DB.prepare("DELETE FROM groups WHERE id = ?1").bind(id).run();
-  await audit(c.env.DB, "GROUP_DELETED", {
-    detail: { by: c.get("admin").id },
-  });
-  return c.redirect("/admin/users", 303);
+  try {
+    await ops.deleteUser(c.env.DB, id, actor(c));
+  } catch (e) {
+    if (e instanceof ops.OpError) return act(c, `/admin/users/${id}`, "", async () => { throw e; });
+    throw e;
+  }
+  return act(c, "/admin/users", "User deleted", async () => {});
 });

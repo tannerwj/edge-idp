@@ -37,3 +37,24 @@ test('jwks alias path serves the same key', async () => {
   const jwks = (await res.json()) as { keys?: Array<Record<string, string>> };
   expect(jwks.keys?.[0]?.kid).toBeDefined();
 });
+
+test('OAuth metadata advertises what MCP clients need', async () => {
+  const res = await fetch(`${base}/.well-known/oauth-authorization-server`);
+  expect(res.status).toBe(200);
+  const doc = (await res.json()) as Record<string, any>;
+  expect(doc.issuer).toBe(base);
+  // claude.ai only uses CIMD when BOTH of these are present.
+  expect(doc.client_id_metadata_document_supported).toBe(true);
+  expect(doc.token_endpoint_auth_methods_supported).toContain('none');
+  expect(doc.grant_types_supported).toContain('refresh_token');
+  expect(doc.scopes_supported).toContain('offline_access');
+  expect(doc.registration_endpoint).toBe(`${base}/register`);
+  expect(doc.authorization_response_iss_parameter_supported).toBe(true);
+});
+
+test('protected resource metadata names this server for /mcp', async () => {
+  const res = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`);
+  const prm = (await res.json()) as Record<string, any>;
+  expect(prm.resource).toBe(`${base}/mcp`);
+  expect(prm.authorization_servers).toEqual([base]);
+});

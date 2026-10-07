@@ -1,228 +1,270 @@
-/** Server-rendered pages. No inline <script> anywhere — the CSP forbids it;
- *  all behavior lives in /webauthn.js and reads data-* attributes. */
+/** Public pages: sign-in, enrollment, consent, sign-out, errors. */
+import type { OidcClient, User } from "./db";
+import { AuthLayout } from "./ui/layout";
+import { Avatar, Callout, initials } from "./ui/components";
+import type { Ui } from "./ui/layout";
+import { Icon } from "./ui/icons";
+import type { IconName } from "./ui/icons";
 
-export const THEMES = ["obsidian", "porcelain", "ledger", "dusk", "manuscript", "monochrome"] as const;
-export type Theme = (typeof THEMES)[number];
-
-export function Layout(props: {
-  title: string;
-  rpName: string;
-  children: unknown;
-  page?: string;
-  theme?: string;
-  /** Navigation: show account/admin links when the user is signed in. */
-  nav?: { isAdmin: boolean; active?: string };
-  /** Cache-busting hash for static assets. */
-  buildHash?: string;
+export function LoginPage(props: {
+  ui: Ui;
+  next: string;
+  app?: { name: string; host: string } | null;
+  reauth?: boolean;
+  signedOut?: boolean;
 }) {
-  const theme = THEMES.includes(props.theme as Theme) ? props.theme : "obsidian";
-  const v = props.buildHash ? `?v=${props.buildHash}` : "";
   return (
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="color-scheme" content="light dark" />
-        <title>{props.title}</title>
-        <link rel="stylesheet" href={`/themes/${theme}.css${v}`} />
-        <script src={`/webauthn.js${v}`} defer></script>
-      </head>
-      <body data-page={props.page ?? ""}>
-        <main class="shell">
-          <div class="card">
-            <div class="brand">
-              <span class="brand-mark" aria-hidden="true">
-                ◆
-              </span>
-              <span class="brand-name">{props.rpName}</span>
-              {props.nav ? (
-                <nav class="topnav">
-                  <a
-                    href="/account"
-                    class={props.nav.active === "account" ? "active" : ""}
-                  >
-                    Account
-                  </a>
-                  {props.nav.isAdmin ? (
-                    <a
-                      href="/admin/"
-                      class={props.nav.active === "admin" ? "active" : ""}
-                    >
-                      Admin
-                    </a>
-                  ) : null}
-                </nav>
-              ) : null}
-            </div>
-            {props.children}
+    <AuthLayout
+      ui={props.ui}
+      title="Sign in"
+      page="login"
+      below={
+        <span>
+          Passkeys only — nothing to remember, nothing to phish. <a href="https://passkeys.dev" rel="noopener">What's a passkey?</a>
+        </span>
+      }
+    >
+      {props.signedOut ? (
+        <div class="callout ok" role="status">
+          <Icon name="check" />
+          <div>You're signed out.</div>
+        </div>
+      ) : null}
+      {props.app ? (
+        <div class="context-chip">
+          <span class="app-glyph">{initials(props.app.name)}</span>
+          <div class="grow truncate">
+            Continue to <b>{props.app.name}</b>
+            <div class="muted tiny truncate">{props.app.host}</div>
           </div>
-        </main>
-      </body>
-    </html>
-  );
-}
-
-export function LoginPage(props: { rpName: string; next: string; theme?: string ;
-  buildHash?: string;}) {
-  return (
-    <Layout title={`Sign in — ${props.rpName}`} rpName={props.rpName} page="login" theme={props.theme} buildHash={props.buildHash}>
-      <h1>Welcome back</h1>
-      <p class="muted">Sign in with your passkey — Face ID, Touch ID, or your security key.</p>
-      <div id="login-box" data-next={props.next}>
-        <label class="field">
-          <span>Email</span>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autocomplete="username webauthn"
-            placeholder="you@example.com"
-          />
-        </label>
-        <button id="passkey-btn" class="btn primary" type="button">
-          Continue with passkey
+        </div>
+      ) : null}
+      <h1>{props.reauth ? "Confirm it's you" : "Sign in"}</h1>
+      <p class="lede">
+        {props.reauth
+          ? "This app asked for a fresh sign-in. Use your passkey to continue."
+          : "Use Face ID, Touch ID, Windows Hello, or a security key."}
+      </p>
+      <div id="login-box" data-next={props.next} class="stack">
+        <button id="passkey-btn" class="btn primary lg block" type="button">
+          <Icon name="fingerprint" size="lg" />
+          <span>Sign in with a passkey</span>
         </button>
+        <details class="disclose">
+          <summary>
+            <Icon name="mail" size="sm" />
+            Use a passkey for a specific email
+          </summary>
+          <label class="field">
+            <span class="label">Email</span>
+            <input id="email" name="email" type="email" autocomplete="username webauthn" placeholder="you@example.com" />
+          </label>
+        </details>
         <p id="login-status" class="status" role="status" aria-live="polite"></p>
       </div>
-    </Layout>
+    </AuthLayout>
   );
 }
 
-export function EnrollPage(props: {
-  rpName: string;
-  name: string;
-  token: string;
-  theme?: string;
-  buildHash?: string;
-}) {
+export function EnrollPage(props: { ui: Ui; name: string; email: string; token: string }) {
   return (
-    <Layout
-      title={`Set up your passkey — ${props.rpName}`}
-      rpName={props.rpName}
-      page="enroll"
-      theme={props.theme}
-     buildHash={props.buildHash}>
-      <h1>Hi {props.name}</h1>
-      <p class="muted">
-        Let's set up your passkey. Your device will ask for Face ID, Touch ID,
-        or a fingerprint — that's the whole setup.
+    <AuthLayout ui={props.ui} title="Set up your passkey" page="enroll" wide>
+      <div class="steps" aria-hidden="true">
+        <span class="on"></span>
+        <span></span>
+      </div>
+      <div class="hero-icon">
+        <Icon name="fingerprint" />
+      </div>
+      <h1>Welcome, {props.name.split(" ")[0]}</h1>
+      <p class="lede">
+        You've been invited to <b>{props.ui.rpName}</b> as <b>{props.email}</b>. Create a passkey and you're done — no
+        password, ever.
       </p>
-      <div id="enroll-box" data-enrollment-token={props.token}>
-        <button id="enroll-btn" class="btn primary" type="button">
-          Set up my passkey
+      <ul class="scope-list">
+        <li>
+          <Icon name="shieldCheck" />
+          <div>
+            Your passkey lives on this device (or your password manager)
+            <span class="sub">The server only ever sees a public key. There's nothing here to steal.</span>
+          </div>
+        </li>
+        <li>
+          <Icon name="phone" />
+          <div>
+            Add a second one later
+            <span class="sub">Phone + laptop means losing one device is a non-event.</span>
+          </div>
+        </li>
+      </ul>
+      <div id="enroll-box" data-enrollment-token={props.token} class="stack-sm">
+        <label class="field">
+          <span class="label">Name this passkey (optional)</span>
+          <input id="key-name" placeholder="e.g. iPhone, MacBook, YubiKey" maxLength={60} />
+        </label>
+        <button id="enroll-btn" class="btn primary lg block" type="button">
+          <Icon name="fingerprint" size="lg" />
+          <span>Create my passkey</span>
         </button>
         <p id="enroll-status" class="status" role="status" aria-live="polite"></p>
-        <p class="muted small">
-          Tip: add a second passkey afterwards (for example on your phone and
-          your laptop) so you're never locked out.
-        </p>
       </div>
-    </Layout>
+    </AuthLayout>
   );
 }
 
-import { AppShell, accountNav } from "./shell";
+function hostOf(u: string | null | undefined): string {
+  if (!u) return "";
+  try {
+    const url = new URL(u);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.host : `${url.protocol}//`;
+  } catch {
+    return u;
+  }
+}
 
-export function AccountPage(props: {
-  rpName: string;
-  theme?: string;
-  name: string;
-  email: string;
-  isAdmin: boolean;
-  buildHash?: string;
-  credentials: { id: string; name: string; created: string; lastUsed: string }[];
+const SCOPE_TEXT: Record<string, { icon: IconName; title: string; sub: string; danger?: boolean }> = {
+  openid: { icon: "user", title: "Know who you are", sub: "Your account ID on this server." },
+  profile: { icon: "user", title: "See your name", sub: "" },
+  email: { icon: "mail", title: "See your email address", sub: "" },
+  groups: { icon: "group", title: "See your groups", sub: "Which groups you belong to." },
+  offline_access: { icon: "refresh", title: "Stay connected", sub: "Keep access without asking you again, until you disconnect it." },
+  mcp: {
+    icon: "shield",
+    title: "Administer this identity server",
+    sub: "Create and change users, groups, apps and clients on your behalf. Only approve tools you trust.",
+    danger: true,
+  },
+  "mcp:read": { icon: "eye", title: "Read admin data", sub: "View users, groups, apps and the audit log (no changes)." },
+};
+
+export function ConsentPage(props: {
+  ui: Ui;
+  client: OidcClient;
+  user: User;
+  scopes: string[];
+  redirectUri: string;
+  params: Record<string, string>;
 }) {
-  return AppShell({
-    rpName: props.rpName,
-    title: "Profile",
-    theme: props.theme ?? "obsidian",
-    userName: props.name,
-    userEmail: props.email,
-    isAdmin: props.isAdmin,
-    active: "account",
-    nav: accountNav(props.isAdmin),
-    children: (
-      <>
-        <div class="card">
-          <h2>Profile</h2>
-          <form method="post" action="/account/profile" class="stack">
-            <label class="field">
-              <span>Name</span>
-              <input name="name" required maxLength={120} value={props.name} />
-            </label>
-            <label class="field">
-              <span>Email</span>
-              <input name="email" type="email" required maxLength={254} value={props.email} />
-            </label>
-            <div>
-              <button class="btn primary" type="submit">
-                Save profile
-              </button>
-            </div>
-          </form>
-        </div>
-        <div class="card" id="passkeys">
-          <h2>Passkeys</h2>
-          {props.credentials.length === 0 ? (
-            <p class="muted">No passkeys yet.</p>
-          ) : (
-            <ul class="key-list">
-              {props.credentials.map((k) => (
-                <li key={k.id}>
-                  <span class="key-name">{k.name}</span>
-                  <span class="muted small">
-                    added {k.created}
-                    {k.lastUsed ? ` · used ${k.lastUsed}` : ""}
-                  </span>
-                  <button
-                    class="btn danger ghost"
-                    data-remove-key={k.id}
-                    type="button"
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div id="account-box">
-            <button id="add-key-btn" class="btn" type="button">
-              Add another passkey
-            </button>
-            <p id="account-status" class="status" role="status" aria-live="polite"></p>
-          </div>
-        </div>
-      </>
-    ),
-  });
-}
-
-export function DonePage(props: { rpName: string; title: string; body: string; theme?: string ;
-  buildHash?: string;}) {
+  const { client } = props;
+  const redirectHost = hostOf(props.redirectUri);
+  const clientIdHost = client.source === "cimd" ? hostOf(client.id) : null;
+  const loopback = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(redirectHost);
+  const scopes = props.scopes.filter((s) => s !== "profile" || !props.scopes.includes("openid"));
   return (
-    <Layout title={props.title} rpName={props.rpName} theme={props.theme} buildHash={props.buildHash}>
-      <h1>{props.title}</h1>
-      <p class="muted">{props.body}</p>
-      <p>
-        <a class="btn primary" href="/">
-          Continue
-        </a>
-      </p>
-    </Layout>
+    <AuthLayout ui={props.ui} title={`Allow ${client.name}?`} page="consent" wide>
+      <div class="consent-apps">
+        <span class="bubble">{client.logo_uri ? initials(client.name) : initials(client.name)}</span>
+        <span class="link" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+        <span class="bubble me">
+          <Icon name="fingerprint" size="lg" />
+        </span>
+      </div>
+      <h1 class="center">
+        <b>{client.name}</b> wants to access your account
+      </h1>
+      <div class="row-sm wrap muted small consent-meta">
+        <span class="row-sm">
+          <Avatar name={props.user.name} seed={props.user.id} size="sm" /> {props.user.email}
+        </span>
+      </div>
+      <dl class="kv consent-kv">
+        {clientIdHost ? (
+          <>
+            <dt>Published by</dt>
+            <dd>
+              <span class="badge ok dot">{clientIdHost}</span>
+            </dd>
+          </>
+        ) : null}
+        <dt>Sends you back to</dt>
+        <dd>
+          <span class="mono">{redirectHost}</span>
+        </dd>
+        <dt>Registered</dt>
+        <dd class="muted">
+          {client.source === "cimd" ? "Via its own metadata document" : client.source === "dcr" ? "Self-registered (unverified)" : "By an admin"}
+        </dd>
+      </dl>
+      {loopback ? (
+        <Callout tone="warn">
+          This app runs on your computer (it redirects to <b>{redirectHost}</b>). Only continue if you just started it yourself.
+        </Callout>
+      ) : null}
+      <ul class="scope-list">
+        {scopes.map((s) => {
+          const t = SCOPE_TEXT[s] ?? { icon: "info", title: s, sub: "" };
+          return (
+            <li key={s} class={t.danger ? "danger" : ""}>
+              <Icon name={t.icon} />
+              <div>
+                {t.title}
+                {t.sub ? <span class="sub">{t.sub}</span> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <form method="post" action="/authorize/decision" class="stack-sm">
+        {Object.entries(props.params)
+          .filter(([k]) => k !== "decision")
+          .map(([k, v]) => (
+            <input key={k} type="hidden" name={k} value={v} />
+          ))}
+        <div class="grid-2">
+          <button class="btn lg" type="submit" name="decision" value="deny">
+            Cancel
+          </button>
+          <button class="btn primary lg" type="submit" name="decision" value="allow">
+            Allow
+          </button>
+        </div>
+        <p class="muted tiny center">You can disconnect it any time under Account & security.</p>
+      </form>
+    </AuthLayout>
   );
 }
 
-export function ErrorPage(props: { rpName: string; message: string; theme?: string ;
-  buildHash?: string;}) {
+export function SignOutPage(props: { ui: Ui; user: User; params: Record<string, string> }) {
   return (
-    <Layout title={`Error — ${props.rpName}`} rpName={props.rpName} theme={props.theme} buildHash={props.buildHash}>
-      <h1>Something went wrong</h1>
-      <p class="muted">{props.message}</p>
-      <p>
-        <a class="btn" href="/">
-          Back to sign in
-        </a>
+    <AuthLayout ui={props.ui} title="Sign out">
+      <div class="hero-icon">
+        <Icon name="logOut" />
+      </div>
+      <h1>Sign out of {props.ui.rpName}?</h1>
+      <p class="lede">
+        You're signed in as <b>{props.user.email}</b>. Signing out here signs you out of every app that uses {props.ui.rpName}{" "}
+        the next time it checks.
       </p>
-    </Layout>
+      <form method="post" action="/end-session" class="grid-2">
+        {Object.entries(props.params).map(([k, v]) => (
+          <input key={k} type="hidden" name={k} value={v} />
+        ))}
+        <a class="btn lg" href="/">
+          Stay signed in
+        </a>
+        <button class="btn primary lg" type="submit">
+          Sign out
+        </button>
+      </form>
+    </AuthLayout>
+  );
+}
+
+export function ErrorPage(props: { ui: Ui; title?: string; message: string }) {
+  return (
+    <AuthLayout ui={props.ui} title={props.title ?? "Something went wrong"}>
+      <div class="hero-icon bad">
+        <Icon name="alert" />
+      </div>
+      <h1>{props.title ?? "Something went wrong"}</h1>
+      <p class="lede">{props.message}</p>
+      <a class="btn block" href="/">
+        Go to {props.ui.rpName}
+      </a>
+    </AuthLayout>
   );
 }

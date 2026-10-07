@@ -1,163 +1,103 @@
 import { Hono } from "hono";
-import { getCredentialsForUser } from "../db";
+import { getCredentialsForUser, getUser, getUserGroups, listGroups } from "../db";
+import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
-import { p } from "./shell";
+import { page } from "./shell";
+import { Avatar, PageHead, PostButton } from "../ui/components";
+import { ActivityTab, ConnectedAppsTab, OverviewTab, PasskeysTab, SessionsTab } from "./user-tabs";
+import type { TabData } from "./user-tabs";
 
 export const userDetailAdmin = new Hono<AdminVars>();
 
-type DetailData = {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    is_admin: number;
-    disabled: number;
-    created_at: number;
-  };
-  creds: Awaited<ReturnType<typeof getCredentialsForUser>>;
-  allGroups: { id: string; name: string }[];
-  memberIds: Set<string>;
-  sessions: { id: string; created_at: number; last_seen_at: number }[];
-};
-
-async function loadDetail(
-  db: D1Database,
-  id: string,
-): Promise<DetailData | null> {
-  const user = await db
-    .prepare("SELECT * FROM users WHERE id = ?1")
-    .bind(id)
-    .first<DetailData["user"]>();
-  if (!user) return null;
-  const creds = await getCredentialsForUser(db, id);
-  const { results: allGroups } = await db
-    .prepare("SELECT id, name FROM groups ORDER BY name ASC")
-    .all<{ id: string; name: string }>();
-  const { results: memberOf } = await db
-    .prepare("SELECT group_id FROM group_members WHERE user_id = ?1")
-    .bind(id)
-    .all<{ group_id: string }>();
-  const { results: sessions } = await db
-    .prepare(
-      "SELECT id, created_at, last_seen_at FROM sessions WHERE user_id = ?1 ORDER BY last_seen_at DESC LIMIT 10",
-    )
-    .bind(id)
-    .all<{ id: string; created_at: number; last_seen_at: number }>();
-  return {
-    user,
-    creds,
-    allGroups,
-    memberIds: new Set(memberOf.map((m) => m.group_id)),
-    sessions,
-  };
-}
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "passkeys", label: "Passkeys" },
+  { id: "devices", label: "Sessions" },
+  { id: "apps", label: "Connected apps" },
+  { id: "activity", label: "Activity" },
+] as const;
 
 userDetailAdmin.get("/", async (c) => {
   const id = c.req.param("id") ?? "";
-  if (!id) return c.text("User not found", 404);
-  const data = await loadDetail(c.env.DB, id);
-  if (!data) return c.text("User not found", 404);
-  const { user, creds, allGroups, memberIds, sessions } = data;
-  return await p(
+  const db = c.env.DB;
+  const user = await getUser(db, id);
+  if (!user) return c.notFound();
+  const tab = TABS.find((t) => t.id === c.req.query("tab"))?.id ?? "overview";
+  const self = id === c.get("admin").id;
+  const [creds, groups, allGroups, sessions, grants, activity] = await Promise.all([
+    getCredentialsForUser(db, id),
+    getUserGroups(db, id),
+    listGroups(db),
+    db
+      .prepare("SELECT id_hash, created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 AND expires_at > ?2 ORDER BY last_seen_at DESC")
+      .bind(id, nowSec())
+      .all<{ id_hash: string; created_at: number; last_seen_at: number; user_agent: string | null }>(),
+    db
+      .prepare(
+        `SELECT g.client_id, g.scope, g.created_at, g.last_used_at, c.name FROM oauth_grants g
+         JOIN oidc_clients c ON c.id = g.client_id WHERE g.user_id = ?1`,
+      )
+      .bind(id)
+      .all<{ client_id: string; scope: string; created_at: number; last_used_at: number | null; name: string }>(),
+    db
+      .prepare(
+        `SELECT a.event, a.created_at, c.name AS client_name FROM audit_log a
+         LEFT JOIN oidc_clients c ON c.id = a.client_id WHERE a.user_id = ?1 ORDER BY a.id DESC LIMIT 40`,
+      )
+      .bind(id)
+      .all<{ event: string; created_at: number; client_name: string | null }>(),
+  ]);
+  const data: TabData = { id, self, user, creds, groups, allGroups, sessions: sessions.results, grants: grants.results, activity: activity.results };
+  const counts: Record<string, number> = {
+    passkeys: creds.length,
+    devices: sessions.results.length,
+    apps: grants.results.length,
+  };
+
+  return await page(
     c,
-    "users",
-    user.name,
+    { active: "users", title: user.name, crumbs: [{ label: "People", href: "/admin/users" }, { label: user.name }] },
     <>
-      <p class="muted">
-        {user.email} ·{" "}
-        {user.is_admin ? <span class="pill">admin</span> : "standard"} ·{" "}
-        {user.disabled ? "disabled" : "active"}
-      </p>
-      <h2>Edit profile</h2>
-      <form method="post" action={`/admin/users/${id}/profile`} class="stack">
-        <label class="field">
-          <span>Name</span>
-          <input name="name" required maxLength={120} value={user.name} />
-        </label>
-        <label class="field">
-          <span>Email</span>
-          <input name="email" type="email" required maxLength={254} value={user.email} />
-        </label>
-        <div class="row wrap">
-          <button class="btn primary" type="submit">
-            Save
-          </button>
-        </div>
-      </form>
-      <h2>Groups</h2>
-      <form method="post" action={`/admin/users/${id}/groups`} class="stack">
-        {allGroups.length === 0 ? (
-          <p class="muted small">No groups exist yet — create one on the Groups tab.</p>
-        ) : (
-          <div class="check-grid">
-            {allGroups.map((g) => (
-              <label key={g.id} class="check">
-                <input
-                  type="checkbox"
-                  name="groups"
-                  value={g.id}
-                  checked={memberIds.has(g.id)}
-                />
-                <span>{g.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-        <div>
-          <button class="btn" type="submit">
-            Update groups
-          </button>
-        </div>
-      </form>
-      <h2>Role</h2>
-      <form method="post" action={`/admin/users/${id}/role`} class="row wrap">
-        <input type="hidden" name="isAdmin" value={user.is_admin ? "0" : "1"} />
-        <button class="btn" type="submit" disabled={id === c.get("admin").id}>
-          {user.is_admin ? "Remove admin" : "Make admin"}
-        </button>
-        {id === c.get("admin").id ? (
-          <span class="muted small">You can't change your own role.</span>
-        ) : null}
-      </form>
-      <h2>Passkeys ({creds.length})</h2>
-      {creds.length === 0 ? (
-        <p class="muted small">No passkeys enrolled.</p>
-      ) : (
-        <ul class="key-list">
-          {creds.map((k) => (
-            <li key={k.id}>
-              <span class="key-name">{k.name}</span>
-              <span class="muted small">
-                added {new Date(k.created_at * 1000).toLocaleDateString()}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <h2>Recent sessions ({sessions.length})</h2>
-      {sessions.length === 0 ? (
-        <p class="muted small">No active sessions.</p>
-      ) : (
-        <ul class="key-list">
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <span class="muted small">
-                last seen {new Date(s.last_seen_at * 1000).toLocaleString()}
-              </span>
-              <form method="post" action={`/admin/users/${id}/sessions/${s.id}/revoke`}>
-                <button class="btn danger ghost small" type="submit">
-                  Revoke
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p>
-        <a class="btn ghost" href="/admin/">
-          Back to users
-        </a>
-      </p>
+      <PageHead
+        leading={<Avatar name={user.name} seed={user.id} size="lg" />}
+        title={user.name}
+        lede={
+          <span class="row-sm wrap">
+            {user.email}
+            {user.is_admin ? <span class="badge accent">Admin</span> : null}
+            {user.disabled ? <span class="badge bad dot">Disabled</span> : <span class="badge ok dot">Active</span>}
+            {!creds.length && !user.disabled ? <span class="badge warn">No passkey yet</span> : null}
+          </span>
+        }
+        actions={
+          <>
+            <PostButton action={`/admin/users/${id}/enrollment`} label={creds.length ? "New enrollment link" : "Get invite link"} icon="link" class="btn" />
+            {self ? null : user.disabled ? (
+              <PostButton action={`/admin/users/${id}/enable`} label="Enable" icon="check" class="btn" />
+            ) : (
+              <PostButton action={`/admin/users/${id}/disable`} label="Disable" icon="ban" class="btn danger" confirm={`Disable ${user.name}? They'll be signed out everywhere immediately.`} />
+            )}
+          </>
+        }
+      />
+      <nav class="tabs">
+        {TABS.map((t) => (
+          <a key={t.id} href={t.id === "overview" ? `/admin/users/${id}` : `/admin/users/${id}?tab=${t.id}`} class={tab === t.id ? "active" : ""}>
+            {t.label}
+            {counts[t.id] !== undefined ? <span class="count">{counts[t.id]}</span> : null}
+          </a>
+        ))}
+      </nav>
+
+      {tab === "overview" ? <OverviewTab {...data} /> : null}
+
+      {tab === "passkeys" ? <PasskeysTab {...data} /> : null}
+
+      {tab === "devices" ? <SessionsTab {...data} /> : null}
+
+      {tab === "apps" ? <ConnectedAppsTab {...data} /> : null}
+
+      {tab === "activity" ? <ActivityTab {...data} /> : null}
     </>,
   );
 });

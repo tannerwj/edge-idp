@@ -12,8 +12,11 @@ import type {
 import type { Env } from "./config";
 import { audit, getCredentialsForUser, getUser, getUserByEmail } from "./db";
 import type { User, WebAuthnCredential } from "./db";
-import { createSession, sessionUser, setSessionCookie } from "./session";
+import { createSession, destroySession, getSession, setSessionCookie } from "./session";
 import { base64url, newId, nowSec, rpIdFromIssuer, sha256Hex } from "./util";
+import { aaguidName } from "./aaguid";
+import { b64urlToBytes, challengeFromResponse, storeChallenge, takeChallenge } from "./webauthn-challenges";
+import type { StoredChallenge } from "./webauthn-challenges";
 
 /**
  * Passkey ceremonies (SimpleWebAuthn v14, pure WebCrypto — no Node-only deps).
@@ -37,90 +40,7 @@ import { base64url, newId, nowSec, rpIdFromIssuer, sha256Hex } from "./util";
  *   nonzero counter (the standard exemption).
  */
 
-const CHALLENGE_TTL = 300; // 5 minutes
-
-/** Type predicate for parsed JSON — no assertions, just narrowing. */
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-
-interface StoredChallenge {
-  type: "registration" | "authentication";
-  userId: string | null;
-  data: Record<string, unknown>;
-}
-
-async function storeChallenge(
-  db: D1Database,
-  challenge: string,
-  c: StoredChallenge,
-): Promise<void> {
-  // Opportunistic cleanup: expired challenges are dead weight and a (bounded)
-  // DoS vector if an attacker spams the /options endpoints.
-  await db
-    .prepare("DELETE FROM webauthn_challenges WHERE expires_at < ?1")
-    .bind(nowSec())
-    .run();
-  await db
-    .prepare(
-      `INSERT INTO webauthn_challenges (challenge, type, user_id, data, expires_at)
-       VALUES (?1, ?2, ?3, ?4, ?5)`,
-    )
-    .bind(
-      challenge,
-      c.type,
-      c.userId,
-      JSON.stringify(c.data),
-      nowSec() + CHALLENGE_TTL,
-    )
-    .run();
-}
-
-/** Fetch-and-delete: challenges are single-use by construction. */
-async function takeChallenge(
-  db: D1Database,
-  challenge: string,
-): Promise<StoredChallenge | null> {
-  const row = await db
-    .prepare("SELECT * FROM webauthn_challenges WHERE challenge = ?1")
-    .bind(challenge)
-    .first<{
-      type: string;
-      user_id: string | null;
-      data: string;
-      expires_at: number;
-    }>();
-  if (!row) return null;
-  await db
-    .prepare("DELETE FROM webauthn_challenges WHERE challenge = ?1")
-    .bind(challenge)
-    .run();
-  if (row.expires_at < nowSec()) return null;
-  if (row.type !== "registration" && row.type !== "authentication") return null;
-  const data: unknown = JSON.parse(row.data);
-  return {
-    type: row.type,
-    userId: row.user_id,
-    data: isRecord(data) ? data : {},
-  };
-}
-
-/** The challenge the browser answered, from inside clientDataJSON. */
-function challengeFromResponse(
-  response: RegistrationResponseJSON | AuthenticationResponseJSON,
-): string | null {
-  try {
-    const raw = response.response.clientDataJSON;
-    const json: unknown = JSON.parse(
-      new TextDecoder().decode(b64urlToBytes(raw)),
-    );
-    return isRecord(json) && typeof json.challenge === "string"
-      ? json.challenge
-      : null;
-  } catch {
-    return null;
-  }
-}
+const REAUTH_WINDOW = 15 * 60;
 
 export async function validEnrollmentToken(
   db: D1Database,
@@ -149,14 +69,6 @@ function credIdB64(cred: WebAuthnCredential): string {
   return base64url(cred.credential_id);
 }
 
-/** Decode a base64url string to bytes (for storing credential IDs as BLOBs). */
-function b64urlToBytes(s: string): Uint8Array {
-  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
 export const webauthn = new Hono<{ Bindings: Env }>();
 
 /**
@@ -175,8 +87,14 @@ webauthn.post("/register/options", async (c) => {
     user = v.user;
     enrollmentHash = v.tokenHash;
   } else {
-    user = await sessionUser(c);
-    if (!user) return c.json({ error: "unauthorized" }, 401);
+    const session = await getSession(c);
+    if (!session) return c.json({ error: "unauthorized" }, 401);
+    // Adding a credential is persistence: a stolen session cookie must not be
+    // enough. Require a passkey ceremony in the last 15 minutes.
+    if (nowSec() - session.authTime > REAUTH_WINDOW) {
+      return c.json({ error: "reauth_required" }, 401);
+    }
+    user = session.user;
   }
 
   const rpID = rpIdFromIssuer(c.env.ISSUER);
@@ -184,7 +102,7 @@ webauthn.post("/register/options", async (c) => {
   const options = await generateRegistrationOptions({
     rpName: c.env.RP_NAME,
     rpID,
-    userID: new TextEncoder().encode(user.id),
+    userID: Uint8Array.from(new TextEncoder().encode(user.id)),
     userName: user.email,
     userDisplayName: user.name,
     attestationType: "none",
@@ -235,8 +153,9 @@ async function persistCredential(
   response: RegistrationResponseJSON,
   info: RegistrationInfo,
   name: string,
-): Promise<void> {
+): Promise<string> {
   const deviceType = info.credentialDeviceType ?? "singleDevice";
+  const id = newId();
   await db
     .prepare(
       `INSERT INTO webauthn_credentials
@@ -245,7 +164,7 @@ async function persistCredential(
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
     )
     .bind(
-      newId(),
+      id,
       userId,
       b64urlToBytes(info.credential.id),
       info.credential.publicKey,
@@ -260,6 +179,29 @@ async function persistCredential(
       nowSec(),
     )
     .run();
+  return id;
+}
+
+/**
+ * Burn an enrollment token atomically BEFORE storing the credential, so two
+ * racing ceremonies on one link can't both enroll. False if already used.
+ */
+async function burnEnrollmentToken(db: D1Database, token: string): Promise<boolean> {
+  const burned = await db
+    .prepare("UPDATE enrollment_tokens SET used = 1 WHERE token_hash = ?1 AND used = 0")
+    .bind(await sha256Hex(token))
+    .run();
+  return burned.meta.changes > 0;
+}
+
+/** User-chosen label, else the provider's name (AAGUID), else a generic one. */
+function credentialName(requested: string | undefined, info: RegistrationInfo): string {
+  const deviceType = info.credentialDeviceType ?? "singleDevice";
+  return (
+    requested?.trim().slice(0, 60) ||
+    aaguidName(info.aaguid) ||
+    (deviceType === "multiDevice" ? "Synced passkey" : "Security key")
+  );
 }
 
 webauthn.post("/register/verify", async (c) => {
@@ -304,19 +246,12 @@ webauthn.post("/register/verify", async (c) => {
   const user = await getUser(c.env.DB, stored.userId);
   if (!user || user.disabled) return c.json({ error: "unknown_user" }, 400);
 
-  const deviceType = info.credentialDeviceType ?? "singleDevice";
-  const name =
-    body.name?.trim().slice(0, 80) ||
-    (deviceType === "multiDevice" ? "Synced passkey" : "Device passkey");
-  await persistCredential(c.env.DB, user.id, body.response, info, name);
-
-  if (body.enrollmentToken) {
-    await c.env.DB.prepare(
-      "UPDATE enrollment_tokens SET used = 1 WHERE token_hash = ?1",
-    )
-      .bind(await sha256Hex(body.enrollmentToken))
-      .run();
+  if (body.enrollmentToken && !(await burnEnrollmentToken(c.env.DB, body.enrollmentToken))) {
+    return c.json({ error: "invalid_enrollment_token" }, 400);
   }
+
+  const name = credentialName(body.name, info);
+  const credId = await persistCredential(c.env.DB, user.id, body.response, info, name);
 
   const ip = clientIp(c);
   await audit(c.env.DB, "PASSKEY_REGISTERED", {
@@ -332,6 +267,7 @@ webauthn.post("/register/verify", async (c) => {
     user.id,
     c.req.header("user-agent") ?? null,
     ip,
+    credId,
   );
   setSessionCookie(c, raw);
   return c.json({ ok: true });
@@ -346,10 +282,11 @@ webauthn.post("/auth/options", async (c) => {
   let user: User | null = null;
   if (body.email) {
     user = await getUserByEmail(c.env.DB, body.email);
-    // Deliberately identical responses for unknown emails: the options are
-    // still well-formed (empty allow list), so login UX doesn't leak which
-    // emails exist. Threat note: user enumeration via timing is negligible
-    // here — no password to stuff — but we don't make it free either.
+    // Threat note: this DOES reveal whether an email has passkeys (the allow
+    // list is empty for unknown emails). Accepted: the email path exists only
+    // for non-discoverable security keys, and there is no password to stuff.
+    // The default sign-in button uses discoverable credentials and sends no
+    // email at all.
   }
   const rpID = rpIdFromIssuer(c.env.ISSUER);
   const creds = user ? await getCredentialsForUser(c.env.DB, user.id) : [];
@@ -456,6 +393,7 @@ webauthn.post("/auth/verify", async (c) => {
     .run();
 
   const ip = clientIp(c);
+  await destroySession(c);
   await audit(c.env.DB, "SIGN_IN", {
     userId: user.id,
     ipHash: ip ? await sha256Hex(ip) : null,
@@ -467,6 +405,7 @@ webauthn.post("/auth/verify", async (c) => {
     user.id,
     c.req.header("user-agent") ?? null,
     ip,
+    cred.id,
   );
   setSessionCookie(c, raw);
   return c.json({ ok: true, name: user.name });

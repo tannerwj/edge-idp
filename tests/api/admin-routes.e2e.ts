@@ -10,30 +10,34 @@ test('trailing slashes redirect to the canonical path', async () => {
   expect(loc).toMatch(/\/admin$/);
 });
 
-test('admin routes exist (403 for anonymous, not 404)', async () => {
-  // If these 404'd, the route is broken. 403 means the route exists and
-  // the auth middleware correctly rejected the anonymous request.
-  for (const path of ['/admin', '/admin/users', '/admin/groups', '/admin/clients', '/admin/audit', '/admin/theme']) {
+test('admin routes exist and send anonymous visitors to sign in', async () => {
+  // A 404 would mean the route is broken. Anonymous requests are bounced to
+  // /login with a same-origin `next`, so admin content never renders.
+  for (const path of ['/admin', '/admin/users', '/admin/groups', '/admin/apps', '/admin/clients', '/admin/audit', '/admin/connect', '/admin/settings']) {
     const res = await fetch(`${base}${path}`, { redirect: 'manual' });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location') ?? '').toBe(`/login?next=${encodeURIComponent(path)}`);
   }
 });
 
-test('theme CSS URLs carry a cache-busting hash', async () => {
+test('static asset URLs carry a content hash', async () => {
   const res = await fetch(`${base}/login`);
   const html = await res.text();
-  // The stylesheet link must include ?v=<hash> so deploys bust the cache.
-  expect(html).toMatch(/\/themes\/\w+\.css\?v=[a-z0-9]+/);
+  // ?v=<content hash> so every deploy busts caches.
+  expect(html).toMatch(/\/app\.css\?v=[a-f0-9]{10}/);
+  expect(html).toMatch(/\/app\.js\?v=[a-f0-9]{10}/);
 });
 
-test('theme CSS is served with long cache headers', async () => {
-  const res = await fetch(`${base}/themes/obsidian.css`);
-  expect(res.status).toBe(200);
-  expect(res.headers.get('content-type')).toContain('text/css');
-  expect(res.headers.get('cache-control')).toContain('max-age=3600');
+test('static assets are immutable-cached with the right types', async () => {
+  const css = await fetch(`${base}/app.css`);
+  expect(css.status).toBe(200);
+  expect(css.headers.get('content-type')).toContain('text/css');
+  expect(css.headers.get('cache-control')).toContain('immutable');
+  const js = await fetch(`${base}/app.js`);
+  expect(js.headers.get('content-type')).toContain('text/javascript');
 });
 
-test('unknown theme returns 404', async () => {
-  const res = await fetch(`${base}/themes/nope.css`);
-  expect(res.status).toBe(404);
+test('html pages are never cached', async () => {
+  const res = await fetch(`${base}/login`);
+  expect(res.headers.get('cache-control')).toBe('no-store');
 });

@@ -30,7 +30,7 @@ test('unknown client fails as a page, not a redirect', async () => {
   // Without a valid client we cannot safely redirect the error anywhere.
   expect(res.status).toBe(400);
   const body = await res.text();
-  expect(body).toContain('invalid_client');
+  expect(body).toContain('unknown client_id');
 });
 
 test('unregistered redirect uri fails as a page', async () => {
@@ -45,7 +45,8 @@ test('unregistered redirect uri fails as a page', async () => {
 test('admin pages fail closed without a session', async () => {
   for (const path of ['/admin', '/admin/clients', '/admin/users', '/admin/audit']) {
     const res = await fetch(`${base}${path}`, { redirect: 'manual' });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location') ?? '').toMatch(/^\/login\?next=/);
   }
   // Trailing slash normalizes before auth.
   const slash = await fetch(`${base}/admin/`, { redirect: 'manual' });
@@ -72,4 +73,36 @@ test('token endpoint rejects a bogus client', async () => {
     }),
   });
   expect(res.status).toBe(401);
+});
+
+test('cross-origin form posts are refused', async () => {
+  // A sibling subdomain is "same-site", so SameSite=Lax alone would let it
+  // post forms here. The same-origin guard must refuse before any handler.
+  const res = await fetch(`${base}/logout`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { origin: 'https://evil.example.test', 'sec-fetch-site': 'same-site' },
+  });
+  expect(res.status).toBe(403);
+});
+
+test('mcp 401 points clients at OAuth discovery', async () => {
+  const res = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  });
+  expect(res.status).toBe(401);
+  const www = res.headers.get('www-authenticate') ?? '';
+  expect(www).toContain(`resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"`);
+  expect(www).toContain('scope="mcp"');
+});
+
+test('dynamic registration rejects dangerous redirect schemes', async () => {
+  const res = await fetch(`${base}/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ client_name: 'probe', redirect_uris: ['javascript:alert(1)'] }),
+  });
+  expect(res.status).toBe(400);
 });

@@ -39,6 +39,19 @@ code remains bound to the exact redirect URI and the client must still prove
 possession of its 256-bit secret at the token endpoint, which preserves the
 anti-interception property PKCE provides for public clients.
 
+## Who can authorize what
+
+Admin-registered clients are first-party: they skip consent (the passkey
+ceremony is the intent) and are open to everyone unless restricted to groups.
+Clients that introduce themselves — dynamic registration (RFC 7591) or a
+Client ID Metadata Document (an https `client_id` URL) — are third-party:
+they always get a consent screen. The screen shows the redirect host, plus the
+metadata URL's domain for CIMD clients. Self-registered clients are labelled
+unverified. Only admins can authorize them until an admin assigns groups. The
+`mcp` / `mcp:read` scopes are admin-only regardless of client. Consent is
+remembered per (user, client). Revoking it under Account → Connected apps
+deletes the grant and that client's refresh tokens for the user.
+
 ## Client authentication
 
 Secrets are generated at 256 bits, stored as SHA-256 hashes, and compared in
@@ -46,23 +59,61 @@ constant time (`timingSafeEqualHex`) — the raw secret never meets a
 short-circuiting comparison. Both `client_secret_basic` and
 `client_secret_post` are accepted (Cloudflare documents neither; three
 independent integrations confirm Basic). Secrets are shown once at creation;
-rotation is immediate and total.
+rotation is immediate and total. Public clients (`token_endpoint_auth_method:
+none`) have no secret and are always held to PKCE; a public client that
+presents a secret is refused rather than guessed about.
 
-## Sessions
+## Dynamic clients: CIMD and DCR
+
+Fetching a CIMD document means fetching a URL chosen by whoever started the
+sign-in, which makes it a server-side request forgery risk. The fetch is
+limited as follows:
+- https only;
+- the client_id must have a path, and no userinfo, query, fragment or dot segments;
+- IP-literal, localhost and single-label hosts are refused;
+- redirects are not followed;
+- 5 KB / 5 s limits;
+- the document's `client_id` must equal the URL exactly;
+- secret-based auth methods and embedded secrets are rejected.
+
+Workers' `fetch` can't reach private networks, which covers DNS names that
+resolve to internal addresses. Documents are cached as client rows, honoring
+`Cache-Control` within 5 min to 7 days bounds. A stale copy is used if the
+publisher is briefly down. Redirect URIs for dynamic clients may be https,
+http loopback (any port, RFC 8252 §7.3) or a private-use app scheme;
+`javascript:`/`data:`/`file:` and similar are rejected. Dynamically registered
+clients that never received a consent are deleted after 30 days, since some
+MCP clients register again on every connect. Both onboarding paths can be
+switched off in Settings.
+
+## Sessions and cross-origin requests
 
 The cookie carries a 256-bit random token; the DB stores only its SHA-256
-hash, so a database read never yields a live session. Cookies are HttpOnly,
-Secure, SameSite=Lax, path-scoped. Sessions slide to 30 days, die with the
-user row (cascade), and are destroyed on disable/revoke. SameSite=Lax is safe
-because `/authorize` is always reached by top-level GET navigation.
+hash, so a database read never yields a live session. The cookie is
+`__Host-idp_session`: Secure, `Path=/`, no `Domain`, so no sibling subdomain
+can set or shadow it. It is also HttpOnly and SameSite=Lax. Sessions slide to
+30 days, die with the user row (cascade), and are destroyed on
+disable/revoke. Signing in replaces any existing session (no fixation).
 
-## No consent screen (deliberate)
+SameSite is per *site*, so every other host on your domain counts as
+same-site. If any of those apps were compromised, Lax alone would let it post
+forms to the admin UI. Every cookie-authenticated state change therefore also
+passes a same-origin check (`Sec-Fetch-Site`, falling back to `Origin`).
+Bearer-authenticated endpoints (`/token`, `/mcp`, …) are exempt because they
+never read cookies. `/mcp` refuses any browser `Origin` that isn't this server,
+which blocks DNS-rebinding and drive-by requests.
 
-Clients are admin-registered with exact redirect URIs, and the user proved
-identity with a passkey moments before `/authorize` runs — the ceremony *is*
-the consent. An interstitial "Allow?" page would add a click, not security.
-This decision must be revisited if self-registered/third-party clients ever
-exist; until then, auto-approve is the QoL-correct call.
+Adding a passkey to an existing account requires a passkey ceremony in the
+last 15 minutes. A stolen session cookie must not be enough to persist access
+by planting a new credential.
+
+## Consent: first-party skip, third-party always
+
+For admin-registered clients the passkey ceremony moments before `/authorize`
+*is* the consent; an extra "Allow?" click adds nothing. That reasoning stops
+holding the moment clients can register themselves, so dynamic and CIMD
+clients always get a consent screen (see *Who can authorize what*). Admins can
+turn the screen on for any first-party client too.
 
 ## Enrollment tokens
 
@@ -82,23 +133,54 @@ one-admin lockout).
 
 ## Token design
 
-ID and access tokens are RS256 JWTs, 1-hour TTL, `aud` = the client that
-asked. The access token is a JWT (not opaque) so `/userinfo` stays stateless —
-it discloses only claims already in the ID token, and its bearer lifetime is
-bounded by the same hour. Everything Cloudflare Access needs (email, groups)
-is **in** the ID token because Access never calls userinfo.
+ID tokens are RS256 JWTs with `aud` set to the client, a 1-hour TTL, and
+`auth_time` taken from the passkey ceremony (not the mint time). Everything
+Cloudflare Access needs (email, groups) is **in** the ID token because Access
+never calls userinfo.
+
+Access tokens are RFC 9068 JWTs (`typ: at+jwt`, verified as such, so an ID
+token can never be replayed as one). Their `aud` is the RFC 8707 resource they
+were minted for. `/mcp` accepts only `aud = <issuer>/mcp` with the `mcp` or
+`mcp:read` scope, and re-checks that the user is still an active admin on
+every call. A token handed to some app at sign-in is therefore useless against
+the admin API. That was a real hole in v1. `/userinfo` re-reads the user from
+the DB, so disabled users stop resolving immediately.
+
+Authorization codes are redeemed with a single atomic `UPDATE … WHERE used =
+0 RETURNING`, so two concurrent `/token` calls can't both win.
+
+Refresh tokens exist only for `offline_access` / `mcp` grants. They rotate on
+every use, inside a family with an absolute 30-day lifetime. Presenting an
+already-rotated token deletes the whole family and writes a
+`REFRESH_REUSE_DETECTED` audit event (RFC 9700 §4.14). They also die with the
+user's consent, admin role, or account.
+
+## Admin API (MCP) credentials
+
+API tokens are random, `eidp_`-prefixed (so leaked tokens are greppable),
+stored as hashes, scoped (`read` / `admin`), optionally expiring, and
+re-checked against their creator on every call. A demoted or disabled admin's
+tokens stop working, and demotion deletes them. A read-only caller that hits a
+write tool gets `403 insufficient_scope`, so MCP clients can step up. The
+`execute` sandbox has no network and no env access, and never sees the
+credential. Each tool call re-enters the host, where rights are checked
+again.
 
 ## What v1 does NOT do (and why that's fine)
 
-- **No in-worker rate limiting.** Per-isolate memory doesn't rate-limit
-  anything on Workers. The backstop is Cloudflare edge rate-limit rules
-  (documented in DEPLOY.md §10); the worker opportunistically purges expired
-  challenges so spam can't grow D1 unboundedly.
-- **No key rotation UI.** Rotation = new secret + redeploy; 1-hour tokens bound
-  the blast radius. A rotation endpoint is a small, safe addition later.
-- **No refresh tokens.** Cloudflare Access manages its own session after the
-  code flow; refresh rotation is where minimal providers go to become
-  non-minimal.
+- **Rate limiting is best-effort.** The Workers Rate Limiting bindings (per IP,
+  per location) slow ceremony and registration spam. WAF rules remain the hard
+  backstop (DEPLOY.md). An hourly cron purges expired rows, so spam can't grow
+  D1 without bound.
+- **Key rotation is two secrets, not a UI.** Publish the old key as
+  `SIGNING_KEY_JWK_PREVIOUS` while the new one signs (DEPLOY.md). Tokens last
+  1 hour, which bounds the overlap.
 - **IPs are hashed** (`ip_hash`) in sessions and audit logs — enough for the
   admin to spot anomalies, not enough to be a PII honeypot.
-- **Audit log is capped** at 20k rows (FIFO) — evidence, not a growth vector.
+- **Audit log is bounded** to 365 days or the newest 50k events, enforced by
+  the hourly cron (not on every write, which used to scan the table each
+  time). CSV export is formula-injection safe.
+- **CSP is strict, except for `form-action`.** There is no inline script or
+  style. `form-action` is omitted because consent redirects to native-app
+  schemes (`cursor://`) that no allowlist can enumerate. All forms are
+  server-rendered with escaped content.
