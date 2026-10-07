@@ -12,6 +12,8 @@ export interface Env {
   SIGNING_KEY_JWK: string;
   /** Optional: Sentry DSN for error tracking. */
   SENTRY_DSN?: string;
+  /** Dynamic Worker loader for the MCP code-mode sandbox. */
+  LOADER?: WorkerLoader;
 }
 
 /** Fail closed at the edge: refuse to serve if instance config is missing. */

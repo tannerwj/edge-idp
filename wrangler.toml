@@ -23,6 +23,10 @@ binding = "DB"
 database_name = "identity"
 database_id = "832a3094-2375-47b8-aa06-7f146c56eb25"
 
+# Dynamic Worker loader for the MCP code-mode sandbox.
+[[worker_loaders]]
+binding = "LOADER"
+
 # Custom domain route (uncomment and fill in for production):
 # Workers custom domains are attached as a zone-level route plus a proxied DNS
 # record (see DEPLOY.md). Example:

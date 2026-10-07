@@ -327,11 +327,11 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-/** Validate a Bearer API token; returns {tokenId, adminId} or null. */
+/** Validate a Bearer API token; returns {tokenId, adminId, tokenHash} or null. */
 async function authToken(
   db: D1Database,
   req: Request,
-): Promise<{ tokenId: string; adminId: string } | null> {
+): Promise<{ tokenId: string; adminId: string; tokenHash: string } | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const raw = header.slice(7);
@@ -344,7 +344,7 @@ async function authToken(
   await db.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2")
     .bind(nowSec(), row.id)
     .run();
-  return { tokenId: row.id, adminId: row.created_by };
+  return { tokenId: row.id, adminId: row.created_by, tokenHash: hash };
 }
 
 /** Record an MCP tool call for metrics. Fire-and-forget. */
@@ -379,7 +379,7 @@ mcp.post("/", async (c) => {
       401,
     );
   }
-  const { tokenId, adminId } = auth;
+  const { tokenId, adminId, tokenHash } = auth;
   let body: { jsonrpc?: string; id?: unknown; method?: string; params?: Record<string, unknown> };
   try {
     body = await c.req.json();
@@ -396,6 +396,12 @@ mcp.post("/", async (c) => {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
       serverInfo: { name: "johnson-id", version: "1.0.0" },
+      instructions:
+        "Johnson ID admin MCP. Prefer the `execute` tool: write a single JS snippet " +
+        "against the typed `id` proxy (see its description for all tool signatures), " +
+        "chain calls and filter in code — only your return value comes back. " +
+        "Use individual tools directly only for single calls or debugging. " +
+        "`metrics_summary` shows 24h usage analytics.",
     });
   }
   if (body.method === "notifications/initialized") {
@@ -415,6 +421,19 @@ mcp.post("/", async (c) => {
     const name = str(params.name);
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) return err(-32602, `Unknown tool: ${name}`);
+    // Code mode: `execute` runs through the sandbox, not the plain handler.
+    if (name === "execute") {
+      const args = (params.arguments as Record<string, unknown>) ?? {};
+      const result = await runExecute(
+        c.env,
+        c.executionCtx as unknown as { exports?: Record<string, unknown>; waitUntil(p: Promise<unknown>): void },
+        c.env.DB,
+        String(args.code ?? ""),
+        tokenHash,
+        tokenId,
+      );
+      return ok(result);
+    }
     const started = Date.now();
     try {
       const result = await tool.handler(
@@ -437,3 +456,317 @@ mcp.post("/", async (c) => {
   }
   return err(-32601, `Method not found: ${body.method}`);
 });
+
+/* ------------------------------------------------------------------ */
+/* Code mode: run model-written JS in an isolated Dynamic Worker.      */
+/*                                                                     */
+/* The `execute` tool takes a JS snippet that calls the IdP tools via  */
+/* the `id` proxy. Intermediate results never re-enter model context — */
+/* only the final return value comes back. The sandbox has no network  */
+/* (globalOutbound: null), no env vars, and never sees the API token.  */
+/* Every side effect runs through the existing permission-checked tool  */
+/* handlers with the caller's own credential.                          */
+/* ------------------------------------------------------------------ */
+
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+/** RPC stub the sandbox calls to invoke tools host-side. */
+export class IdCodeSandbox extends WorkerEntrypoint<Env> {
+  async callTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
+    const name = String(toolName);
+    // No recursion: execute can't call itself.
+    if (name === "execute") {
+      throw new Error("execute is not available inside execute");
+    }
+    const tool = TOOLS.find((t) => t.name === name);
+    if (!tool) throw new Error(`Unknown tool: ${name}`);
+    // The token lives in ctx.props, invisible across the RPC boundary.
+    // We re-derive adminId from it via the token hash lookup.
+    const props = this.ctx.props as { tokenHash?: string } | undefined;
+    if (!props?.tokenHash) throw new Error("missing credential");
+    const row = await this.env.DB.prepare(
+      "SELECT created_by FROM api_tokens WHERE token_hash = ?1",
+    )
+      .bind(props.tokenHash)
+      .first<{ created_by: string }>();
+    if (!row) throw new Error("credential rejected");
+    return await tool.handler(this.env.DB, args ?? {}, row.created_by);
+  }
+}
+
+// Runs INSIDE the sandbox isolate. Plain string (no backticks/${} inside).
+const ID_SANDBOX_BOOTSTRAP = `
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { run } from "./user-code.js";
+export class Agent extends WorkerEntrypoint {
+  async run() {
+    const ID = this.env.ID;
+    const logs = [];
+    const toolCalls = [];
+    const fmt = (a) => {
+      if (typeof a === "string") return a;
+      try { return JSON.stringify(a); } catch (e) { return String(a); }
+    };
+    const capture = {
+      log(...a) { logs.push(a.map(fmt).join(" ")); },
+      info(...a) { logs.push(a.map(fmt).join(" ")); },
+      warn(...a) { logs.push("WARN: " + a.map(fmt).join(" ")); },
+      error(...a) { logs.push("ERROR: " + a.map(fmt).join(" ")); },
+    };
+    const id = new Proxy({}, {
+      get(t, name) {
+        if (name === "then") return undefined;
+        const tool = String(name);
+        return async (args) => {
+          const t0 = Date.now();
+          try {
+            const r = await ID.callTool(tool, args || {});
+            toolCalls.push({ tool, ms: Date.now() - t0 });
+            return r;
+          } catch (e) {
+            toolCalls.push({ tool, ms: Date.now() - t0, error: String((e && e.message) || e).slice(0, 500) });
+            throw e;
+          }
+        };
+      },
+    });
+    let outcome;
+    try {
+      const value = await run(id, capture);
+      let out = null;
+      try { out = value === undefined ? null : JSON.parse(JSON.stringify(value)); }
+      catch (e) { out = String(value); }
+      outcome = { ok: true, value: out, logs, toolCalls };
+    } catch (e) {
+      outcome = { ok: false, error: String((e && e.message) || e).slice(0, 2000), logs, toolCalls };
+    }
+    return outcome;
+  }
+}
+`;
+
+/** Minimal JSON-schema → TypeScript declaration renderer for tool docs. */
+function schemaToTs(schema: Record<string, unknown>, indent = ""): string {
+  const t = schema.type as string;
+  if (t === "string") {
+    const en = schema.enum as string[] | undefined;
+    if (en) return en.map((e) => JSON.stringify(e)).join(" | ");
+    return "string";
+  }
+  if (t === "number" || t === "integer") return "number";
+  if (t === "boolean") return "boolean";
+  if (t === "array") {
+    const items = schema.items as Record<string, unknown> | undefined;
+    return `(${items ? schemaToTs(items, indent) : "unknown"})[]`;
+  }
+  if (t === "object" || schema.properties) {
+    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+    const required = new Set((schema.required as string[] | undefined) ?? []);
+    const lines = Object.entries(props).map(([k, v]) => {
+      const opt = required.has(k) ? "" : "?";
+      const desc = typeof v.description === "string" ? ` /** ${v.description} */` : "";
+      return `${indent}  ${k}${opt}: ${schemaToTs(v, indent + " ")};${desc}`;
+    });
+    return `{\n${lines.join("\n")}\n${indent}}`;
+  }
+  return "unknown";
+}
+
+/** Generate typed TS declarations for every tool (for the `execute` docs). */
+function toolDeclarations(): string {
+  return TOOLS.filter((t) => t.name !== "execute")
+    .map((t) => {
+      const args = schemaToTs(t.inputSchema as Record<string, unknown>);
+      return `/** ${t.description} */\n${t.name}(args: ${args}): Promise<any>;`;
+    })
+    .join("\n\n");
+}
+
+const EXECUTE_TOOL: ToolDef = {
+  name: "execute",
+  description:
+    "Run JavaScript in an isolated sandbox with a typed `id` proxy for all IdP tools. " +
+    "Write a single async snippet: `id.users_list({})`, `id.groups_create({name})`, etc. " +
+    "Chain calls, filter in code — only your return value comes back to context. " +
+    "No network, no env access. Max 200KB code, 25s wall time.\n\n" +
+    "Available tools:\n```ts\n" + toolDeclarations() + "\n```",
+  inputSchema: {
+    type: "object",
+    properties: {
+      code: {
+        type: "string",
+        description: "JS snippet: statements using `id` and `console`. The last expression's value is returned.",
+      },
+    },
+    required: ["code"],
+  },
+  handler: async (db, args, adminId) => {
+    // This handler is never called directly — execute is intercepted in the
+    // POST handler where we have access to env.LOADER and ctx.exports.
+    throw new Error("execute must go through the sandbox runner");
+  },
+};
+
+// Register execute in the catalog (after TOOLS is defined).
+TOOLS.push(EXECUTE_TOOL);
+
+/** metrics_summary: per-tool calls, latency p50/p95, errors, execute composition. */
+const METRICS_TOOL: ToolDef = {
+  name: "metrics_summary",
+  description:
+    "MCP usage analytics for the last 24h: per-tool call counts, latency " +
+    "(avg/p50/p95/max), error counts with top error messages, and execute " +
+    "composition (avg inner tool calls per run, most-chained tools). " +
+    "Use this to find slow tools, error-prone tools, and discoverability gaps.",
+  inputSchema: { type: "object", properties: {} },
+  handler: async (db) => {
+    const dayAgo = Math.floor(Date.now() / 1000) - 86400;
+    const perTool = await db
+      .prepare(
+        `SELECT tool_name, COUNT(*) AS calls, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS errors,
+                AVG(duration_ms) AS avg_ms, MAX(duration_ms) AS max_ms
+         FROM mcp_calls WHERE started_at >= ?1 AND tool_name != 'execute'
+         GROUP BY tool_name ORDER BY calls DESC`,
+      )
+      .bind(dayAgo)
+      .all<{ tool_name: string; calls: number; errors: number; avg_ms: number; max_ms: number }>();
+    // p50/p95 need ordered values; fetch durations per tool (bounded).
+    const withPercentiles = await Promise.all(
+      perTool.results.map(async (r) => {
+        const durs = await db
+          .prepare(
+            `SELECT duration_ms FROM mcp_calls
+             WHERE started_at >= ?1 AND tool_name = ?2 ORDER BY duration_ms ASC LIMIT 1000`,
+          )
+          .bind(dayAgo, r.tool_name)
+          .all<{ duration_ms: number }>();
+        const vals = durs.results.map((d) => d.duration_ms).sort((a, b) => a - b);
+        const pct = (p: number) => (vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * p))] : 0);
+        const topErrors = await db
+          .prepare(
+            `SELECT error, COUNT(*) AS n FROM mcp_calls
+             WHERE started_at >= ?1 AND tool_name = ?2 AND success = 0 AND error IS NOT NULL
+             GROUP BY error ORDER BY n DESC LIMIT 3`,
+          )
+          .bind(dayAgo, r.tool_name)
+          .all<{ error: string; n: number }>();
+        return {
+          tool: r.tool_name,
+          calls: r.calls,
+          errors: r.errors,
+          latency_ms: {
+            avg: Math.round(r.avg_ms),
+            p50: pct(0.5),
+            p95: pct(0.95),
+            max: r.max_ms,
+          },
+          top_errors: topErrors.results,
+        };
+      }),
+    );
+    // Execute composition: how many inner calls per execute run.
+    const execStats = await db
+      .prepare(
+        `SELECT COUNT(*) AS runs FROM mcp_calls
+         WHERE started_at >= ?1 AND tool_name = 'execute' AND success = 1`,
+      )
+      .bind(dayAgo)
+      .first<{ runs: number }>();
+    const innerCalls = await db
+      .prepare(
+        `SELECT tool_name, COUNT(*) AS n FROM mcp_calls
+         WHERE started_at >= ?1 AND tool_name != 'execute'
+         GROUP BY tool_name ORDER BY n DESC LIMIT 5`,
+      )
+      .bind(dayAgo)
+      .all<{ tool_name: string; n: number }>();
+    return {
+      window: "last 24h",
+      per_tool: withPercentiles,
+      execute_runs: execStats?.runs ?? 0,
+      most_chained_tools: innerCalls.results,
+    };
+  },
+};
+TOOLS.push(METRICS_TOOL);
+
+/** Run the execute tool: validate, sandbox, return {value, logs, toolCalls}. */
+async function runExecute(
+  env: Env,
+  ctx: { exports?: Record<string, unknown>; waitUntil(p: Promise<unknown>): void },
+  db: D1Database,
+  code: string,
+  tokenHash: string,
+  tokenId: string,
+): Promise<{ content: { type: string; text: string }[]; isError?: boolean }> {
+  const started = Date.now();
+  const fail = (text: string) => {
+    trackCall(db, "execute", started, false, text.slice(0, 200), tokenId);
+    return { content: [{ type: "text", text }], isError: true };
+  };
+  if (!code || typeof code !== "string" || !code.trim()) {
+    return fail("Error: code is required and must be a non-empty string.");
+  }
+  if (code.length > 200000) {
+    return fail("Error: code exceeds 200KB.");
+  }
+  if (!env.LOADER) {
+    return fail("Error: the code-execution sandbox is not configured on this worker.");
+  }
+  const sandboxExport = ctx.exports?.IdCodeSandbox as
+    | ((opts: { props: { tokenHash: string } }) => unknown)
+    | undefined;
+  if (!sandboxExport) {
+    return fail("Error: sandbox entrypoint unavailable.");
+  }
+  let worker: { getEntrypoint(name: string, opts: unknown): { run(): Promise<unknown> } };
+  try {
+    const idStub = sandboxExport({ props: { tokenHash } });
+    worker = (env.LOADER as unknown as {
+      load(opts: Record<string, unknown>): {
+        getEntrypoint(name: string, opts: unknown): { run(): Promise<unknown> };
+      };
+    }).load({
+      compatibilityDate: "2026-10-06",
+      mainModule: "bootstrap.js",
+      modules: {
+        "bootstrap.js": ID_SANDBOX_BOOTSTRAP,
+        "user-code.js": `export async function run(id, console) {\n${code}\n}`,
+      },
+      env: { ID: idStub },
+      globalOutbound: null,
+    });
+  } catch (e) {
+    return fail("Error: failed to start sandbox: " + String((e as Error)?.message ?? e).slice(0, 300));
+  }
+  let result: unknown;
+  try {
+    const entry = worker.getEntrypoint("Agent", { limits: { cpuMs: 20000, subRequests: 500 } });
+    result = await Promise.race([
+      entry.run(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("execution timed out after 25s")), 25000),
+      ),
+    ]);
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e);
+    return fail("Error: " + msg.slice(0, 500));
+  }
+  const r = result as { ok: boolean; value?: unknown; error?: string; logs: string[]; toolCalls: { tool: string; ms: number; error?: string }[] };
+  // Track inner tool usage for metrics.
+  for (const tc of r.toolCalls ?? []) {
+    trackCall(db, tc.tool, started, !tc.error, tc.error ?? null, tokenId);
+  }
+  trackCall(db, "execute", started, r.ok, r.ok ? null : (r.error ?? "sandbox error").slice(0, 200), tokenId);
+  if (r.ok) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ value: r.value, logs: r.logs, toolCalls: r.toolCalls }, null, 2),
+        },
+      ],
+    };
+  }
+  return { content: [{ type: "text", text: `Error: ${r.error}` }], isError: true };
+}
