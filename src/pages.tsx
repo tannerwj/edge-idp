@@ -121,6 +121,8 @@ export function EnrollPage(props: {
   );
 }
 
+import { AppShell, accountNav } from "./shell";
+
 export function AccountPage(props: {
   rpName: string;
   theme?: string;
@@ -130,67 +132,69 @@ export function AccountPage(props: {
   buildHash?: string;
   credentials: { id: string; name: string; created: string; lastUsed: string }[];
 }) {
-  return (
-    <Layout
-      title={`Your account — ${props.rpName}`}
-      rpName={props.rpName}
-      page="account"
-      theme={props.theme}
-      nav={{ isAdmin: props.isAdmin, active: "account" }}
-     buildHash={props.buildHash}>
-      <h1>Your account</h1>
-      <h2>Profile</h2>
-      <form method="post" action="/account/profile" class="stack">
-        <label class="field">
-          <span>Name</span>
-          <input name="name" required maxLength={120} value={props.name} />
-        </label>
-        <label class="field">
-          <span>Email</span>
-          <input name="email" type="email" required maxLength={254} value={props.email} />
-        </label>
-        <div>
-          <button class="btn primary" type="submit">
-            Save profile
-          </button>
-        </div>
-      </form>
-      <h2>Passkeys</h2>
-      {props.credentials.length === 0 ? (
-        <p class="muted">No passkeys yet.</p>
-      ) : (
-        <ul class="key-list">
-          {props.credentials.map((k) => (
-            <li key={k.id}>
-              <span class="key-name">{k.name}</span>
-              <span class="muted small">
-                added {k.created}
-                {k.lastUsed ? ` · used ${k.lastUsed}` : ""}
-              </span>
-              <button
-                class="btn danger ghost"
-                data-remove-key={k.id}
-                type="button"
-              >
-                Remove
+  return AppShell({
+    rpName: props.rpName,
+    title: "Profile",
+    theme: props.theme ?? "obsidian",
+    userName: props.name,
+    userEmail: props.email,
+    isAdmin: props.isAdmin,
+    active: "profile",
+    nav: accountNav(props.isAdmin),
+    children: (
+      <>
+        <div class="card">
+          <h2>Profile</h2>
+          <form method="post" action="/account/profile" class="stack">
+            <label class="field">
+              <span>Name</span>
+              <input name="name" required maxLength={120} value={props.name} />
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input name="email" type="email" required maxLength={254} value={props.email} />
+            </label>
+            <div>
+              <button class="btn primary" type="submit">
+                Save profile
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div id="account-box">
-        <button id="add-key-btn" class="btn" type="button">
-          Add another passkey
-        </button>
-        <p id="account-status" class="status" role="status" aria-live="polite"></p>
-      </div>
-      <form method="post" action="/logout" class="row">
-        <button class="btn ghost" type="submit">
-          Sign out
-        </button>
-      </form>
-    </Layout>
-  );
+            </div>
+          </form>
+        </div>
+        <div class="card" id="passkeys">
+          <h2>Passkeys</h2>
+          {props.credentials.length === 0 ? (
+            <p class="muted">No passkeys yet.</p>
+          ) : (
+            <ul class="key-list">
+              {props.credentials.map((k) => (
+                <li key={k.id}>
+                  <span class="key-name">{k.name}</span>
+                  <span class="muted small">
+                    added {k.created}
+                    {k.lastUsed ? ` · used ${k.lastUsed}` : ""}
+                  </span>
+                  <button
+                    class="btn danger ghost"
+                    data-remove-key={k.id}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div id="account-box">
+            <button id="add-key-btn" class="btn" type="button">
+              Add another passkey
+            </button>
+            <p id="account-status" class="status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </>
+    ),
+  });
 }
 
 export function DonePage(props: { rpName: string; title: string; body: string; theme?: string ;
