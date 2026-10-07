@@ -27,7 +27,6 @@ groupsAdmin.get("/", async (c) => {
     "groups",
     "Groups",
     <>
-      <h1>Groups</h1>
       <p class="muted">
         Groups become the <code>groups</code> claim in ID tokens — Cloudflare
         Access matches its policies against them.

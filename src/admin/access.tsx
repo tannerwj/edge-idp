@@ -11,7 +11,6 @@ accessAdmin.get("/", async (c) => {
     "access",
     "Cloudflare Access",
     <>
-      <h1>Cloudflare Access</h1>
       <p class="muted">
         Connect this identity provider to Cloudflare Zero Trust so your apps
         can use it for sign-in.

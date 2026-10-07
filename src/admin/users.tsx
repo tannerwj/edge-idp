@@ -24,7 +24,6 @@ usersAdmin.get("/", async (c) => {
     "users",
     "Users",
     <>
-      <h1>Users</h1>
       <form method="post" action="/admin/users" class="row wrap">
         <label class="field inline">
           <span>Name</span>

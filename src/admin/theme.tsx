@@ -24,7 +24,6 @@ themeAdmin.get("/", async (c) => {
     "theme",
     "Theme",
     <>
-      <h1>Theme</h1>
       <p class="muted">
         The site-wide theme. It applies to the sign-in page, enrollment, your
         account, and this admin.

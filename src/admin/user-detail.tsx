@@ -63,7 +63,6 @@ userDetailAdmin.get("/", async (c) => {
     "users",
     user.name,
     <>
-      <h1>{user.name}</h1>
       <p class="muted">
         {user.email} ·{" "}
         {user.is_admin ? <span class="pill">admin</span> : "standard"} ·{" "}
