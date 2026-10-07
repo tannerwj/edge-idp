@@ -2,7 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { copyFileSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { migrateLocal, sqlRows, stageConfig } from "../../scripts/cf-local.mjs";
+import { migrateLocal, sqlRows, stageConfig, stopGroup } from "../../scripts/cf-local.mjs";
 
 const LINKED = ["src", "migrations", "node_modules", "scripts"];
 const REMOTE_KEEP = new Set(["d1_migrations", "instance_settings"]);
@@ -27,7 +27,11 @@ function server(cmd, args, work, base) {
   let proc = null;
   let log = "";
   const start = async () => {
-    proc = spawn("npx", [cmd, ...args], { cwd: work, stdio: ["ignore", "pipe", "pipe"] });
+    proc = spawn("npx", [cmd, ...args], {
+      cwd: work,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
     proc.stdout.on("data", (d) => (log += d));
     proc.stderr.on("data", (d) => (log += d));
     const deadline = Date.now() + 90_000;
@@ -41,9 +45,7 @@ function server(cmd, args, work, base) {
   };
   const stop = async () => {
     if (!proc) return;
-    const exited = new Promise((r) => proc.once("exit", r));
-    proc.kill();
-    await exited;
+    await stopGroup(proc);
     proc = null;
   };
   return { start, stop, log: () => log };
@@ -75,8 +77,8 @@ export async function startLocal({ issuer, rpName = "E2E Identity", port }) {
     work,
     sql: (command) => sqlRows(command, { persistTo: state }),
     log: srv.log,
-    stop: () => {
-      void srv.stop();
+    stop: async () => {
+      await srv.stop();
       cleanup(work);
     },
   };

@@ -194,6 +194,6 @@ try {
     console.log(`${result.pass ? "PASS" : "FAIL"} ${result.name}: ${result.actual}`);
   if (checks.some((x) => !x.pass)) process.exitCode = 1;
 } finally {
-  instance.stop();
+  await instance.stop();
 }
 process.exit(process.exitCode ?? 0);

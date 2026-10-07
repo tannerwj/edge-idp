@@ -295,6 +295,20 @@ account. SQLite's `lower()` folds only ASCII, so the app's key does the same
 must match exactly, and the stored address always finds itself
 (`src/db.ts › getUserByEmail`).
 
+## Cloudflare API token (optional)
+
+The read-only Access integration needs a Cloudflare API token. Admins can
+connect it in Settings, which stores it in `instance_settings` in plaintext.
+That is acceptable because of what the token can do and what an attacker would
+already have: it should carry only Access read permissions (apps, policies,
+identity providers), so it can't change anything, and reading D1 already means
+full control of this instance. The UI is write-only (the token is never sent
+back to a browser, only "connected" and the account ID), it's validated against
+Cloudflare before it's saved, connecting and disconnecting are audited, and
+it isn't exposed through MCP, so it never lands in an AI tool's context. Setting
+`CF_API_TOKEN` as a Worker secret keeps it out of D1 entirely and takes
+precedence (`src/ops-settings.ts › connectCloudflare`).
+
 ## Token design
 
 Tokens are signed with RS256 only. Cloudflare Access accepts RSA and ECDSA but

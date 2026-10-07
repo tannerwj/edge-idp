@@ -6,8 +6,10 @@ import { ACCENTS, invalidateSettingsCache } from "../settings-cache";
 import { rpIdFromIssuer } from "../util";
 import type { Env } from "../config";
 import type { AdminVars } from "./shell";
-import { act, field, page } from "./shell";
-import { PageHead } from "../ui/components";
+import { act, actor, field, page } from "./shell";
+import * as ops from "../ops";
+import { SETTING_KEYS } from "../settings-cache";
+import { PageHead, PostButton } from "../ui/components";
 import { Icon } from "../ui/icons";
 import { VERSION } from "../assets.gen";
 import { availableUpdate, upstreamLinks, upstreamRepo } from "../upstream";
@@ -82,10 +84,26 @@ function About(props: {
   );
 }
 
-function SettingsForm(props: { accent: string; dcr: string; cimd: string }) {
+function SettingsForm(props: { name: string; accent: string; dcr: string; cimd: string }) {
   return (
     <form class="card" method="post" action="/admin/settings">
       <div class="card-head">
+        <Icon name="fingerprint" />
+        <div class="grow">
+          <h2>Name</h2>
+          <div class="sub">
+            Shown on sign-in pages, invites and the admin, and used by password managers to label
+            new passkeys. Existing passkeys keep the label they were saved with.
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <label class="field">
+          <span class="label">Instance name</span>
+          <input name="name" value={props.name} required maxLength={60} autocomplete="off" />
+        </label>
+      </div>
+      <div class="card-head card-head-mid">
         <Icon name="sparkles" />
         <div class="grow">
           <h2>Appearance</h2>
@@ -178,7 +196,12 @@ function IdentityCard(props: { env: Env; keys: { kid?: string }[] }) {
             )}
           </dd>
           <dt>Cloudflare API</dt>
-          <dd>{ok(cfConfigured(props.env), "Connected (read-only)", "Not configured")}</dd>
+          <dd class="row-sm wrap">
+            {ok(cfConfigured(props.env), "Connected (read-only)", "Not configured")}
+            <a class="small" href="#cloudflare">
+              Manage
+            </a>
+          </dd>
           <dt>Error tracking</dt>
           <dd>{ok(!!props.env.SENTRY_DSN, "Sentry", "Off")}</dd>
         </dl>
@@ -187,16 +210,125 @@ function IdentityCard(props: { env: Env; keys: { kid?: string }[] }) {
   );
 }
 
+function CloudflareCard(props: { source: "settings" | "secret" | null; accountId: string | null }) {
+  return (
+    <section class="card" id="cloudflare">
+      <div class="card-head">
+        <Icon name="cloud" />
+        <div class="grow">
+          <h2>Cloudflare Access</h2>
+          <div class="sub">
+            Optional, read-only. Lets Admin → Apps list your Access applications and the groups
+            their policies require, and add them to the launcher in one click. Nothing is ever
+            changed in Cloudflare.
+          </div>
+        </div>
+        {props.source ? (
+          <span class="badge ok dot">Connected</span>
+        ) : (
+          <span class="badge">Not connected</span>
+        )}
+      </div>
+      {props.source === "secret" ? (
+        <div class="card-body">
+          <p class="muted small">
+            Connected through the <code>CF_API_TOKEN</code> Worker secret, which takes precedence.
+            Remove that secret to manage the connection here instead.
+          </p>
+        </div>
+      ) : (
+        <CloudflareForm connected={props.source === "settings"} accountId={props.accountId} />
+      )}
+    </section>
+  );
+}
+
+function CloudflareForm(props: { connected: boolean; accountId: string | null }) {
+  return (
+    <>
+      <form method="post" action="/admin/settings/cloudflare" class="card-body stack">
+        <label class="field">
+          <span class="label">API token</span>
+          <input
+            name="token"
+            type="password"
+            required
+            autocomplete="off"
+            spellcheck={false}
+            placeholder={props.connected ? "Saved. Paste a new token to replace it" : ""}
+          />
+          <span class="hint">
+            Stored for this instance only and never shown again. Use a token with read permissions
+            only.
+          </span>
+        </label>
+        <label class="field">
+          <span class="label">Account ID (optional)</span>
+          <input
+            name="accountId"
+            value={props.accountId ?? ""}
+            autocomplete="off"
+            spellcheck={false}
+            placeholder="Detected from the token when left empty"
+          />
+        </label>
+        <details class="small">
+          <summary>How to create the token</summary>
+          <ol class="stack-sm">
+            <li>
+              Open{" "}
+              <a
+                href="https://dash.cloudflare.com/profile/api-tokens"
+                target="_blank"
+                rel="noopener"
+              >
+                Cloudflare → My Profile → API Tokens
+              </a>{" "}
+              and choose <b>Create Token → Custom token</b>.
+            </li>
+            <li>
+              Add two account permissions: <b>Access: Apps and Policies → Read</b> and{" "}
+              <b>Access: Organizations, Identity Providers, and Groups → Read</b>.
+            </li>
+            <li>Limit it to your account, create it, and paste it above.</li>
+          </ol>
+        </details>
+        <div class="row-sm">
+          <button class="btn primary" type="submit">
+            {props.connected ? "Replace and test" : "Connect and test"}
+          </button>
+        </div>
+      </form>
+      {props.connected ? (
+        <div class="card-foot">
+          <span class="muted small">Account {props.accountId}</span>
+          <PostButton
+            action="/admin/settings/cloudflare/remove"
+            label="Disconnect"
+            icon="x"
+            class="btn sm danger right"
+            confirm="Disconnect Cloudflare? The Access import goes away; nothing changes in Cloudflare."
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 settingsAdmin.get("/", async (c) => {
   const db = c.env.DB;
-  const [accent, dcr, cimd, jwks, update, checkedAt] = await Promise.all([
-    getSetting(db, "accent", "indigo"),
-    getSetting(db, "dcr_enabled", "1"),
-    getSetting(db, "cimd_enabled", "1"),
-    jwksDocument(c.env),
-    availableUpdate(c.env),
-    getSetting(db, "upstream_checked_at", ""),
-  ]);
+  const [name, storedToken, accountId, accent, dcr, cimd, jwks, update, checkedAt] =
+    await Promise.all([
+      getSetting(db, SETTING_KEYS.name, ""),
+      getSetting(db, SETTING_KEYS.cfApiToken, ""),
+      getSetting(db, SETTING_KEYS.cfAccountId, ""),
+      getSetting(db, "accent", "indigo"),
+      getSetting(db, "dcr_enabled", "1"),
+      getSetting(db, "cimd_enabled", "1"),
+      jwksDocument(c.env),
+      availableUpdate(c.env),
+      getSetting(db, "upstream_checked_at", ""),
+    ]);
   const repo = upstreamRepo(c.env);
   return await page(
     c,
@@ -204,10 +336,15 @@ settingsAdmin.get("/", async (c) => {
     <>
       <PageHead
         title="Settings"
-        lede="Instance-wide settings. Identity values come from cloudflare.config.ts and secrets."
+        lede="Instance-wide settings. The issuer and signing keys come from the Worker config and secrets."
       />
       <div class="stack-lg">
-        <SettingsForm accent={accent} dcr={dcr} cimd={cimd} />
+        <SettingsForm name={name || c.env.RP_NAME} accent={accent} dcr={dcr} cimd={cimd} />
+
+        <CloudflareCard
+          source={storedToken ? "settings" : c.env.CF_API_TOKEN ? "secret" : null}
+          accountId={accountId || c.env.CF_ACCOUNT_ID || null}
+        />
 
         <About
           version={VERSION}
@@ -225,6 +362,8 @@ settingsAdmin.get("/", async (c) => {
 settingsAdmin.post("/", async (c) => {
   const form = await c.req.parseBody();
   return act(c, "/admin/settings", "Settings saved", async () => {
+    const name = field(form, "name");
+    if (name !== c.env.RP_NAME) await ops.setInstanceName(c.env.DB, name, actor(c));
     const accent = field(form, "accent");
     if ((ACCENTS as readonly string[]).includes(accent))
       await setSetting(c.env.DB, "accent", accent);
@@ -234,3 +373,20 @@ settingsAdmin.post("/", async (c) => {
     await audit(c.env.DB, "SETTINGS_CHANGED", { userId: c.get("admin").id, detail: { accent } });
   });
 });
+
+settingsAdmin.post("/cloudflare", async (c) => {
+  const form = await c.req.parseBody();
+  return act(c, "/admin/settings#cloudflare", "Cloudflare connected", () =>
+    ops.connectCloudflare(
+      c.env.DB,
+      { token: field(form, "token"), accountId: field(form, "accountId") },
+      actor(c),
+    ),
+  );
+});
+
+settingsAdmin.post("/cloudflare/remove", (c) =>
+  act(c, "/admin/settings#cloudflare", "Cloudflare disconnected", () =>
+    ops.disconnectCloudflare(c.env.DB, actor(c)),
+  ),
+);

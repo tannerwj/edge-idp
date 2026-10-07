@@ -12,12 +12,25 @@ const optStr = (v: unknown): string | undefined => (typeof v === "string" ? v : 
 const records = (v: unknown): Record<string, unknown>[] =>
   Array.isArray(v) ? v.filter(isRecord) : [];
 
-async function cfGet(env: Env, path: string): Promise<{ result: unknown; totalPages: number }> {
-  const res = await fetch(`${API}/accounts/${env.CF_ACCOUNT_ID}${path}`, {
-    headers: { authorization: `Bearer ${env.CF_API_TOKEN}`, "user-agent": "edge-idp" },
+interface CfCreds {
+  token: string;
+  accountId: string;
+}
+
+const credsOf = (env: Env): CfCreds => ({
+  token: env.CF_API_TOKEN ?? "",
+  accountId: env.CF_ACCOUNT_ID ?? "",
+});
+
+async function cfRequest(
+  token: string,
+  url: string,
+): Promise<{ result: unknown; totalPages: number }> {
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${token}`, "user-agent": "edge-idp" },
     signal: AbortSignal.timeout(10_000),
   });
-  const body: unknown = await res.json();
+  const body: unknown = await res.json().catch(() => null);
   const envelope = isRecord(body) ? body : {};
   if (!res.ok || envelope.success !== true) {
     const msg = records(envelope.errors)
@@ -31,6 +44,26 @@ async function cfGet(env: Env, path: string): Promise<{ result: unknown; totalPa
     result: envelope.result,
     totalPages: typeof info.total_pages === "number" ? info.total_pages : 1,
   };
+}
+
+function cfGet(creds: CfCreds, path: string): Promise<{ result: unknown; totalPages: number }> {
+  return cfRequest(creds.token, `${API}/accounts/${creds.accountId}${path}`);
+}
+
+export async function detectAccountId(token: string): Promise<string> {
+  const { result } = await cfRequest(token, `${API}/accounts?per_page=5`);
+  const ids = records(result).flatMap((a) => optStr(a.id) ?? []);
+  if (ids.length === 1 && ids[0]) return ids[0];
+  throw new Error(
+    ids.length
+      ? "the token can see several accounts; enter the account ID"
+      : "couldn't find an account for this token; enter the account ID",
+  );
+}
+
+export async function verifyAccessRead(creds: CfCreds): Promise<void> {
+  await cfGet(creds, "/access/apps?per_page=1");
+  await cfGet(creds, "/access/identity_providers?per_page=1");
 }
 
 type Rule = Record<string, Record<string, unknown> | undefined>;
@@ -113,7 +146,7 @@ function describeRule(r: Rule, ourIdp: string | null): string {
 }
 
 async function findOurIdp(env: Env): Promise<{ id: string; name: string } | null> {
-  const { result } = await cfGet(env, "/access/identity_providers");
+  const { result } = await cfGet(credsOf(env), "/access/identity_providers");
   const mine = records(result).find((i) => {
     const config = isRecord(i.config) ? i.config : {};
     return i.type === "oidc" && config.auth_url === `${env.ISSUER}/authorize`;
@@ -128,7 +161,10 @@ export async function listAccessApps(
   const idp = await findOurIdp(env);
   const apps: CfApp[] = [];
   for (let page = 1; page <= 10; page++) {
-    const { result, totalPages } = await cfGet(env, `/access/apps?per_page=100&page=${page}`);
+    const { result, totalPages } = await cfGet(
+      credsOf(env),
+      `/access/apps?per_page=100&page=${page}`,
+    );
     apps.push(...records(result).flatMap((r) => toApp(r) ?? []));
     if (totalPages <= page) break;
   }

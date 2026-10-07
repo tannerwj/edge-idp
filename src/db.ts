@@ -321,6 +321,12 @@ export async function getSetting(db: D1Database, key: string, fallback: string):
   return row?.value ?? fallback;
 }
 
+export async function deleteSettings(db: D1Database, keys: string[]): Promise<void> {
+  await db.batch(
+    keys.map((k) => db.prepare("DELETE FROM instance_settings WHERE key = ?1").bind(k)),
+  );
+}
+
 export async function setSetting(db: D1Database, key: string, value: string): Promise<void> {
   await db
     .prepare(

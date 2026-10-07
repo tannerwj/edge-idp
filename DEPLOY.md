@@ -32,7 +32,7 @@ live:
 3. Optional:
    - A later hostname or issuer change needs a planned migration: existing
      passkeys are bound to the old RP ID and clients use the old issuer.
-   - Rename the instance with `RP_NAME`.
+   - Rename the instance in Admin → Settings → Name.
    - Turn on MCP code mode by adding the `worker_loaders` binding (commented
      out in `wrangler.jsonc`).
    - Do the edge hardening in section 9 below.
@@ -144,7 +144,8 @@ In `cloudflare.config.ts`:
 - `accountId`: your account ID (`npx cf auth whoami`)
 - `ISSUER`: `"https://auth.yourdomain.com"` (no trailing slash, no path; must
   be https). The passkey RP ID is its hostname, so pick the permanent one now.
-- `RP_NAME`: the name shown on the sign-in pages
+- `RP_NAME`: the default name shown on the sign-in pages (admins can change
+  it later in Admin → Settings)
 - the `triggers.fetch` route: `auth.yourdomain.com/*` on your zone
 
 The worker refuses to serve until ISSUER is set correctly (fail-closed).
@@ -263,18 +264,25 @@ of this with copy buttons.
 ## 11. Optional: Cloudflare Access import
 
 To list your Access applications (and which groups their policies require) and
-add them to the launcher in one click:
+add them to the launcher in one click, connect a read-only Cloudflare API token
+in **Admin → Settings → Cloudflare Access**. The page explains how to create
+the token; it needs only two account permissions: **Access: Apps and Policies
+→ Read** and **Access: Organizations, Identity Providers, and Groups → Read**.
+The account ID is detected from the token (enter it if the token can see more
+than one account). The token is tested against Cloudflare before it's saved
+and is never shown again; Disconnect removes it.
+
+To keep the token out of D1 instead, set it as Worker secrets; they take
+precedence and the Settings card then shows the connection as managed by the
+secret:
 
 ```bash
 npx cf workers secrets update CF_API_TOKEN --worker identity --type secret_text --text "$CF_ACCESS_READ_TOKEN"
 ```
 
-The API token needs only two read permissions: **Access: Apps and Policies
-Read** and **Access: Organizations, Identity Providers, and Groups Read**.
-Then add `CF_ACCOUNT_ID: bindings.text("<your account id>")` to the worker's
-`env` in `cloudflare.config.ts` (or `"CF_ACCOUNT_ID"` under `vars` in
-`wrangler.jsonc`). The feature turns on only when both are set. The
-integration is read-only: Access stays the source of truth for its policies.
+plus `CF_ACCOUNT_ID: bindings.text("<your account id>")` in the worker's `env`
+(or under `vars` in `wrangler.jsonc`). Either way the integration is
+read-only: Access stays the source of truth for its policies.
 
 ## 12. Optional: error tracking with Sentry
 
@@ -298,13 +306,13 @@ and are never committed.
 | Name                          | Kind                  | Required                                        | Purpose                                                                                                                                          |
 | ----------------------------- | --------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ISSUER`                      | var                   | reference: yes; one-click: no (pinned at setup) | Public base URL, https, no trailing slash or path. Plain-http `localhost` is allowed for local dev.                                              |
-| `RP_NAME`                     | var                   | no (defaults to "Identity")                     | Name shown on sign-in and enrollment pages and in passkey managers.                                                                              |
+| `RP_NAME`                     | var                   | no (defaults to "Identity")                     | Default instance name; Admin → Settings overrides it. Shown on sign-in and enrollment pages and in passkey managers.                             |
 | `SIGNING_KEY_JWK`             | secret                | reference: yes; one-click: no                   | RS256 private JWK from `scripts/gen-key.mjs`. Always wins over the D1 key.                                                                       |
 | `SIGNING_KEY_JWK_PREVIOUS`    | secret                | no                                              | Previous key during a rotation; published in JWKS, never used to sign.                                                                           |
 | `SETUP_TOKEN`                 | secret                | one-click: yes                                  | Authorizes `/setup` and encrypts the generated D1 signing key. Keep it after setup and back it up separately from D1.                            |
 | `SENTRY_DSN`                  | secret                | no                                              | Sentry error tracking.                                                                                                                           |
-| `CF_API_TOKEN`                | secret                | no                                              | Read-only Cloudflare Access integration, with `CF_ACCOUNT_ID`.                                                                                   |
-| `CF_ACCOUNT_ID`               | var                   | no                                              | Account for the Access integration.                                                                                                              |
+| `CF_API_TOKEN`                | secret                | no                                              | Read-only Cloudflare Access integration. Usually set in Admin → Settings instead; the secret wins when both exist.                               |
+| `CF_ACCOUNT_ID`               | var                   | no                                              | Account for the Access integration. Detected from the token when connected in Settings.                                                          |
 | `UPSTREAM_REPO`               | var                   | no                                              | `owner/repo` for feedback links and the update check, or `off`. Defaults to the upstream project.                                                |
 | `DB`                          | D1 binding            | yes                                             | The database.                                                                                                                                    |
 | `AUTH_LIMITER`, `API_LIMITER` | rate-limit bindings   | recommended                                     | See section 9. `/setup` and `/register` return 503 without `AUTH_LIMITER`.                                                                       |

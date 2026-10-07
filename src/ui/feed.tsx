@@ -50,6 +50,8 @@ const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
   APP_UPDATED: { label: "App updated", icon: "grid", tone: "" },
   APP_DELETED: { label: "App removed", icon: "trash", tone: "warn" },
   SETTINGS_CHANGED: { label: "Settings changed", icon: "settings", tone: "" },
+  CF_API_CONNECTED: { label: "Cloudflare connected", icon: "cloud", tone: "warn" },
+  CF_API_DISCONNECTED: { label: "Cloudflare disconnected", icon: "cloud", tone: "" },
   THEME_CHANGED: { label: "Theme changed", icon: "settings", tone: "" },
   CLIENT_PKCE_TOGGLED: { label: "PKCE setting changed", icon: "plug", tone: "" },
 };
