@@ -28,9 +28,16 @@ if (!email || !name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
 
 const local = args.local === true;
 const stage = stageArg();
-const devVars = local ? (() => { try { return readFileSync(".dev.vars", "utf8"); } catch { return ""; } })() : "";
-const issuer =
-  (devVars.match(/ISSUER\s*=\s*"([^"]+)"/) ?? [])[1] ?? stageConfig(stage).issuer;
+const devVars = local
+  ? (() => {
+      try {
+        return readFileSync(".dev.vars", "utf8");
+      } catch {
+        return "";
+      }
+    })()
+  : "";
+const issuer = (devVars.match(/ISSUER\s*=\s*"([^"]+)"/) ?? [])[1] ?? stageConfig(stage).issuer;
 if (!issuer || issuer.includes("REPLACE")) {
   console.error("Set ISSUER in cloudflare.config.ts first (see DEPLOY.md).");
   process.exit(1);

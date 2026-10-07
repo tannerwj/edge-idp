@@ -9,13 +9,19 @@ export type AdminVars = { Bindings: Env; Variables: { admin: User } };
 export type ACtx = Context<AdminVars>;
 
 /** Form fields from parseBody(): File uploads are never valid here. */
-export function field(form: Record<string, string | File | (string | File)[] | undefined>, key: string): string {
+export function field(
+  form: Record<string, string | File | (string | File)[] | undefined>,
+  key: string,
+): string {
   const v = form[key];
   return typeof v === "string" ? v : "";
 }
 
 /** Multi-value field (checkbox groups) — parseBody({ all: true }) shape. */
-export function fields(form: Record<string, string | File | (string | File)[] | undefined>, key: string): string[] {
+export function fields(
+  form: Record<string, string | File | (string | File)[] | undefined>,
+  key: string,
+): string[] {
   const v = form[key];
   const list = Array.isArray(v) ? v : v === undefined ? [] : [v];
   return list.filter((x): x is string => typeof x === "string");
@@ -53,7 +59,12 @@ export async function page(
  * input) become a red toast on the same page; anything else is a real bug
  * and propagates to Sentry.
  */
-export async function act(c: ACtx, back: string, ok: string, fn: () => Promise<unknown>): Promise<Response> {
+export async function act(
+  c: ACtx,
+  back: string,
+  ok: string,
+  fn: () => Promise<unknown>,
+): Promise<Response> {
   try {
     await fn();
     setFlash(c, ok, "ok");

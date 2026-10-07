@@ -11,7 +11,15 @@ import type { FeedRow } from "../ui/feed";
 import { Icon } from "../ui/icons";
 import type { IconName } from "../ui/icons";
 
-function ActivityGrid({ recent, topClients, maxTop }: { recent: FeedRow[]; topClients: { id: string; name: string; n: number }[]; maxTop: number }) {
+function ActivityGrid({
+  recent,
+  topClients,
+  maxTop,
+}: {
+  recent: FeedRow[];
+  topClients: { id: string; name: string; n: number }[];
+  maxTop: number;
+}) {
   return (
     <div class="grid-3">
       <section class="card span-2">
@@ -63,7 +71,14 @@ function bars(values: number[]): { day: number; v: string; zero: boolean; n: num
   return values.map((n, day) => ({ day, v: String(Math.round((n / max) * 19)), zero: n === 0, n }));
 }
 
-function Stat(props: { label: string; value: string | number; icon: IconName; sub?: unknown; spark?: number[]; href?: string }) {
+function Stat(props: {
+  label: string;
+  value: string | number;
+  icon: IconName;
+  sub?: unknown;
+  spark?: number[];
+  href?: string;
+}) {
   const body = (
     <div class="stat">
       <span class="k">
@@ -93,22 +108,84 @@ function Stat(props: { label: string; value: string | number; icon: IconName; su
 type Attention = { tone: "warn" | "bad" | "accent"; icon: IconName; text: unknown; href: string };
 
 /** "Needs attention" cards on the overview, most actionable first. */
-function attentionItems(x: { update: string | null; admins: number; pending: string[]; expiringTokens: number; denied: number }): Attention[] {
+function attentionItems(x: {
+  update: string | null;
+  admins: number;
+  pending: string[];
+  expiringTokens: number;
+  denied: number;
+}): Attention[] {
   const out: Attention[] = [];
   if (x.update) {
-    out.push({ tone: "accent", icon: "sparkles", text: <><b>edge-idp v{x.update} is available.</b> You're on v{VERSION}.</>, href: "/admin/settings#about" });
+    out.push({
+      tone: "accent",
+      icon: "sparkles",
+      text: (
+        <>
+          <b>edge-idp v{x.update} is available.</b> You're on v{VERSION}.
+        </>
+      ),
+      href: "/admin/settings#about",
+    });
   }
   if (x.admins < 2) {
-    out.push({ tone: "warn", icon: "shield", text: <><b>Only one admin.</b> Promote a second person so a lost device never locks you out of admin.</>, href: "/admin/users" });
+    out.push({
+      tone: "warn",
+      icon: "shield",
+      text: (
+        <>
+          <b>Only one admin.</b> Promote a second person so a lost device never locks you out of
+          admin.
+        </>
+      ),
+      href: "/admin/users",
+    });
   }
   if (x.pending.length) {
-    out.push({ tone: "accent", icon: "userPlus", text: <><b>{x.pending.length === 5 ? "5+" : x.pending.length} {x.pending.length === 1 ? "person hasn't" : "people haven't"}</b> set up a passkey yet: {x.pending.join(", ")}.</>, href: "/admin/users?filter=pending" });
+    out.push({
+      tone: "accent",
+      icon: "userPlus",
+      text: (
+        <>
+          <b>
+            {x.pending.length === 5 ? "5+" : x.pending.length}{" "}
+            {x.pending.length === 1 ? "person hasn't" : "people haven't"}
+          </b>{" "}
+          set up a passkey yet: {x.pending.join(", ")}.
+        </>
+      ),
+      href: "/admin/users?filter=pending",
+    });
   }
   if (x.expiringTokens) {
-    out.push({ tone: "warn", icon: "key", text: <><b>{x.expiringTokens} API token{x.expiringTokens === 1 ? "" : "s"}</b> expire within a week.</>, href: "/admin/tokens" });
+    out.push({
+      tone: "warn",
+      icon: "key",
+      text: (
+        <>
+          <b>
+            {x.expiringTokens} API token{x.expiringTokens === 1 ? "" : "s"}
+          </b>{" "}
+          expire within a week.
+        </>
+      ),
+      href: "/admin/tokens",
+    });
   }
   if (x.denied) {
-    out.push({ tone: "bad", icon: "alert", text: <><b>{x.denied} security event{x.denied === 1 ? "" : "s"}</b> in the last 7 days (denied access, token replay, or cloned-key signals).</>, href: "/admin/audit?category=security" });
+    out.push({
+      tone: "bad",
+      icon: "alert",
+      text: (
+        <>
+          <b>
+            {x.denied} security event{x.denied === 1 ? "" : "s"}
+          </b>{" "}
+          in the last 7 days (denied access, token replay, or cloned-key signals).
+        </>
+      ),
+      href: "/admin/audit?category=security",
+    });
   }
   return out;
 }
@@ -167,16 +244,40 @@ dashboardAdmin.get("/", async (c) => {
          WHERE a.event NOT IN ('CODE_ISSUED', 'TOKEN_ISSUED')
          ORDER BY a.id DESC LIMIT 10`,
       )
-      .all<{ event: string; created_at: number; name: string | null; email: string | null; client_name: string | null }>(),
-    count(db, "SELECT COUNT(*) AS n FROM api_tokens WHERE expires_at IS NOT NULL AND expires_at BETWEEN ?1 AND ?2", now, now + 7 * DAY),
-    count(db, "SELECT COUNT(*) AS n FROM audit_log WHERE event IN ('ACCESS_DENIED','REFRESH_REUSE_DETECTED','PASSKEY_COUNTER_REGRESSION') AND created_at >= ?1", now - 7 * DAY),
+      .all<{
+        event: string;
+        created_at: number;
+        name: string | null;
+        email: string | null;
+        client_name: string | null;
+      }>(),
+    count(
+      db,
+      "SELECT COUNT(*) AS n FROM api_tokens WHERE expires_at IS NOT NULL AND expires_at BETWEEN ?1 AND ?2",
+      now,
+      now + 7 * DAY,
+    ),
+    count(
+      db,
+      "SELECT COUNT(*) AS n FROM audit_log WHERE event IN ('ACCESS_DENIED','REFRESH_REUSE_DETECTED','PASSKEY_COUNTER_REGRESSION') AND created_at >= ?1",
+      now - 7 * DAY,
+    ),
   ]);
 
-  const days = Array.from({ length: 14 }, (_, i) => signInsByDay.results.find((r) => r.d === i)?.n ?? 0);
+  const days = Array.from(
+    { length: 14 },
+    (_, i) => signInsByDay.results.find((r) => r.d === i)?.n ?? 0,
+  );
   const total14 = days.reduce((a, b) => a + b, 0);
   const maxTop = Math.max(1, ...topClients.results.map((r) => r.n));
 
-  const attention = attentionItems({ update: await availableUpdate(c.env), admins, pending: noKeys.results.map((u) => u.name), expiringTokens, denied });
+  const attention = attentionItems({
+    update: await availableUpdate(c.env),
+    admins,
+    pending: noKeys.results.map((u) => u.name),
+    expiringTokens,
+    denied,
+  });
 
   return await page(
     c,
@@ -200,10 +301,33 @@ dashboardAdmin.get("/", async (c) => {
       />
       <div class="stack-lg">
         <div class="grid-4">
-          <Stat label="People" icon="users" value={users} sub={`${admins} admin${admins === 1 ? "" : "s"}`} href="/admin/users" />
-          <Stat label="Sign-ins · 14 days" icon="logIn" value={total14} spark={days} href="/admin/audit?event=SIGN_IN" />
-          <Stat label="Apps" icon="grid" value={apps} sub={`${clients} OAuth client${clients === 1 ? "" : "s"}${dynClients ? ` · ${dynClients} connected` : ""}`} href="/admin/apps" />
-          <Stat label="Active sessions" icon="monitor" value={sessions} sub="Browser sessions on this IdP" />
+          <Stat
+            label="People"
+            icon="users"
+            value={users}
+            sub={`${admins} admin${admins === 1 ? "" : "s"}`}
+            href="/admin/users"
+          />
+          <Stat
+            label="Sign-ins · 14 days"
+            icon="logIn"
+            value={total14}
+            spark={days}
+            href="/admin/audit?event=SIGN_IN"
+          />
+          <Stat
+            label="Apps"
+            icon="grid"
+            value={apps}
+            sub={`${clients} OAuth client${clients === 1 ? "" : "s"}${dynClients ? ` · ${dynClients} connected` : ""}`}
+            href="/admin/apps"
+          />
+          <Stat
+            label="Active sessions"
+            icon="monitor"
+            value={sessions}
+            sub="Browser sessions on this IdP"
+          />
         </div>
 
         {attention.length ? (

@@ -1,1 +1,14 @@
-{"compilerOptions":{"lib":["ES2022","DOM","DOM.Iterable"],"module":"ESNext","moduleResolution":"bundler","noEmit":true,"noUncheckedIndexedAccess":true,"skipLibCheck":true,"strict":true,"target":"ES2022","types":[]},"include":["src/client"]}
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": []
+  },
+  "include": ["src/client"]
+}

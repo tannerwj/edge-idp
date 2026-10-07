@@ -15,6 +15,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 ## What you get
 
 **For everyone who signs in**
+
 - Passkeys only: no passwords, no codes, no reset emails to phish
 - A home screen of the apps they're allowed to use
 - Account & security: passkeys (with provider names like iCloud Keychain or
@@ -23,6 +24,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   third-party apps
 
 **For you (admin)**
+
 - People: invite with a one-time link (copy, email, share sheet, or QR for a
   phone), groups, roles, recovery (reset passkeys), disable, delete
 - Groups in ID tokens and in access tokens granted the `groups` scope, so
@@ -37,6 +39,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - ⌘K command palette, light and dark modes, an accent color
 
 **Standards**
+
 - OIDC: discovery, JWKS (with key rotation), authorization code + PKCE S256,
   `prompt` / `max_age`, userinfo, RP-initiated logout (`end-session`)
 - OAuth 2.1 for MCP:

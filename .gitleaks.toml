@@ -8,16 +8,16 @@ useDefault = true
 
 [[allowlists]]
 description = "redacted placeholder values are not secrets"
-regexes = [ "<redacted>" ]
+regexes = ["<redacted>"]
 
 [[allowlists]]
 description = "wrangler dev/build output is gitignored and regenerated"
-paths = [ "\\.wrangler/.*" ]
+paths = ["\\.wrangler/.*"]
 
 [[allowlists]]
 description = "passkey provider AAGUIDs are public authenticator model ids, not secrets"
-paths = [ "src/aaguid\\.ts" ]
+paths = ["src/aaguid\\.ts"]
 
 [[allowlists]]
 description = "cf build output/types are gitignored and regenerated"
-paths = [ "\\.cloudflare/.*" ]
+paths = ["\\.cloudflare/.*"]

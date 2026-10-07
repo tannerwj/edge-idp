@@ -64,11 +64,22 @@ function PasskeysSection({ creds }: { creds: Credential[] }) {
             <div class="grow">
               <div class="title row-sm">
                 {k.name}
-                {k.backup_state ? <span class="badge">Synced</span> : <span class="badge">This device only</span>}
+                {k.backup_state ? (
+                  <span class="badge">Synced</span>
+                ) : (
+                  <span class="badge">This device only</span>
+                )}
               </div>
               <div class="meta">
                 {aaguidName(k.aaguid) ? <>{aaguidName(k.aaguid)} · </> : null}
-                Added <Time ts={k.created_at} /> · {k.last_used_at ? <>Last used <Time ts={k.last_used_at} /></> : "Never used"}
+                Added <Time ts={k.created_at} /> ·{" "}
+                {k.last_used_at ? (
+                  <>
+                    Last used <Time ts={k.last_used_at} />
+                  </>
+                ) : (
+                  "Never used"
+                )}
               </div>
             </div>
             <button class="btn ghost sm" type="button" data-open={`rename-${k.id}`}>
@@ -114,17 +125,34 @@ function PasskeysSection({ creds }: { creds: Credential[] }) {
   );
 }
 
-function SessionsSection({ sessions, currentHash, others, rpName }: { sessions: SessionRow[]; currentHash: string; others: number; rpName: string }) {
+function SessionsSection({
+  sessions,
+  currentHash,
+  others,
+  rpName,
+}: {
+  sessions: SessionRow[];
+  currentHash: string;
+  others: number;
+  rpName: string;
+}) {
   return (
     <section class="card" id="sessions">
       <div class="card-head">
         <Icon name="monitor" />
         <div class="grow">
           <h2>Where you're signed in</h2>
-          <div class="sub">Browser sessions on {rpName}. Apps keep their own sessions on top of these.</div>
+          <div class="sub">
+            Browser sessions on {rpName}. Apps keep their own sessions on top of these.
+          </div>
         </div>
         {others > 0 ? (
-          <PostButton action="/account/sessions/revoke-others" label="Sign out other sessions" class="btn sm" confirm="Sign out of every other browser?" />
+          <PostButton
+            action="/account/sessions/revoke-others"
+            label="Sign out other sessions"
+            class="btn sm"
+            confirm="Sign out of every other browser?"
+          />
         ) : null}
       </div>
       <ul class="list">
@@ -145,7 +173,13 @@ function SessionsSection({ sessions, currentHash, others, rpName }: { sessions: 
                   Signed in <Time ts={x.created_at} /> · Active <Time ts={x.last_seen_at} />
                 </div>
               </div>
-              {current ? null : <PostButton action={`/account/sessions/${x.id_hash}/revoke`} label="Sign out" class="btn ghost sm" />}
+              {current ? null : (
+                <PostButton
+                  action={`/account/sessions/${x.id_hash}/revoke`}
+                  label="Sign out"
+                  class="btn ghost sm"
+                />
+              )}
             </li>
           );
         })}
@@ -161,7 +195,10 @@ function ConnectedSection({ grants }: { grants: GrantRow[] }) {
         <Icon name="plug" />
         <div class="grow">
           <h2>Connected apps</h2>
-          <div class="sub">Third-party apps and AI tools you've approved. Disconnecting revokes their access immediately.</div>
+          <div class="sub">
+            Third-party apps and AI tools you've approved. Disconnecting revokes their access
+            immediately.
+          </div>
         </div>
       </div>
       {grants.length ? (
@@ -175,7 +212,12 @@ function ConnectedSection({ grants }: { grants: GrantRow[] }) {
                 <div class="title">{g.name}</div>
                 <div class="meta">
                   {g.scope.split(" ").join(", ")} · Approved <Time ts={g.created_at} />
-                  {g.last_used_at ? <> · Used <Time ts={g.last_used_at} /></> : null}
+                  {g.last_used_at ? (
+                    <>
+                      {" "}
+                      · Used <Time ts={g.last_used_at} />
+                    </>
+                  ) : null}
                 </div>
               </div>
               <PostButton
@@ -190,7 +232,8 @@ function ConnectedSection({ grants }: { grants: GrantRow[] }) {
         </ul>
       ) : (
         <Empty icon="plug" title="No connected apps">
-          When you approve an app or AI assistant (like Claude) to use your account, it shows up here.
+          When you approve an app or AI assistant (like Claude) to use your account, it shows up
+          here.
         </Empty>
       )}
     </section>
@@ -219,16 +262,30 @@ account.get("/account", async (c) => {
   const [creds, sessions, grants, activity] = await Promise.all([
     getCredentialsForUser(db, s.user.id),
     db
-      .prepare("SELECT id_hash, created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 AND expires_at > ?2 ORDER BY last_seen_at DESC")
+      .prepare(
+        "SELECT id_hash, created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 AND expires_at > ?2 ORDER BY last_seen_at DESC",
+      )
       .bind(s.user.id, nowSec())
-      .all<{ id_hash: string; created_at: number; last_seen_at: number; user_agent: string | null }>(),
+      .all<{
+        id_hash: string;
+        created_at: number;
+        last_seen_at: number;
+        user_agent: string | null;
+      }>(),
     db
       .prepare(
         `SELECT g.client_id, g.scope, g.created_at, g.last_used_at, c.name, c.source FROM oauth_grants g
          JOIN oidc_clients c ON c.id = g.client_id WHERE g.user_id = ?1 ORDER BY g.last_used_at DESC`,
       )
       .bind(s.user.id)
-      .all<{ client_id: string; scope: string; created_at: number; last_used_at: number | null; name: string; source: string }>(),
+      .all<{
+        client_id: string;
+        scope: string;
+        created_at: number;
+        last_used_at: number | null;
+        name: string;
+        source: string;
+      }>(),
     db
       .prepare(
         `SELECT a.event, a.created_at, c.name AS client_name FROM audit_log a
@@ -240,7 +297,15 @@ account.get("/account", async (c) => {
   ]);
   const others = sessions.results.filter((x) => x.id_hash !== currentHash).length;
   return c.html(
-    <AppShell ui={await uiFor(c)} viewer={viewerOf(s)} active="account" title="Account & security" page="account" flash={c.req.query("ok")} narrow>
+    <AppShell
+      ui={await uiFor(c)}
+      viewer={viewerOf(s)}
+      active="account"
+      title="Account & security"
+      page="account"
+      flash={c.req.query("ok")}
+      narrow
+    >
       <PageHead
         leading={<Avatar name={s.user.name} seed={s.user.id} size="lg" />}
         title={s.user.name}
@@ -266,12 +331,27 @@ account.get("/account", async (c) => {
             <div class="card-body grid-2">
               <label class="field">
                 <span class="label">Name</span>
-                <input name="name" required maxLength={120} value={s.user.name} autocomplete="name" />
+                <input
+                  name="name"
+                  required
+                  maxLength={120}
+                  value={s.user.name}
+                  autocomplete="name"
+                />
               </label>
               <label class="field">
                 <span class="label">Email</span>
-                <input name="email" type="email" required maxLength={254} value={s.user.email} autocomplete="email" />
-                <span class="hint">Apps see this as your email. Your passkeys keep working if you change it.</span>
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  maxLength={254}
+                  value={s.user.email}
+                  autocomplete="email"
+                />
+                <span class="hint">
+                  Apps see this as your email. Your passkeys keep working if you change it.
+                </span>
               </label>
             </div>
             <div class="card-foot">
@@ -284,7 +364,12 @@ account.get("/account", async (c) => {
 
         <PasskeysSection creds={creds} />
 
-        <SessionsSection sessions={sessions.results} currentHash={currentHash} others={others} rpName={c.env.RP_NAME} />
+        <SessionsSection
+          sessions={sessions.results}
+          currentHash={currentHash}
+          others={others}
+          rpName={c.env.RP_NAME}
+        />
 
         <ConnectedSection grants={grants.results} />
 
@@ -293,7 +378,11 @@ account.get("/account", async (c) => {
             <Icon name="activity" />
             <h2>Recent activity</h2>
           </div>
-          {activity.results.length ? <Feed rows={activity.results} showWho={false} /> : <Empty icon="activity" title="Nothing yet" />}
+          {activity.results.length ? (
+            <Feed rows={activity.results} showWho={false} />
+          ) : (
+            <Empty icon="activity" title="Nothing yet" />
+          )}
         </section>
       </div>
     </AppShell>,
@@ -305,7 +394,12 @@ account.post("/account/profile", async (c) => {
   if (s instanceof Response) return s;
   const form = await c.req.parseBody();
   try {
-    await ops.updateUser(c.env.DB, s.user.id, { name: field(form, "name"), email: field(form, "email") }, { adminId: s.user.id, via: "ui" });
+    await ops.updateUser(
+      c.env.DB,
+      s.user.id,
+      { name: field(form, "name"), email: field(form, "email") },
+      { adminId: s.user.id, via: "ui" },
+    );
   } catch (e) {
     if (e instanceof ops.OpError) {
       setFlash(c, e.message, "bad");
@@ -319,13 +413,19 @@ account.post("/account/profile", async (c) => {
 account.post("/account/keys/:id/remove", async (c) => {
   const s = await requireSession(c);
   if (s instanceof Response) return s;
-  if (!hasRecentStepUp(s)) return c.redirect(`/login?reauth=1&next=${encodeURIComponent("/account#passkeys")}`, 303);
+  if (!hasRecentStepUp(s))
+    return c.redirect(`/login?reauth=1&next=${encodeURIComponent("/account#passkeys")}`, 303);
   const creds = await getCredentialsForUser(c.env.DB, s.user.id);
   const target = creds.find((k) => k.id === c.req.param("id"));
   // Fail safe: never let a user strand themselves with zero passkeys.
   if (!target || creds.length <= 1) return c.redirect("/account#passkeys", 303);
-  await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE id = ?1 AND user_id = ?2").bind(target.id, s.user.id).run();
-  await audit(c.env.DB, "PASSKEY_REMOVED", { userId: s.user.id, detail: { credential: target.id, name: target.name } });
+  await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE id = ?1 AND user_id = ?2")
+    .bind(target.id, s.user.id)
+    .run();
+  await audit(c.env.DB, "PASSKEY_REMOVED", {
+    userId: s.user.id,
+    detail: { credential: target.id, name: target.name },
+  });
   return c.redirect("/account?ok=key_removed#passkeys", 303);
 });
 
@@ -335,8 +435,15 @@ account.post("/account/keys/:id/rename", async (c) => {
   const form = await c.req.parseBody();
   const name = field(form, "name").trim().slice(0, 60);
   if (name) {
-    await c.env.DB.prepare("UPDATE webauthn_credentials SET name = ?1 WHERE id = ?2 AND user_id = ?3").bind(name, c.req.param("id"), s.user.id).run();
-    await audit(c.env.DB, "PASSKEY_RENAMED", { userId: s.user.id, detail: { credential: c.req.param("id") } });
+    await c.env.DB.prepare(
+      "UPDATE webauthn_credentials SET name = ?1 WHERE id = ?2 AND user_id = ?3",
+    )
+      .bind(name, c.req.param("id"), s.user.id)
+      .run();
+    await audit(c.env.DB, "PASSKEY_RENAMED", {
+      userId: s.user.id,
+      detail: { credential: c.req.param("id") },
+    });
   }
   return c.redirect("/account?ok=key_renamed#passkeys", 303);
 });
@@ -344,16 +451,26 @@ account.post("/account/keys/:id/rename", async (c) => {
 account.post("/account/sessions/:hash/revoke", async (c) => {
   const s = await requireSession(c);
   if (s instanceof Response) return s;
-  await c.env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1 AND user_id = ?2").bind(c.req.param("hash"), s.user.id).run();
-  await audit(c.env.DB, "SESSION_REVOKED", { userId: s.user.id, detail: { by: s.user.id, via: "self" } });
+  await c.env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1 AND user_id = ?2")
+    .bind(c.req.param("hash"), s.user.id)
+    .run();
+  await audit(c.env.DB, "SESSION_REVOKED", {
+    userId: s.user.id,
+    detail: { by: s.user.id, via: "self" },
+  });
   return c.redirect("/account?ok=signed_out#sessions", 303);
 });
 
 account.post("/account/sessions/revoke-others", async (c) => {
   const s = await requireSession(c);
   if (s instanceof Response) return s;
-  await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id_hash != ?2").bind(s.user.id, s.idHash).run();
-  await audit(c.env.DB, "SESSION_REVOKED", { userId: s.user.id, detail: { by: s.user.id, via: "self", others: true } });
+  await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id_hash != ?2")
+    .bind(s.user.id, s.idHash)
+    .run();
+  await audit(c.env.DB, "SESSION_REVOKED", {
+    userId: s.user.id,
+    detail: { by: s.user.id, via: "self", others: true },
+  });
   return c.redirect("/account?ok=signed_out_others#sessions", 303);
 });
 
@@ -363,8 +480,14 @@ account.post("/account/grants/revoke", async (c) => {
   const form = await c.req.parseBody();
   const clientId = field(form, "client_id");
   await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM oauth_grants WHERE user_id = ?1 AND client_id = ?2").bind(s.user.id, clientId),
-    c.env.DB.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1 AND client_id = ?2").bind(s.user.id, clientId),
+    c.env.DB.prepare("DELETE FROM oauth_grants WHERE user_id = ?1 AND client_id = ?2").bind(
+      s.user.id,
+      clientId,
+    ),
+    c.env.DB.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1 AND client_id = ?2").bind(
+      s.user.id,
+      clientId,
+    ),
   ]);
   await audit(c.env.DB, "CONSENT_REVOKED", { userId: s.user.id, clientId });
   return c.redirect("/account?ok=revoked#connected", 303);

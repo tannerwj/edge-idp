@@ -104,17 +104,11 @@ function rowToUser(r: Row): User {
 }
 
 export async function getUser(db: D1Database, id: string): Promise<User | null> {
-  const r = await db
-    .prepare("SELECT * FROM users WHERE id = ?1")
-    .bind(id)
-    .first<Row>();
+  const r = await db.prepare("SELECT * FROM users WHERE id = ?1").bind(id).first<Row>();
   return r ? rowToUser(r) : null;
 }
 
-export async function getUserByEmail(
-  db: D1Database,
-  email: string,
-): Promise<User | null> {
+export async function getUserByEmail(db: D1Database, email: string): Promise<User | null> {
   // SQLite LIKE is case-insensitive for ASCII; emails are stored as-given but
   // looked up by lowercased key so admin typos in case can't create duplicates.
   const r = await db
@@ -125,17 +119,12 @@ export async function getUserByEmail(
 }
 
 export async function listUsers(db: D1Database): Promise<User[]> {
-  const { results } = await db
-    .prepare("SELECT * FROM users ORDER BY created_at ASC")
-    .all<Row>();
+  const { results } = await db.prepare("SELECT * FROM users ORDER BY created_at ASC").all<Row>();
   return results.map(rowToUser);
 }
 
 /** Group names for the ID token `groups` claim. Sorted for stable tokens. */
-export async function getUserGroups(
-  db: D1Database,
-  userId: string,
-): Promise<string[]> {
+export async function getUserGroups(db: D1Database, userId: string): Promise<string[]> {
   const { results } = await db
     .prepare(
       `SELECT g.name AS name FROM groups g
@@ -185,8 +174,7 @@ export async function getCredentialsForUser(
     credential_id: blobBytes(r.credential_id, "credential_id").buffer,
     public_key: blobBytes(r.public_key, "public_key"),
     counter: num(r.counter),
-    transports:
-      typeof r.transports === "string" ? strArray(r.transports) : undefined,
+    transports: typeof r.transports === "string" ? strArray(r.transports) : undefined,
     name: str(r.name),
     backup_eligible: num(r.backup_eligible),
     backup_state: num(r.backup_state),
@@ -203,10 +191,7 @@ function rowToClient(r: Row): OidcClient {
     redirect_uris: strArray(str(r.redirect_uris)),
     secret_hash: str(r.secret_hash),
     secret_prefix: str(r.secret_prefix),
-    allowed_groups:
-      typeof r.allowed_groups === "string"
-        ? strArray(r.allowed_groups)
-        : null,
+    allowed_groups: typeof r.allowed_groups === "string" ? strArray(r.allowed_groups) : null,
     // Column added in 0002; default true for rows predating it.
     require_pkce: r.require_pkce === undefined ? true : num(r.require_pkce) === 1,
     // Column added in 0005; default production for rows predating it.
@@ -224,14 +209,8 @@ function rowToClient(r: Row): OidcClient {
   };
 }
 
-export async function getClient(
-  db: D1Database,
-  id: string,
-): Promise<OidcClient | null> {
-  const r = await db
-    .prepare("SELECT * FROM oidc_clients WHERE id = ?1")
-    .bind(id)
-    .first<Row>();
+export async function getClient(db: D1Database, id: string): Promise<OidcClient | null> {
+  const r = await db.prepare("SELECT * FROM oidc_clients WHERE id = ?1").bind(id).first<Row>();
   return r ? rowToClient(r) : null;
 }
 
@@ -245,12 +224,11 @@ export async function listClients(db: D1Database): Promise<OidcClient[]> {
 export { rowToClient };
 
 /** Count helper: `SELECT COUNT(*) AS n …` → number. */
-export async function count(
-  db: D1Database,
-  sql: string,
-  ...binds: unknown[]
-): Promise<number> {
-  const r = await db.prepare(sql).bind(...binds).first<{ n: number }>();
+export async function count(db: D1Database, sql: string, ...binds: unknown[]): Promise<number> {
+  const r = await db
+    .prepare(sql)
+    .bind(...binds)
+    .first<{ n: number }>();
   return r?.n ?? 0;
 }
 
@@ -320,16 +298,11 @@ export async function getApp(db: D1Database, id: string): Promise<App | null> {
  * client's allowed_groups (that's what /authorize enforces); the rest follow
  * the app's own list. NULL/empty = everyone.
  */
-export async function appsForUser(
-  db: D1Database,
-  userGroups: string[],
-): Promise<App[]> {
+export async function appsForUser(db: D1Database, userGroups: string[]): Promise<App[]> {
   const [apps, clients] = await Promise.all([listApps(db), listClients(db)]);
   const byId = new Map(clients.map((c) => [c.id, c]));
   return apps.filter((a) => {
-    const groups = a.client_id
-      ? (byId.get(a.client_id)?.allowed_groups ?? null)
-      : a.allowed_groups;
+    const groups = a.client_id ? (byId.get(a.client_id)?.allowed_groups ?? null) : a.allowed_groups;
     return !groups?.length || groups.some((g) => userGroups.includes(g));
   });
 }
@@ -364,13 +337,8 @@ export async function audit(
   // NOT IN (… LIMIT 20000) on every write reads the whole table each time.
 }
 
-
 /** Instance settings: get a setting, falling back to the default. */
-export async function getSetting(
-  db: D1Database,
-  key: string,
-  fallback: string,
-): Promise<string> {
+export async function getSetting(db: D1Database, key: string, fallback: string): Promise<string> {
   const row = await db
     .prepare("SELECT value FROM instance_settings WHERE key = ?1")
     .bind(key)
@@ -379,11 +347,7 @@ export async function getSetting(
 }
 
 /** Instance settings: set a setting. */
-export async function setSetting(
-  db: D1Database,
-  key: string,
-  value: string,
-): Promise<void> {
+export async function setSetting(db: D1Database, key: string, value: string): Promise<void> {
   await db
     .prepare(
       "INSERT INTO instance_settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3",

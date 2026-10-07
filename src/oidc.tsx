@@ -7,7 +7,13 @@ import { jwksDocument, verifyIdToken } from "./crypto";
 import { destroySession, getSession } from "./session";
 import type { Session } from "./session";
 import { redirectMatches, resolveClient } from "./oauth-clients";
-import { clientAccessProblem, discovery, mcpResource, protectedResource, SCOPES } from "./oauth-shared";
+import {
+  clientAccessProblem,
+  discovery,
+  mcpResource,
+  protectedResource,
+  SCOPES,
+} from "./oauth-shared";
 import { nowSec, randomToken, sha256Hex } from "./util";
 import { ConsentPage, ErrorPage, SignOutPage } from "./pages";
 import { uiFor } from "./ui/layout";
@@ -63,9 +69,7 @@ interface AuthzRequest {
   maxAge: number | null;
 }
 
-type Validated =
-  | { ok: true; req: AuthzRequest }
-  | { ok: false; response: Response };
+type Validated = { ok: true; req: AuthzRequest } | { ok: false; response: Response };
 
 /** Normalize an RFC 8707 resource: ours only, trailing slash forgiven. */
 function normalizeResource(env: Env, raw: string | undefined): string | null | false {
@@ -75,11 +79,13 @@ function normalizeResource(env: Env, raw: string | undefined): string | null | f
   return false;
 }
 
-async function errorPage(c: Context<{ Bindings: Env }>, title: string, message: string, status: 400 | 403 = 400) {
-  return c.html(
-    <ErrorPage ui={await uiFor(c)} title={title} message={message} />,
-    status,
-  );
+async function errorPage(
+  c: Context<{ Bindings: Env }>,
+  title: string,
+  message: string,
+  status: 400 | 403 = 400,
+) {
+  return c.html(<ErrorPage ui={await uiFor(c)} title={title} message={message} />, status);
 }
 
 /** PKCE is mandatory for public clients and (by default) everyone else;
@@ -108,15 +114,30 @@ async function validateAuthorize(
   // Without a valid client + exact redirect match we cannot safely redirect
   // the error anywhere, so these fail as pages, not redirects.
   if (!resolved) {
-    return { ok: false, response: await errorPage(c, "Unknown app", "This sign-in link names an app this server doesn't know (unknown client_id).") };
+    return {
+      ok: false,
+      response: await errorPage(
+        c,
+        "Unknown app",
+        "This sign-in link names an app this server doesn't know (unknown client_id).",
+      ),
+    };
   }
   if ("error" in resolved) {
     return { ok: false, response: await errorPage(c, "App unavailable", resolved.error) };
   }
   const client = resolved.client;
-  const redirectUri = q.redirect_uri ?? (client.redirect_uris.length === 1 ? (client.redirect_uris[0] ?? "") : "");
+  const redirectUri =
+    q.redirect_uri ?? (client.redirect_uris.length === 1 ? (client.redirect_uris[0] ?? "") : "");
   if (!redirectMatches(client.redirect_uris, redirectUri)) {
-    return { ok: false, response: await errorPage(c, "Redirect not allowed", `${client.name} asked to send you somewhere it isn't registered for (redirect_uri mismatch).`) };
+    return {
+      ok: false,
+      response: await errorPage(
+        c,
+        "Redirect not allowed",
+        `${client.name} asked to send you somewhere it isn't registered for (redirect_uri mismatch).`,
+      ),
+    };
   }
   const state = q.state;
   const redirectError = (error: string, description?: string): Validated => {
@@ -129,13 +150,15 @@ async function validateAuthorize(
   };
 
   if (q.response_type !== "code") return redirectError("unsupported_response_type");
-  if (!pkceOk(q, client)) return redirectError("invalid_request", "PKCE S256 code_challenge required");
+  if (!pkceOk(q, client))
+    return redirectError("invalid_request", "PKCE S256 code_challenge required");
   const scopes = parseScopes(q.scope);
   const unknown = scopes.filter((sc) => !SCOPES.includes(sc));
   if (unknown.length) return redirectError("invalid_scope", `Unknown scope: ${unknown.join(" ")}`);
   const resource = normalizeResource(c.env, q.resource);
   if (resource === false) return redirectError("invalid_target", "Unknown resource");
-  const maxAge = q.max_age !== undefined && /^\d+$/.test(q.max_age) ? parseInt(q.max_age, 10) : null;
+  const maxAge =
+    q.max_age !== undefined && /^\d+$/.test(q.max_age) ? parseInt(q.max_age, 10) : null;
   return {
     ok: true,
     req: {
@@ -153,7 +176,11 @@ async function validateAuthorize(
   };
 }
 
-function redirectWith(c: Context<{ Bindings: Env }>, req: AuthzRequest, params: Record<string, string>): Response {
+function redirectWith(
+  c: Context<{ Bindings: Env }>,
+  req: AuthzRequest,
+  params: Record<string, string>,
+): Response {
   const u = new URL(req.redirectUri);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   if (req.state) u.searchParams.set("state", req.state);
@@ -162,7 +189,11 @@ function redirectWith(c: Context<{ Bindings: Env }>, req: AuthzRequest, params: 
 }
 
 /** Can this user use this client at all? Returns a reason when not. */
-async function accessProblem(db: D1Database, user: User, req: AuthzRequest): Promise<string | null> {
+async function accessProblem(
+  db: D1Database,
+  user: User,
+  req: AuthzRequest,
+): Promise<string | null> {
   const reason = await clientAccessProblem(db, user, req.client, req.scopes);
   return reason ? `Your account can no longer use ${req.client.name}: ${reason}.` : null;
 }
@@ -177,7 +208,11 @@ async function hasGrant(db: D1Database, userId: string, req: AuthzRequest): Prom
   return req.scopes.every((s) => granted.includes(s));
 }
 
-async function issueCode(c: Context<{ Bindings: Env }>, req: AuthzRequest, session: Session): Promise<Response> {
+async function issueCode(
+  c: Context<{ Bindings: Env }>,
+  req: AuthzRequest,
+  session: Session,
+): Promise<Response> {
   const code = randomToken(32);
   const now = nowSec();
   await c.env.DB.batch([
@@ -197,7 +232,10 @@ async function issueCode(c: Context<{ Bindings: Env }>, req: AuthzRequest, sessi
       req.resource,
       session.authTime,
     ),
-    c.env.DB.prepare("UPDATE oidc_clients SET last_used_at = ?1 WHERE id = ?2").bind(now, req.client.id),
+    c.env.DB.prepare("UPDATE oidc_clients SET last_used_at = ?1 WHERE id = ?2").bind(
+      now,
+      req.client.id,
+    ),
   ]);
   await audit(c.env.DB, "CODE_ISSUED", { userId: session.user.id, clientId: req.client.id });
   return redirectWith(c, req, { code });
@@ -206,7 +244,9 @@ async function issueCode(c: Context<{ Bindings: Env }>, req: AuthzRequest, sessi
 /** URL to resume this exact request after sign-in, minus prompt=login. */
 function resumeUrl(c: Context): string {
   const u = new URL(c.req.url);
-  const prompts = (u.searchParams.get("prompt") ?? "").split(/\s+/).filter((p) => p && p !== "login");
+  const prompts = (u.searchParams.get("prompt") ?? "")
+    .split(/\s+/)
+    .filter((p) => p && p !== "login");
   if (prompts.length) u.searchParams.set("prompt", prompts.join(" "));
   else u.searchParams.delete("prompt");
   return u.pathname + u.search;
@@ -217,8 +257,7 @@ oidc.get("/authorize", async (c) => {
   if (!v.ok) return v.response;
   const req = v.req;
   const session = await getSession(c);
-  const stale =
-    session && req.maxAge !== null && nowSec() - session.authTime > req.maxAge;
+  const stale = session && req.maxAge !== null && nowSec() - session.authTime > req.maxAge;
   if (!session || stale || req.prompt.includes("login")) {
     if (req.prompt.includes("none")) return redirectWith(c, req, { error: "login_required" });
     const params = new URLSearchParams({ next: resumeUrl(c) });
@@ -287,7 +326,10 @@ oidc.post("/authorize/decision", async (c) => {
 
 /** Where may we send the user after logout? Same origin as one of the
  *  client's registered redirect URIs — never an arbitrary URL. */
-async function postLogoutTarget(c: Context<{ Bindings: Env }>, q: Record<string, string>): Promise<string | null> {
+async function postLogoutTarget(
+  c: Context<{ Bindings: Env }>,
+  q: Record<string, string>,
+): Promise<string | null> {
   const target = q.post_logout_redirect_uri;
   if (!target) return null;
   let clientId = q.client_id ?? null;
@@ -308,7 +350,16 @@ async function postLogoutTarget(c: Context<{ Bindings: Env }>, q: Record<string,
   } catch {
     return null;
   }
-  if (!client.redirect_uris.some((r) => { try { return new URL(r).origin === origin; } catch { return false; } })) return null;
+  if (
+    !client.redirect_uris.some((r) => {
+      try {
+        return new URL(r).origin === origin;
+      } catch {
+        return false;
+      }
+    })
+  )
+    return null;
   const u = new URL(target);
   if (q.state) u.searchParams.set("state", q.state);
   return u.toString();
@@ -319,9 +370,7 @@ oidc.get("/end-session", async (c) => {
   const session = await getSession(c);
   const target = await postLogoutTarget(c, q);
   if (!session) return target ? c.redirect(target, 302) : c.redirect("/login", 302);
-  return c.html(
-    <SignOutPage ui={await uiFor(c)} user={session.user} params={q} />,
-  );
+  return c.html(<SignOutPage ui={await uiFor(c)} user={session.user} params={q} />);
 });
 
 oidc.post("/end-session", async (c) => {
@@ -329,7 +378,8 @@ oidc.post("/end-session", async (c) => {
   const q: Record<string, string> = {};
   for (const [k, v] of Object.entries(form)) if (typeof v === "string") q[k] = v;
   const session = await getSession(c);
-  if (session) await audit(c.env.DB, "SIGN_OUT", { userId: session.user.id, detail: { via: "end_session" } });
+  if (session)
+    await audit(c.env.DB, "SIGN_OUT", { userId: session.user.id, detail: { via: "end_session" } });
   await destroySession(c);
   const target = await postLogoutTarget(c, q);
   return c.redirect(target ?? "/login?signed_out=1", 303);

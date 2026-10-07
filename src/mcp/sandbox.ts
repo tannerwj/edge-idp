@@ -25,10 +25,18 @@ interface SandboxProps {
   issuer: string;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 function isSandboxProps(v: unknown): v is SandboxProps {
-  return isRecord(v) && typeof v.adminId === "string" && !!v.adminId && typeof v.readOnly === "boolean" && typeof v.tokenId === "string" && typeof v.issuer === "string";
+  return (
+    isRecord(v) &&
+    typeof v.adminId === "string" &&
+    !!v.adminId &&
+    typeof v.readOnly === "boolean" &&
+    typeof v.tokenId === "string" &&
+    typeof v.issuer === "string"
+  );
 }
 
 function errMessage(e: unknown): string {
@@ -44,13 +52,20 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
     if (!tool) throw new Error(`Unknown tool: ${name}`);
     // Props are set host-side and are invisible/unforgeable from the sandbox.
     const props: unknown = this.ctx.props;
-    if (!isSandboxProps(props) || !(await activeAdmin(this.env.DB, props.adminId))) throw new Error("credential rejected");
-    if (tool.write && props.readOnly) throw new Error(`${name} needs write access; this token is read-only`);
+    if (!isSandboxProps(props) || !(await activeAdmin(this.env.DB, props.adminId)))
+      throw new Error("credential rejected");
+    if (tool.write && props.readOnly)
+      throw new Error(`${name} needs write access; this token is read-only`);
     try {
       const env = await resolveEnv(this.env, props.issuer);
-      return await tool.handler({ db: this.env.DB, env, actor: { adminId: props.adminId, via: "mcp" } }, args ?? {});
+      return await tool.handler(
+        { db: this.env.DB, env, actor: { adminId: props.adminId, via: "mcp" } },
+        args ?? {},
+      );
     } catch (e) {
-      throw new Error(e instanceof ops.OpError ? e.message : `Internal error: ${errMessage(e)}`, { cause: e });
+      throw new Error(e instanceof ops.OpError ? e.message : `Internal error: ${errMessage(e)}`, {
+        cause: e,
+      });
     }
   }
 }
@@ -120,7 +135,9 @@ export class Agent extends WorkerEntrypoint {
 function schemaToTs(schema: Record<string, unknown>, indent = ""): string {
   const t = schema.type;
   if (t === "string") {
-    return Array.isArray(schema.enum) ? schema.enum.map((e) => JSON.stringify(e)).join(" | ") : "string";
+    return Array.isArray(schema.enum)
+      ? schema.enum.map((e) => JSON.stringify(e)).join(" | ")
+      : "string";
   }
   if (t === "number" || t === "integer") return "number";
   if (t === "boolean") return "boolean";
@@ -159,9 +176,16 @@ const EXECUTE_TOOL: ToolDef = {
     "Run JavaScript in an isolated sandbox with a typed `id` proxy for every IdP tool. " +
     "Write one async snippet: `const users = await id.users_list({}); return users.filter(u => !u.passkeys)`. " +
     "Chain calls, filter in code — only your return value comes back. No network, no env. Max 200KB code, 25s.\n\n" +
-    "Available tools:\n```ts\n" + toolDeclarations() + "\n```",
+    "Available tools:\n```ts\n" +
+    toolDeclarations() +
+    "\n```",
   inputSchema: obj(
-    { code: { type: "string", description: "JS statements using `id` and `console`; `return` the result." } },
+    {
+      code: {
+        type: "string",
+        description: "JS statements using `id` and `console`; `return` the result.",
+      },
+    },
     ["code"],
   ),
   handler: async () => {
@@ -186,7 +210,8 @@ interface Outcome {
 
 /** The sandbox's return value, checked rather than trusted (it ran user code). */
 function parseOutcome(v: unknown): Outcome {
-  if (!isRecord(v)) return { ok: false, error: "sandbox returned nothing", logs: [], toolCalls: [] };
+  if (!isRecord(v))
+    return { ok: false, error: "sandbox returned nothing", logs: [], toolCalls: [] };
   const calls = Array.isArray(v.toolCalls) ? v.toolCalls : [];
   return {
     ok: v.ok === true,
@@ -195,7 +220,13 @@ function parseOutcome(v: unknown): Outcome {
     logs: Array.isArray(v.logs) ? v.logs : [],
     toolCalls: calls.flatMap((tc: unknown) =>
       isRecord(tc) && typeof tc.tool === "string" && typeof tc.ms === "number"
-        ? [{ tool: tc.tool, ms: tc.ms, ...(typeof tc.error === "string" ? { error: tc.error } : {}) }]
+        ? [
+            {
+              tool: tc.tool,
+              ms: tc.ms,
+              ...(typeof tc.error === "string" ? { error: tc.error } : {}),
+            },
+          ]
         : [],
     ),
   };
@@ -218,13 +249,19 @@ export async function runExecute(
   };
   if (!code.trim()) return fail("Error: code is required.");
   if (code.length > 200_000) return fail("Error: code exceeds 200KB.");
-  if (!env.LOADER) return fail("Error: the code-execution sandbox is not configured on this worker.");
+  if (!env.LOADER)
+    return fail("Error: the code-execution sandbox is not configured on this worker.");
   const exportsObj = ctx.exports;
   const sandboxExport = isRecord(exportsObj) ? exportsObj.IdCodeSandbox : undefined;
   if (typeof sandboxExport !== "function") return fail("Error: sandbox entrypoint unavailable.");
   let worker: WorkerStub;
   try {
-    const props: SandboxProps = { adminId: auth.adminId, readOnly: auth.readOnly, tokenId: auth.tokenId, issuer: env.ISSUER };
+    const props: SandboxProps = {
+      adminId: auth.adminId,
+      readOnly: auth.readOnly,
+      tokenId: auth.tokenId,
+      issuer: env.ISSUER,
+    };
     const idStub: unknown = Reflect.apply(sandboxExport, undefined, [{ props }]);
     worker = env.LOADER.load({
       compatibilityDate: "2026-10-06",
@@ -241,7 +278,9 @@ export async function runExecute(
   }
   let result: unknown;
   try {
-    const entry = worker.getEntrypoint<AgentEntrypoint>("Agent", { limits: { cpuMs: 1000, subRequests: 50 } });
+    const entry = worker.getEntrypoint<AgentEntrypoint>("Agent", {
+      limits: { cpuMs: 1000, subRequests: 50 },
+    });
     const run: Promise<unknown> = Promise.resolve(entry.run());
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
@@ -261,5 +300,12 @@ export async function runExecute(
   }
   if (!r.ok) return fail(`Error: ${r.error ?? "unknown error"}`);
   trackCall(ctx, env.DB, "execute", started, null, auth.tokenId);
-  return { content: [{ type: "text", text: JSON.stringify({ value: r.value, logs: r.logs, toolCalls: r.toolCalls }, null, 2) }] };
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ value: r.value, logs: r.logs, toolCalls: r.toolCalls }, null, 2),
+      },
+    ],
+  };
 }

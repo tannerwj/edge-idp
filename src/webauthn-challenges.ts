@@ -31,13 +31,7 @@ export async function storeChallenge(
       `INSERT INTO webauthn_challenges (challenge, type, user_id, data, expires_at)
        VALUES (?1, ?2, ?3, ?4, ?5)`,
     )
-    .bind(
-      challenge,
-      c.type,
-      c.userId,
-      JSON.stringify(c.data),
-      nowSec() + CHALLENGE_TTL,
-    )
+    .bind(challenge, c.type, c.userId, JSON.stringify(c.data), nowSec() + CHALLENGE_TTL)
     .run();
 }
 
@@ -72,12 +66,8 @@ export function challengeFromResponse(
 ): string | null {
   try {
     const raw = response.response.clientDataJSON;
-    const json: unknown = JSON.parse(
-      new TextDecoder().decode(b64urlToBytes(raw)),
-    );
-    return isRecord(json) && typeof json.challenge === "string"
-      ? json.challenge
-      : null;
+    const json: unknown = JSON.parse(new TextDecoder().decode(b64urlToBytes(raw)));
+    return isRecord(json) && typeof json.challenge === "string" ? json.challenge : null;
   } catch {
     return null;
   }

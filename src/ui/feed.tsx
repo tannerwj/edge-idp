@@ -56,7 +56,9 @@ const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
 };
 
 export function eventMeta(event: string): { label: string; icon: IconName; tone: Tone } {
-  return EVENTS[event] ?? { label: event.toLowerCase().replace(/_/g, " "), icon: "activity", tone: "" };
+  return (
+    EVENTS[event] ?? { label: event.toLowerCase().replace(/_/g, " "), icon: "activity", tone: "" }
+  );
 }
 
 export interface FeedRow {
@@ -79,9 +81,13 @@ export function Feed(props: { rows: FeedRow[]; showWho?: boolean }) {
             </span>
             <div class="what">
               <div class="t truncate">
-                {props.showWho !== false && (r.name || r.email) ? <b>{r.name ?? r.email} </b> : null}
+                {props.showWho !== false && (r.name || r.email) ? (
+                  <b>{r.name ?? r.email} </b>
+                ) : null}
                 <span class={props.showWho !== false && (r.name || r.email) ? "text-2" : ""}>
-                  {props.showWho !== false && (r.name || r.email) ? m.label.charAt(0).toLowerCase() + m.label.slice(1) : m.label}
+                  {props.showWho !== false && (r.name || r.email)
+                    ? m.label.charAt(0).toLowerCase() + m.label.slice(1)
+                    : m.label}
                 </span>
                 {r.client_name ? <span class="muted"> · {r.client_name}</span> : null}
               </div>
@@ -99,7 +105,15 @@ export function Feed(props: { rows: FeedRow[]; showWho?: boolean }) {
 /** Best-effort device label from a user-agent string. */
 export function deviceLabel(ua: string | null | undefined): { label: string; icon: IconName } {
   if (!ua) return { label: "Unknown device", icon: "monitor" };
-  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Firefox\//.test(ua)
+      ? "Firefox"
+      : /Chrome\//.test(ua)
+        ? "Chrome"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "Browser";
   if (/iPhone/.test(ua)) return { label: `${browser} on iPhone`, icon: "phone" };
   if (/iPad/.test(ua)) return { label: `${browser} on iPad`, icon: "phone" };
   if (/Android/.test(ua)) return { label: `${browser} on Android`, icon: "phone" };

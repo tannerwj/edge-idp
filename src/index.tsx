@@ -51,8 +51,15 @@ function crossOrigin(c: Context<{ Bindings: Env }>): boolean {
  * on one budget, token/API traffic on another. Keyed per client IP.
  */
 function limiterFor(env: Env, path: string): RateLimit | undefined {
-  if (path.startsWith("/webauthn/") || path === "/register" || path === "/authorize/decision" || path === "/setup") return env.AUTH_LIMITER;
-  if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp")) return env.API_LIMITER;
+  if (
+    path.startsWith("/webauthn/") ||
+    path === "/register" ||
+    path === "/authorize/decision" ||
+    path === "/setup"
+  )
+    return env.AUTH_LIMITER;
+  if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp"))
+    return env.API_LIMITER;
   return undefined;
 }
 
@@ -97,7 +104,12 @@ app.use("*", async (c, next) => {
   const limiter = limiterFor(c.env, path);
   if (limiter && (mutating || path === "/authorize")) {
     const { success } = await limiter.limit({ key: `${path.split("/")[1]}:${clientIp(c)}` });
-    if (!success) return c.json({ error: "rate_limited", error_description: "Too many requests — slow down." }, 429, { "retry-after": "60" });
+    if (!success)
+      return c.json(
+        { error: "rate_limited", error_description: "Too many requests — slow down." },
+        429,
+        { "retry-after": "60" },
+      );
   }
 
   await next();
@@ -108,7 +120,10 @@ app.use("*", async (c, next) => {
   h.set("Referrer-Policy", "strict-origin-when-cross-origin");
   h.set("X-Frame-Options", "DENY");
   h.set("Cross-Origin-Opener-Policy", "same-origin");
-  h.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)");
+  h.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
+  );
   // No inline scripts/styles anywhere in the app, so this can stay strict.
   // No form-action: the consent POST 302s to the client's redirect URI,
   // browsers apply form-action to that redirect, and native clients use
@@ -130,9 +145,15 @@ app.use("*", async (c, next) => {
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d5ef6"/><stop offset="1" stop-color="#3b3bb8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" transform="translate(4 4)"><path d="M12 10a2 2 0 0 0-2 2c0 1-.1 2.5-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></g></svg>`;
 
 const immutable = { "cache-control": "public, max-age=31536000, immutable" };
-app.get("/app.css", (c) => c.body(APP_CSS, 200, { "content-type": "text/css; charset=utf-8", ...immutable }));
-app.get("/app.js", (c) => c.body(APP_JS, 200, { "content-type": "text/javascript; charset=utf-8", ...immutable }));
-app.get("/favicon.svg", (c) => c.body(FAVICON, 200, { "content-type": "image/svg+xml", ...immutable }));
+app.get("/app.css", (c) =>
+  c.body(APP_CSS, 200, { "content-type": "text/css; charset=utf-8", ...immutable }),
+);
+app.get("/app.js", (c) =>
+  c.body(APP_JS, 200, { "content-type": "text/javascript; charset=utf-8", ...immutable }),
+);
+app.get("/favicon.svg", (c) =>
+  c.body(FAVICON, 200, { "content-type": "image/svg+xml", ...immutable }),
+);
 app.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
 app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
 app.get("/healthz", (c) => c.json({ ok: true }));
@@ -146,7 +167,10 @@ function safeNext(raw: string | undefined): string {
 }
 
 /** "Continue to <app>" context when the login was triggered by /authorize. */
-async function loginContext(db: D1Database, next: string): Promise<{ name: string; host: string } | null> {
+async function loginContext(
+  db: D1Database,
+  next: string,
+): Promise<{ name: string; host: string } | null> {
   if (!next.startsWith("/authorize?")) return null;
   const q = new URLSearchParams(next.slice("/authorize?".length));
   const client = await getClient(db, q.get("client_id") ?? "");
@@ -178,10 +202,12 @@ app.get("/login", async (c) => {
   );
 });
 
-app.get("/enroll", async (c) => c.html(<EnrollPage ui={await uiFor(c)} />, 200, {
-  "referrer-policy": "no-referrer",
-  "cache-control": "no-store",
-}));
+app.get("/enroll", async (c) =>
+  c.html(<EnrollPage ui={await uiFor(c)} />, 200, {
+    "referrer-policy": "no-referrer",
+    "cache-control": "no-store",
+  }),
+);
 
 // Existing invitation links remain usable until they expire. New links carry
 // the bearer in a fragment, which is never part of a Worker request URL.
@@ -190,13 +216,21 @@ app.get("/enroll/:token", async (c) => {
   const ui = await uiFor(c);
   if (!v) {
     return c.html(
-      <ErrorPage ui={ui} title="This link has expired" message="Enrollment links work once and last 7 days. Ask your admin for a fresh one." />,
+      <ErrorPage
+        ui={ui}
+        title="This link has expired"
+        message="Enrollment links work once and last 7 days. Ask your admin for a fresh one."
+      />,
       400,
     );
   }
-  return c.html(<EnrollPage ui={ui} name={v.user.name} email={v.user.email} token={c.req.param("token")} />, 200, {
-    "referrer-policy": "no-referrer",
-  });
+  return c.html(
+    <EnrollPage ui={ui} name={v.user.name} email={v.user.email} token={c.req.param("token")} />,
+    200,
+    {
+      "referrer-policy": "no-referrer",
+    },
+  );
 });
 
 app.post("/logout", async (c) => {
@@ -220,14 +254,27 @@ app.route("/", account);
 app.route("/", home);
 
 app.notFound(async (c) =>
-  c.html(<ErrorPage ui={await uiFor(c)} title="Page not found" message="That page doesn't exist (or moved in the redesign)." />, 404),
+  c.html(
+    <ErrorPage
+      ui={await uiFor(c)}
+      title="Page not found"
+      message="That page doesn't exist (or moved in the redesign)."
+    />,
+    404,
+  ),
 );
 
 app.onError(async (err, c) => {
   Sentry.captureException(err);
   console.error(err);
   if (c.req.header("accept")?.includes("text/html")) {
-    return c.html(<ErrorPage ui={await uiFor(c)} message="Something broke on our side. It's been logged — try again in a moment." />, 500);
+    return c.html(
+      <ErrorPage
+        ui={await uiFor(c)}
+        message="Something broke on our side. It's been logged — try again in a moment."
+      />,
+      500,
+    );
   }
   return c.json({ error: "server_error" }, 500);
 });

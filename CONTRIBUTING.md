@@ -25,6 +25,7 @@ here. Please leave out tokens, keys, enrollment links and anything else private.
    ```
 
    The e2e suites boot throwaway local instances and leave nothing behind.
+
 5. Open a PR describing what changed and why. Auth-relevant changes should
    say what threat they address or touch.
 

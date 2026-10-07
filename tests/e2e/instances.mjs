@@ -11,8 +11,14 @@ function projectCopy(prefix, config, vars) {
   const root = process.cwd();
   const work = mkdtempSync(join(tmpdir(), `edge-idp-${prefix}-`));
   for (const f of LINKED) symlinkSync(join(root, f), join(work, f));
-  for (const f of [config, "package.json", "tsconfig.json"]) copyFileSync(join(root, f), join(work, f));
-  writeFileSync(join(work, ".dev.vars"), Object.entries(vars).map(([k, v]) => `${k}='${v}'\n`).join(""));
+  for (const f of [config, "package.json", "tsconfig.json"])
+    copyFileSync(join(root, f), join(work, f));
+  writeFileSync(
+    join(work, ".dev.vars"),
+    Object.entries(vars)
+      .map(([k, v]) => `${k}='${v}'\n`)
+      .join(""),
+  );
   execFileSync("node", ["scripts/build-client.mjs"], { stdio: "ignore" });
   return work;
 }
@@ -51,7 +57,11 @@ function cleanup(work) {
 
 export async function startLocal({ issuer, rpName = "E2E Identity", port }) {
   const jwk = execFileSync("node", ["scripts/gen-key.mjs"], { encoding: "utf8" }).trim();
-  const work = projectCopy("e2e", "cloudflare.config.ts", { ISSUER: issuer, RP_NAME: rpName, SIGNING_KEY_JWK: jwk });
+  const work = projectCopy("e2e", "cloudflare.config.ts", {
+    ISSUER: issuer,
+    RP_NAME: rpName,
+    SIGNING_KEY_JWK: jwk,
+  });
   const state = join(work, ".wrangler", "state");
   await migrateLocal(state);
   const base = `http://localhost:${port}`;
@@ -77,7 +87,11 @@ export async function startLocal({ issuer, rpName = "E2E Identity", port }) {
 export async function startPortable({ prefix = "portable", port, vars }) {
   const work = projectCopy(prefix, "wrangler.jsonc", vars);
   const wrangler = (args, capture = true) =>
-    execFileSync("npx", ["wrangler", ...args], { cwd: work, encoding: "utf8", stdio: ["ignore", capture ? "pipe" : "ignore", "pipe"] });
+    execFileSync("npx", ["wrangler", ...args], {
+      cwd: work,
+      encoding: "utf8",
+      stdio: ["ignore", capture ? "pipe" : "ignore", "pipe"],
+    });
   wrangler(["d1", "migrations", "apply", "DB", "--local"], false);
   const base = `http://localhost:${port}`;
   const srv = server("wrangler", ["dev", "--port", String(port)], work, base);
@@ -85,7 +99,9 @@ export async function startPortable({ prefix = "portable", port, vars }) {
     base,
     work,
     wrangler,
-    sql: (command) => JSON.parse(wrangler(["d1", "execute", "DB", "--local", "--json", "--command", command]))[0].results,
+    sql: (command) =>
+      JSON.parse(wrangler(["d1", "execute", "DB", "--local", "--json", "--command", command]))[0]
+        .results,
     start: srv.start,
     stop: srv.stop,
     log: srv.log,
@@ -100,11 +116,25 @@ export async function startRemote({ stage = "staging" } = {}) {
   if (stage !== "staging") throw new Error(`refusing to run e2e against stage "${stage}"`);
   const cfg = stageConfig(stage);
   const sql = (command) => sqlRows(command, { local: false, stage });
-  const health = await fetch(`${cfg.issuer}/healthz`).catch((e) => ({ ok: false, status: String(e) }));
-  if (!health.ok) throw new Error(`${cfg.issuer} is not up (${health.status}); run npm run staging:deploy`);
+  const health = await fetch(`${cfg.issuer}/healthz`).catch((e) => ({
+    ok: false,
+    status: String(e),
+  }));
+  if (!health.ok)
+    throw new Error(`${cfg.issuer} is not up (${health.status}); run npm run staging:deploy`);
   const tables = (await sql("SELECT name FROM sqlite_master WHERE type = 'table'"))
     .map((r) => r.name)
     .filter((n) => !REMOTE_KEEP.has(n) && !n.startsWith("_cf_") && !n.startsWith("sqlite_"));
-  if (tables.length) await sql(["PRAGMA defer_foreign_keys = on;", ...tables.map((t) => `DELETE FROM "${t}";`)].join("\n"));
-  return { base: cfg.issuer, work: `${cfg.name} (D1 ${cfg.d1Id})`, sql, log: () => "", stop: () => {}, remote: true };
+  if (tables.length)
+    await sql(
+      ["PRAGMA defer_foreign_keys = on;", ...tables.map((t) => `DELETE FROM "${t}";`)].join("\n"),
+    );
+  return {
+    base: cfg.issuer,
+    work: `${cfg.name} (D1 ${cfg.d1Id})`,
+    sql,
+    log: () => "",
+    stop: () => {},
+    remote: true,
+  };
 }

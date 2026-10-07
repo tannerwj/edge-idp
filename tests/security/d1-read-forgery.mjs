@@ -4,7 +4,11 @@ import { randomBytes } from "node:crypto";
 import { startPortable } from "../e2e/instances.mjs";
 
 const port = 9900 + Math.floor(Math.random() * 90);
-const inst = await startPortable({ prefix: "d1-read", port, vars: { SETUP_TOKEN: randomBytes(32).toString("base64url") } });
+const inst = await startPortable({
+  prefix: "d1-read",
+  port,
+  vars: { SETUP_TOKEN: randomBytes(32).toString("base64url") },
+});
 try {
   await inst.start();
   const stored = inst.sql("SELECT jwk FROM signing_keys WHERE id = 'current'")[0].jwk;

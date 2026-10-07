@@ -29,16 +29,29 @@ userDetailAdmin.get("/", async (c) => {
     getUserGroups(db, id),
     listGroups(db),
     db
-      .prepare("SELECT id_hash, created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 AND expires_at > ?2 ORDER BY last_seen_at DESC")
+      .prepare(
+        "SELECT id_hash, created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 AND expires_at > ?2 ORDER BY last_seen_at DESC",
+      )
       .bind(id, nowSec())
-      .all<{ id_hash: string; created_at: number; last_seen_at: number; user_agent: string | null }>(),
+      .all<{
+        id_hash: string;
+        created_at: number;
+        last_seen_at: number;
+        user_agent: string | null;
+      }>(),
     db
       .prepare(
         `SELECT g.client_id, g.scope, g.created_at, g.last_used_at, c.name FROM oauth_grants g
          JOIN oidc_clients c ON c.id = g.client_id WHERE g.user_id = ?1`,
       )
       .bind(id)
-      .all<{ client_id: string; scope: string; created_at: number; last_used_at: number | null; name: string }>(),
+      .all<{
+        client_id: string;
+        scope: string;
+        created_at: number;
+        last_used_at: number | null;
+        name: string;
+      }>(),
     db
       .prepare(
         `SELECT a.event, a.created_at, c.name AS client_name FROM audit_log a
@@ -47,7 +60,17 @@ userDetailAdmin.get("/", async (c) => {
       .bind(id)
       .all<{ event: string; created_at: number; client_name: string | null }>(),
   ]);
-  const data: TabData = { id, self, user, creds, groups, allGroups, sessions: sessions.results, grants: grants.results, activity: activity.results };
+  const data: TabData = {
+    id,
+    self,
+    user,
+    creds,
+    groups,
+    allGroups,
+    sessions: sessions.results,
+    grants: grants.results,
+    activity: activity.results,
+  };
   const counts: Record<string, number> = {
     passkeys: creds.length,
     devices: sessions.results.length,
@@ -56,7 +79,11 @@ userDetailAdmin.get("/", async (c) => {
 
   return await page(
     c,
-    { active: "users", title: user.name, crumbs: [{ label: "People", href: "/admin/users" }, { label: user.name }] },
+    {
+      active: "users",
+      title: user.name,
+      crumbs: [{ label: "People", href: "/admin/users" }, { label: user.name }],
+    },
     <>
       <PageHead
         leading={<Avatar name={user.name} seed={user.id} size="lg" />}
@@ -65,24 +92,50 @@ userDetailAdmin.get("/", async (c) => {
           <span class="row-sm wrap">
             {user.email}
             {user.is_admin ? <span class="badge accent">Admin</span> : null}
-            {user.disabled ? <span class="badge bad dot">Disabled</span> : <span class="badge ok dot">Active</span>}
-            {!creds.length && !user.disabled ? <span class="badge warn">No passkey yet</span> : null}
+            {user.disabled ? (
+              <span class="badge bad dot">Disabled</span>
+            ) : (
+              <span class="badge ok dot">Active</span>
+            )}
+            {!creds.length && !user.disabled ? (
+              <span class="badge warn">No passkey yet</span>
+            ) : null}
           </span>
         }
         actions={
           <>
-            <PostButton action={`/admin/users/${id}/enrollment`} label={creds.length ? "New enrollment link" : "Get invite link"} icon="link" class="btn" />
+            <PostButton
+              action={`/admin/users/${id}/enrollment`}
+              label={creds.length ? "New enrollment link" : "Get invite link"}
+              icon="link"
+              class="btn"
+            />
             {self ? null : user.disabled ? (
-              <PostButton action={`/admin/users/${id}/enable`} label="Enable" icon="check" class="btn" />
+              <PostButton
+                action={`/admin/users/${id}/enable`}
+                label="Enable"
+                icon="check"
+                class="btn"
+              />
             ) : (
-              <PostButton action={`/admin/users/${id}/disable`} label="Disable" icon="ban" class="btn danger" confirm={`Disable ${user.name}? They'll be signed out everywhere immediately.`} />
+              <PostButton
+                action={`/admin/users/${id}/disable`}
+                label="Disable"
+                icon="ban"
+                class="btn danger"
+                confirm={`Disable ${user.name}? They'll be signed out everywhere immediately.`}
+              />
             )}
           </>
         }
       />
       <nav class="tabs">
         {TABS.map((t) => (
-          <a key={t.id} href={t.id === "overview" ? `/admin/users/${id}` : `/admin/users/${id}?tab=${t.id}`} class={tab === t.id ? "active" : ""}>
+          <a
+            key={t.id}
+            href={t.id === "overview" ? `/admin/users/${id}` : `/admin/users/${id}?tab=${t.id}`}
+            class={tab === t.id ? "active" : ""}
+          >
             {t.label}
             {counts[t.id] !== undefined ? <span class="count">{counts[t.id]}</span> : null}
           </a>

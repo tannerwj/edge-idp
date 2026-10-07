@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  base64url,
-  emailKey,
-  rpIdFromIssuer,
-  sha256Hex,
-  timingSafeEqualHex,
-} from "../src/util";
+import { base64url, emailKey, rpIdFromIssuer, sha256Hex, timingSafeEqualHex } from "../src/util";
 import { newerVersion } from "../src/upstream";
 
 describe("base64url", () => {
@@ -59,9 +53,7 @@ describe("rpIdFromIssuer", () => {
   });
 
   it("ignores ports and paths", () => {
-    expect(rpIdFromIssuer("https://auth.example.com:8443/x")).toBe(
-      "auth.example.com",
-    );
+    expect(rpIdFromIssuer("https://auth.example.com:8443/x")).toBe("auth.example.com");
   });
 });
 

@@ -23,10 +23,13 @@ function status(elId: string, msg: string, kind: "" | "error" | "ok" = ""): void
 function friendlyError(e: unknown): string {
   if (e instanceof Error) {
     if (e.name === "NotAllowedError") return "Cancelled — no problem. Try again when you're ready.";
-    if (e.name === "InvalidStateError") return "This device already has a passkey here. Try signing in instead.";
-    if (e.name === "SecurityError") return "This site's address doesn't match its passkey domain. Tell your admin.";
+    if (e.name === "InvalidStateError")
+      return "This device already has a passkey here. Try signing in instead.";
+    if (e.name === "SecurityError")
+      return "This site's address doesn't match its passkey domain. Tell your admin.";
     if (e.message === "auth_failed") return "That passkey isn't recognized here. Was it removed?";
-    if (e.message === "invalid_enrollment_token") return "This enrollment link was already used or has expired.";
+    if (e.message === "invalid_enrollment_token")
+      return "This enrollment link was already used or has expired.";
     if (e.message === "rate_limited") return "Too many attempts — wait a minute and try again.";
   }
   return "Something went wrong — please try again.";
@@ -44,7 +47,10 @@ async function postJSON(url: string, body: unknown): Promise<Record<string, unkn
     credentials: "same-origin",
   });
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(isRecord(data) && typeof data.error === "string" ? data.error : "request_failed");
+  if (!res.ok)
+    throw new Error(
+      isRecord(data) && typeof data.error === "string" ? data.error : "request_failed",
+    );
   if (!isRecord(data)) throw new Error("bad_response");
   return data;
 }
@@ -55,7 +61,11 @@ const isRegOptions = (v: unknown): v is PublicKeyCredentialCreationOptionsJSON =
   isRecord(v) && typeof v.challenge === "string" && isRecord(v.rp) && isRecord(v.user);
 
 /** One login attempt. Returns true when the session cookie is set. */
-async function attemptLogin(email: string | undefined, autofill: boolean, stepUp: boolean): Promise<boolean> {
+async function attemptLogin(
+  email: string | undefined,
+  autofill: boolean,
+  stepUp: boolean,
+): Promise<boolean> {
   const raw = await postJSON("/webauthn/auth/options", email ? { email } : {});
   if (!isAuthOptions(raw)) throw new Error("bad_response");
   const resp = await startAuthentication({ optionsJSON: raw, useBrowserAutofill: autofill });
@@ -78,7 +88,11 @@ export async function initLogin(): Promise<void> {
   const stepUp = box.getAttribute("data-reauth") === "1";
   const btn = $("passkey-btn");
   if (!browserSupportsWebAuthn()) {
-    status("login-status", "This browser doesn't support passkeys. Try Safari, Chrome, Edge or Firefox.", "error");
+    status(
+      "login-status",
+      "This browser doesn't support passkeys. Try Safari, Chrome, Edge or Firefox.",
+      "error",
+    );
     setBusy(btn, true);
     return;
   }

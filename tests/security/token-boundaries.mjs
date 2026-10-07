@@ -43,10 +43,22 @@ try {
     (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, expires_at, auth_time)
     VALUES ('${hash(code)}', 'client-a', 'review-user', 'https://a.example.test/cb',
       '${challenge}', 'openid', ${now + 60}, ${now});`);
-  const wrongCode = await post("client-b", { grant_type: "authorization_code", code, code_verifier: verifier });
+  const wrongCode = await post("client-b", {
+    grant_type: "authorization_code",
+    code,
+    code_verifier: verifier,
+  });
   check("wrong client code response", wrongCode.status, 400);
-  check("wrong client leaves code unused", (await instance.sql(`SELECT used FROM auth_codes WHERE code_hash = '${hash(code)}'`))[0].used, 0);
-  const rightCode = await post("client-a", { grant_type: "authorization_code", code, code_verifier: verifier });
+  check(
+    "wrong client leaves code unused",
+    (await instance.sql(`SELECT used FROM auth_codes WHERE code_hash = '${hash(code)}'`))[0].used,
+    0,
+  );
+  const rightCode = await post("client-a", {
+    grant_type: "authorization_code",
+    code,
+    code_verifier: verifier,
+  });
   check("right client after wrong-client attempt", rightCode.status, 200);
 
   // The main E2E uses PKCE. Confidential clients may omit it after authenticating;
@@ -61,7 +73,9 @@ try {
     VALUES ('${hash(confidentialCode)}', 'client-confidential', 'review-user',
       'https://conf.example.test/cb', '', 'openid', ${now + 60}, ${now});`);
   const confidential = await post("client-confidential", {
-    client_secret: confidentialSecret, grant_type: "authorization_code", code: confidentialCode,
+    client_secret: confidentialSecret,
+    grant_type: "authorization_code",
+    code: confidentialCode,
   });
   check("confidential no-PKCE code redeems", confidential.status, 200);
 
@@ -70,12 +84,36 @@ try {
     (token_hash, family_id, client_id, user_id, scope, auth_time, created_at, expires_at)
     VALUES ('${hash(refresh)}', 'review-family-1', 'client-a', 'review-user',
       'offline_access', ${now}, ${now}, ${now + 3600});`);
-  const wrongRefresh = await post("client-b", { grant_type: "refresh_token", refresh_token: refresh });
+  const wrongRefresh = await post("client-b", {
+    grant_type: "refresh_token",
+    refresh_token: refresh,
+  });
   check("wrong client refresh response", wrongRefresh.status, 400);
-  check("wrong client leaves refresh unrotated", Number((await instance.sql(`SELECT rotated_at IS NOT NULL AS rotated FROM refresh_tokens WHERE token_hash = '${hash(refresh)}'`))[0].rotated), 0);
-  const rightRefresh = await post("client-a", { grant_type: "refresh_token", refresh_token: refresh });
+  check(
+    "wrong client leaves refresh unrotated",
+    Number(
+      (
+        await instance.sql(
+          `SELECT rotated_at IS NOT NULL AS rotated FROM refresh_tokens WHERE token_hash = '${hash(refresh)}'`,
+        )
+      )[0].rotated,
+    ),
+    0,
+  );
+  const rightRefresh = await post("client-a", {
+    grant_type: "refresh_token",
+    refresh_token: refresh,
+  });
   check("right client refreshes after wrong-client attempt", rightRefresh.status, 200);
-  check("family survives wrong-client attempt", (await instance.sql("SELECT COUNT(*) AS n FROM refresh_tokens WHERE family_id = 'review-family-1'"))[0].n, 2);
+  check(
+    "family survives wrong-client attempt",
+    (
+      await instance.sql(
+        "SELECT COUNT(*) AS n FROM refresh_tokens WHERE family_id = 'review-family-1'",
+      )
+    )[0].n,
+    2,
+  );
 
   const groupRefresh = token();
   await instance.sql(`INSERT INTO refresh_tokens
@@ -83,20 +121,40 @@ try {
     VALUES ('${hash(groupRefresh)}', 'review-family-2', 'client-a', 'review-user',
       'openid offline_access', ${now}, ${now}, ${now + 3600});
     DELETE FROM group_members WHERE user_id = 'review-user';`);
-  const afterRemoval = await post("client-a", { grant_type: "refresh_token", refresh_token: groupRefresh });
+  const afterRemoval = await post("client-a", {
+    grant_type: "refresh_token",
+    refresh_token: groupRefresh,
+  });
   check("group-restricted client refresh denied after removal", afterRemoval.status, 400);
-  check("group-restricted refresh family revoked", (await instance.sql("SELECT COUNT(*) AS n FROM refresh_tokens WHERE family_id = 'review-family-2'"))[0].n, 0);
+  check(
+    "group-restricted refresh family revoked",
+    (
+      await instance.sql(
+        "SELECT COUNT(*) AS n FROM refresh_tokens WHERE family_id = 'review-family-2'",
+      )
+    )[0].n,
+    0,
+  );
 
   const narrowRefresh = token();
   await instance.sql(`INSERT INTO refresh_tokens
     (token_hash, family_id, client_id, user_id, scope, auth_time, created_at, expires_at)
     VALUES ('${hash(narrowRefresh)}', 'review-family-3', 'client-b', 'review-user',
       'offline_access', ${now}, ${now}, ${now + 3600});`);
-  const narrow = await post("client-b", { grant_type: "refresh_token", refresh_token: narrowRefresh });
-  const userinfo = await fetch(`${instance.base}/userinfo`, { headers: { authorization: `Bearer ${narrow.body.access_token}` } });
+  const narrow = await post("client-b", {
+    grant_type: "refresh_token",
+    refresh_token: narrowRefresh,
+  });
+  const userinfo = await fetch(`${instance.base}/userinfo`, {
+    headers: { authorization: `Bearer ${narrow.body.access_token}` },
+  });
   await userinfo.json();
   check("userinfo rejects offline_access-only token", userinfo.status, 401);
-  check("access token omits email outside granted scopes", JSON.parse(Buffer.from(narrow.body.access_token.split(".")[1], "base64url").toString()).email, undefined);
+  check(
+    "access token omits email outside granted scopes",
+    JSON.parse(Buffer.from(narrow.body.access_token.split(".")[1], "base64url").toString()).email,
+    undefined,
+  );
 
   const readToken = `eidp_${token()}`;
   await instance.sql(`INSERT INTO api_tokens (id, token_hash, name, created_at, created_by, scope)
@@ -106,17 +164,37 @@ try {
     const r = await fetch(`${instance.base}/mcp`, {
       method: "POST",
       headers: { authorization: `Bearer ${readToken}`, "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "execute", arguments: { code: source } } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "execute", arguments: { code: source } },
+      }),
     });
     return r.json();
   };
-  const attemptedWrite = await execute('return await id.users_create({name:"Forbidden",email:"forbidden@example.test"});');
+  const attemptedWrite = await execute(
+    'return await id.users_create({name:"Forbidden",email:"forbidden@example.test"});',
+  );
   check("read-only sandbox write rejected", attemptedWrite.result?.isError, true);
-  check("read-only sandbox write made no user", (await instance.sql("SELECT COUNT(*) AS n FROM users WHERE email = 'forbidden@example.test'"))[0].n, 0);
-  const networkProbe = await execute('try { await fetch("https://example.com"); return "open"; } catch { return "blocked"; }');
-  check("sandbox outbound fetch blocked", JSON.parse(networkProbe.result.content[0].text).value, "blocked");
+  check(
+    "read-only sandbox write made no user",
+    (
+      await instance.sql("SELECT COUNT(*) AS n FROM users WHERE email = 'forbidden@example.test'")
+    )[0].n,
+    0,
+  );
+  const networkProbe = await execute(
+    'try { await fetch("https://example.com"); return "open"; } catch { return "blocked"; }',
+  );
+  check(
+    "sandbox outbound fetch blocked",
+    JSON.parse(networkProbe.result.content[0].text).value,
+    "blocked",
+  );
 
-  for (const result of checks) console.log(`${result.pass ? "PASS" : "FAIL"} ${result.name}: ${result.actual}`);
+  for (const result of checks)
+    console.log(`${result.pass ? "PASS" : "FAIL"} ${result.name}: ${result.actual}`);
   if (checks.some((x) => !x.pass)) process.exitCode = 1;
 } finally {
   instance.stop();

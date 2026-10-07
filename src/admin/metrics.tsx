@@ -26,7 +26,8 @@ function ByTool({ rows, maxCalls }: { rows: ToolRow[]; maxCalls: number }) {
               <div class="row between">
                 <span class="mono small">{r.tool_name}</span>
                 <span class="muted small">
-                  {r.calls} · {Math.round(r.avg_ms)}ms{r.calls - r.ok ? ` · ${r.calls - r.ok} err` : ""}
+                  {r.calls} · {Math.round(r.avg_ms)}ms
+                  {r.calls - r.ok ? ` · ${r.calls - r.ok} err` : ""}
                 </span>
               </div>
               <div class="meter">
@@ -60,7 +61,14 @@ metricsAdmin.get("/", async (c) => {
         `SELECT m.tool_name, m.started_at, m.duration_ms, m.success, m.error, t.name AS token_name
          FROM mcp_calls m LEFT JOIN api_tokens t ON t.id = m.token_id ORDER BY m.id DESC LIMIT 25`,
       )
-      .all<{ tool_name: string; started_at: number; duration_ms: number; success: number; error: string | null; token_name: string | null }>(),
+      .all<{
+        tool_name: string;
+        started_at: number;
+        duration_ms: number;
+        success: number;
+        error: string | null;
+        token_name: string | null;
+      }>(),
     db
       .prepare(
         `SELECT COUNT(*) AS total, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS errors, AVG(duration_ms) AS avg_ms
@@ -76,7 +84,10 @@ metricsAdmin.get("/", async (c) => {
     c,
     { active: "metrics", title: "MCP activity" },
     <>
-      <PageHead title="MCP activity" lede="What AI assistants did through the admin API in the last 24 hours." />
+      <PageHead
+        title="MCP activity"
+        lede="What AI assistants did through the admin API in the last 24 hours."
+      />
       <div class="stack-lg">
         <div class="grid-3">
           <div class="card stat">
@@ -126,7 +137,15 @@ metricsAdmin.get("/", async (c) => {
                         <td class="muted small nowrap">
                           <Time ts={r.started_at} /> · {r.duration_ms}ms
                         </td>
-                        <td>{r.success ? <span class="badge ok dot">OK</span> : <span class="badge bad dot" title={r.error ?? ""}>{(r.error ?? "Error").slice(0, 40)}</span>}</td>
+                        <td>
+                          {r.success ? (
+                            <span class="badge ok dot">OK</span>
+                          ) : (
+                            <span class="badge bad dot" title={r.error ?? ""}>
+                              {(r.error ?? "Error").slice(0, 40)}
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

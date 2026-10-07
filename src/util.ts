@@ -22,15 +22,10 @@ export function base64url(input: Uint8Array | ArrayBuffer): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export async function sha256Hex(
-  data: string | Uint8Array<ArrayBuffer>,
-): Promise<string> {
-  const bytes =
-    typeof data === "string" ? new TextEncoder().encode(data) : data;
+export async function sha256Hex(data: string | Uint8Array<ArrayBuffer>): Promise<string> {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)]
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
 /**

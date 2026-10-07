@@ -16,18 +16,23 @@ export async function runMaintenance(db: D1Database): Promise<Record<string, num
     challenges: db.prepare("DELETE FROM webauthn_challenges WHERE expires_at < ?1").bind(now),
     codes: db.prepare("DELETE FROM auth_codes WHERE expires_at < ?1").bind(now - 3600),
     sessions: db.prepare("DELETE FROM sessions WHERE expires_at < ?1").bind(now),
-    enrollments: db.prepare("DELETE FROM enrollment_tokens WHERE expires_at < ?1 OR used = 1").bind(now - 7 * DAY),
+    enrollments: db
+      .prepare("DELETE FROM enrollment_tokens WHERE expires_at < ?1 OR used = 1")
+      .bind(now - 7 * DAY),
     // Rotated refresh tokens are kept a day for replay detection, then dropped.
     refresh: db
-      .prepare("DELETE FROM refresh_tokens WHERE expires_at < ?1 OR (rotated_at IS NOT NULL AND rotated_at < ?2)")
+      .prepare(
+        "DELETE FROM refresh_tokens WHERE expires_at < ?1 OR (rotated_at IS NOT NULL AND rotated_at < ?2)",
+      )
       .bind(now, now - DAY),
     audit_age: db.prepare("DELETE FROM audit_log WHERE created_at < ?1").bind(now - AUDIT_MAX_AGE),
     // Index-friendly cap: everything older than the Nth-newest id.
-    audit_cap: db
-      .prepare(
-        `DELETE FROM audit_log WHERE id < (SELECT id FROM audit_log ORDER BY id DESC LIMIT 1 OFFSET ${AUDIT_MAX_ROWS})`,
-      ),
-    mcp_calls: db.prepare("DELETE FROM mcp_calls WHERE started_at < ?1").bind(now - MCP_CALLS_MAX_AGE),
+    audit_cap: db.prepare(
+      `DELETE FROM audit_log WHERE id < (SELECT id FROM audit_log ORDER BY id DESC LIMIT 1 OFFSET ${AUDIT_MAX_ROWS})`,
+    ),
+    mcp_calls: db
+      .prepare("DELETE FROM mcp_calls WHERE started_at < ?1")
+      .bind(now - MCP_CALLS_MAX_AGE),
     // Dynamically registered clients that never got a consent are litter
     // (Cursor & co. register on every fresh connect).
     dcr_clients: db

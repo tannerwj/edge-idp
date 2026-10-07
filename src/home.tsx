@@ -33,7 +33,12 @@ export function AppTile(props: { app: App; admin?: boolean }) {
   const a = props.app;
   const glyph = a.icon || a.name.slice(0, 1).toUpperCase();
   return (
-    <a class="tile" href={a.url} data-hue={a.color ? String(Math.round(parseInt(a.color, 10) / 30) % 12) : hueOf(a.name)} rel="noopener">
+    <a
+      class="tile"
+      href={a.url}
+      data-hue={a.color ? String(Math.round(parseInt(a.color, 10) / 30) % 12) : hueOf(a.name)}
+      rel="noopener"
+    >
       <span class={a.icon && isEmoji(a.icon) ? "glyph emoji" : "glyph"}>{glyph}</span>
       <span class="go">
         <Icon name="arrowUpRight" size="sm" />
@@ -72,10 +77,31 @@ home.get("/", async (c) => {
   ]);
   const first = s.user.name.split(" ")[0];
   return c.html(
-    <AppShell ui={await uiFor(c)} viewer={viewerOf(s)} active="home" title="Home" flash={c.req.query("ok")}>
+    <AppShell
+      ui={await uiFor(c)}
+      viewer={viewerOf(s)}
+      active="home"
+      title="Home"
+      flash={c.req.query("ok")}
+    >
       <PageHead
         title={`${greeting()}, ${first}`}
-        lede={groups.length ? <>You're in {groups.map((g, i) => <>{i ? ", " : ""}<b>{g}</b></>)}.</> : "Here's everything you can open."}
+        lede={
+          groups.length ? (
+            <>
+              You're in{" "}
+              {groups.map((g, i) => (
+                <>
+                  {i ? ", " : ""}
+                  <b>{g}</b>
+                </>
+              ))}
+              .
+            </>
+          ) : (
+            "Here's everything you can open."
+          )
+        }
       />
       <div class="stack-lg">
         {creds.length < 2 ? (
@@ -84,8 +110,8 @@ home.get("/", async (c) => {
               <div>
                 <b>Add a backup passkey.</b>{" "}
                 <span class="text-2">
-                  You have {creds.length === 0 ? "no passkeys" : "one passkey"}. A second device (say, your phone) means losing one is never a
-                  lockout.
+                  You have {creds.length === 0 ? "no passkeys" : "one passkey"}. A second device
+                  (say, your phone) means losing one is never a lockout.
                 </span>
               </div>
               <a class="btn sm" href="/account#passkeys">
@@ -113,7 +139,18 @@ home.get("/", async (c) => {
             </div>
           ) : (
             <div class="card">
-              <Empty icon="grid" title="No apps yet" action={s.user.is_admin ? <a class="btn primary" href="/admin/apps?new=1"><Icon name="plus" size="sm" />Add your first app</a> : null}>
+              <Empty
+                icon="grid"
+                title="No apps yet"
+                action={
+                  s.user.is_admin ? (
+                    <a class="btn primary" href="/admin/apps?new=1">
+                      <Icon name="plus" size="sm" />
+                      Add your first app
+                    </a>
+                  ) : null
+                }
+              >
                 {s.user.is_admin
                   ? "Apps you add appear here for everyone allowed to use them — a home screen for your stuff."
                   : "When your admin shares apps with you, they'll show up here."}
@@ -148,10 +185,15 @@ home.get("/", async (c) => {
                 <div class="grow">
                   <div class="title">Passkeys</div>
                   <div class="meta">
-                    {creds.length} registered{creds.some((k) => k.backup_state) ? " · synced across devices" : ""}
+                    {creds.length} registered
+                    {creds.some((k) => k.backup_state) ? " · synced across devices" : ""}
                   </div>
                 </div>
-                {creds.length >= 2 ? <span class="badge ok dot">Good</span> : <span class="badge warn dot">Add a backup</span>}
+                {creds.length >= 2 ? (
+                  <span class="badge ok dot">Good</span>
+                ) : (
+                  <span class="badge warn dot">Add a backup</span>
+                )}
               </li>
               <li>
                 <Icon name="clock" />
@@ -169,4 +211,3 @@ home.get("/", async (c) => {
     </AppShell>,
   );
 });
-

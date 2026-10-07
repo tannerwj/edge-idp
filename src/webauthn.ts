@@ -5,17 +5,25 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
-import type {
-  RegistrationResponseJSON,
-  AuthenticationResponseJSON,
-} from "@simplewebauthn/server";
+import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
 import type { Env } from "./config";
 import { audit, getCredentialsForUser, getUser, getUserByEmail } from "./db";
 import type { User, WebAuthnCredential } from "./db";
-import { createSession, destroySession, getSession, hasRecentStepUp, setSessionCookie } from "./session";
+import {
+  createSession,
+  destroySession,
+  getSession,
+  hasRecentStepUp,
+  setSessionCookie,
+} from "./session";
 import { base64url, newId, nowSec, rpIdFromIssuer, sha256Hex } from "./util";
 import { aaguidName } from "./aaguid";
-import { b64urlToBytes, challengeFromResponse, storeChallenge, takeChallenge } from "./webauthn-challenges";
+import {
+  b64urlToBytes,
+  challengeFromResponse,
+  storeChallenge,
+  takeChallenge,
+} from "./webauthn-challenges";
 import type { StoredChallenge } from "./webauthn-challenges";
 
 /**
@@ -53,12 +61,8 @@ export async function validEnrollmentToken(
   return { user, tokenHash };
 }
 
-function clientIp(c: {
-  req: { header: (n: string) => string | undefined };
-}): string | null {
-  return (
-    c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for") ?? null
-  );
+function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
+  return c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for") ?? null;
 }
 
 function credIdB64(cred: WebAuthnCredential): string {
@@ -164,9 +168,7 @@ async function persistCredential(
       b64urlToBytes(info.credential.id),
       info.credential.publicKey,
       0,
-      response.response.transports
-        ? JSON.stringify(response.response.transports)
-        : null,
+      response.response.transports ? JSON.stringify(response.response.transports) : null,
       name,
       deviceType === "multiDevice" ? 1 : 0,
       info.credentialBackedUp ? 1 : 0,

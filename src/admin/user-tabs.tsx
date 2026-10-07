@@ -13,8 +13,19 @@ export interface TabData {
   creds: Awaited<ReturnType<typeof getCredentialsForUser>>;
   groups: string[];
   allGroups: Group[];
-  sessions: { id_hash: string; created_at: number; last_seen_at: number; user_agent: string | null }[];
-  grants: { client_id: string; scope: string; created_at: number; last_used_at: number | null; name: string }[];
+  sessions: {
+    id_hash: string;
+    created_at: number;
+    last_seen_at: number;
+    user_agent: string | null;
+  }[];
+  grants: {
+    client_id: string;
+    scope: string;
+    created_at: number;
+    last_used_at: number | null;
+    name: string;
+  }[];
   activity: FeedRow[];
 }
 
@@ -46,7 +57,9 @@ export function OverviewTab({ id, self, user, creds, groups, allGroups }: TabDat
           <div class="card-head">
             <div class="grow">
               <h2>Groups</h2>
-              <div class="sub">Sent to apps in the <code>groups</code> claim, and used for app access.</div>
+              <div class="sub">
+                Sent to apps in the <code>groups</code> claim, and used for app access.
+              </div>
             </div>
           </div>
           <div class="card-body">
@@ -105,7 +118,11 @@ export function OverviewTab({ id, self, user, creds, groups, allGroups }: TabDat
                 label={user.is_admin ? "Remove admin" : "Make admin"}
                 icon="shield"
                 class="btn sm"
-                confirm={user.is_admin ? `Remove admin from ${user.name}? Their API tokens are deleted too.` : `Make ${user.name} an admin?`}
+                confirm={
+                  user.is_admin
+                    ? `Remove admin from ${user.name}? Their API tokens are deleted too.`
+                    : `Make ${user.name} an admin?`
+                }
               />
             )}
           </div>
@@ -151,19 +168,46 @@ export function PasskeysTab({ id, user, creds }: TabData) {
               <div class="grow">
                 <div class="title row-sm">
                   {k.name}
-                  {k.backup_state ? <span class="badge">Synced</span> : <span class="badge">Device-bound</span>}
+                  {k.backup_state ? (
+                    <span class="badge">Synced</span>
+                  ) : (
+                    <span class="badge">Device-bound</span>
+                  )}
                 </div>
                 <div class="meta">
-                  {aaguidName(k.aaguid) ? <>{aaguidName(k.aaguid)} · </> : null}Added <Time ts={k.created_at} /> ·{" "}
-                  {k.last_used_at ? <>Used <Time ts={k.last_used_at} /></> : "Never used"}
+                  {aaguidName(k.aaguid) ? <>{aaguidName(k.aaguid)} · </> : null}Added{" "}
+                  <Time ts={k.created_at} /> ·{" "}
+                  {k.last_used_at ? (
+                    <>
+                      Used <Time ts={k.last_used_at} />
+                    </>
+                  ) : (
+                    "Never used"
+                  )}
                 </div>
               </div>
-              <PostButton action={`/admin/users/${id}/keys/${k.id}/remove`} label="Remove" class="btn ghost sm danger" confirm={`Remove “${k.name}” from ${user.name}?`} />
+              <PostButton
+                action={`/admin/users/${id}/keys/${k.id}/remove`}
+                label="Remove"
+                class="btn ghost sm danger"
+                confirm={`Remove “${k.name}” from ${user.name}?`}
+              />
             </li>
           ))}
         </ul>
       ) : (
-        <Empty icon="fingerprint" title="No passkeys" action={<PostButton action={`/admin/users/${id}/enrollment`} label="Get invite link" icon="link" class="btn primary" />}>
+        <Empty
+          icon="fingerprint"
+          title="No passkeys"
+          action={
+            <PostButton
+              action={`/admin/users/${id}/enrollment`}
+              label="Get invite link"
+              icon="link"
+              class="btn primary"
+            />
+          }
+        >
           {user.name} can't sign in until they set one up.
         </Empty>
       )}
@@ -178,7 +222,12 @@ export function SessionsTab({ id, user, sessions }: TabData) {
         <>
           <div class="card-head">
             <h2 class="grow">Active sessions</h2>
-            <PostButton action={`/admin/users/${id}/sign-out`} label="Sign out everywhere" class="btn sm" confirm={`Sign ${user.name} out of every browser?`} />
+            <PostButton
+              action={`/admin/users/${id}/sign-out`}
+              label="Sign out everywhere"
+              class="btn sm"
+              confirm={`Sign ${user.name} out of every browser?`}
+            />
           </div>
           <ul class="list">
             {sessions.map((s) => {
@@ -194,7 +243,11 @@ export function SessionsTab({ id, user, sessions }: TabData) {
                       Signed in <Time ts={s.created_at} /> · Active <Time ts={s.last_seen_at} />
                     </div>
                   </div>
-                  <PostButton action={`/admin/users/${id}/sessions/${s.id_hash}/revoke`} label="Sign out" class="btn ghost sm" />
+                  <PostButton
+                    action={`/admin/users/${id}/sessions/${s.id_hash}/revoke`}
+                    label="Sign out"
+                    class="btn ghost sm"
+                  />
                 </li>
               );
             })}
@@ -239,6 +292,12 @@ export function ConnectedAppsTab({ user, grants }: TabData) {
 
 export function ActivityTab({ activity }: TabData) {
   return (
-    <div class="card">{activity.length ? <Feed rows={activity} showWho={false} /> : <Empty icon="activity" title="No activity" />}</div>
+    <div class="card">
+      {activity.length ? (
+        <Feed rows={activity} showWho={false} />
+      ) : (
+        <Empty icon="activity" title="No activity" />
+      )}
+    </div>
   );
 }

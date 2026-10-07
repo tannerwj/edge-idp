@@ -5,13 +5,29 @@ import * as ops from "../ops";
 import { nowSec } from "../util";
 import type { ACtx, AdminVars } from "./shell";
 import { act, actor, field, fields, page } from "./shell";
-import { Callout, CopyField, Dialog, Empty, GroupChips, GroupPicker, PageHead, Time } from "../ui/components";
+import {
+  Callout,
+  CopyField,
+  Dialog,
+  Empty,
+  GroupChips,
+  GroupPicker,
+  PageHead,
+  Time,
+} from "../ui/components";
 import { Icon } from "../ui/icons";
 import { ClientDetail, detailHref, host, TypeBadges } from "./client-detail";
 
 function NewClientDialog({ groups }: { groups: Group[] }) {
   return (
-    <Dialog id="new-client" sheet title="Register a client" lede="You'll get a client ID (and secret, for confidential clients) to paste into the app." action="/admin/clients" submit="Register">
+    <Dialog
+      id="new-client"
+      sheet
+      title="Register a client"
+      lede="You'll get a client ID (and secret, for confidential clients) to paste into the app."
+      action="/admin/clients"
+      submit="Register"
+    >
       <label class="field">
         <span class="label">Name</span>
         <input name="name" required maxLength={120} placeholder="Cloudflare Access" />
@@ -36,19 +52,29 @@ function NewClientDialog({ groups }: { groups: Group[] }) {
       </div>
       <label class="field">
         <span class="label">Redirect URIs</span>
-        <textarea name="redirectUris" rows={3} required placeholder="https://yourteam.cloudflareaccess.com/cdn-cgi/access/callback"></textarea>
+        <textarea
+          name="redirectUris"
+          rows={3}
+          required
+          placeholder="https://yourteam.cloudflareaccess.com/cdn-cgi/access/callback"
+        ></textarea>
         <span class="hint">One per line. Matched exactly (http://localhost may use any port).</span>
       </label>
       <div class="field">
         <span class="label">Allowed groups</span>
         <GroupPicker name="groups" all={groups} selected={[]} />
-        <span class="hint">None selected = everyone. For Cloudflare Access, leave empty and use Access policies per app.</span>
+        <span class="hint">
+          None selected = everyone. For Cloudflare Access, leave empty and use Access policies per
+          app.
+        </span>
       </div>
       <label class="check">
         <input type="checkbox" name="requirePkce" value="1" checked />
         <span>
           Require PKCE
-          <span class="sub">Turn off only for clients that can't send it — Cloudflare Access is one.</span>
+          <span class="sub">
+            Turn off only for clients that can't send it — Cloudflare Access is one.
+          </span>
         </span>
       </label>
       <label class="field">
@@ -80,7 +106,12 @@ clientsAdmin.get("/", async (c) => {
         title="Clients"
         lede="Anything that signs people in through this server over OpenID Connect / OAuth: Cloudflare Access, your own apps, and AI tools like Claude."
         actions={
-          <button class="btn primary" type="button" data-open="new-client" {...(c.req.query("new") ? { "data-autoopen": "" } : {})}>
+          <button
+            class="btn primary"
+            type="button"
+            data-open="new-client"
+            {...(c.req.query("new") ? { "data-autoopen": "" } : {})}
+          >
             <Icon name="plus" size="sm" />
             Register client
           </button>
@@ -98,8 +129,9 @@ clientsAdmin.get("/", async (c) => {
       </div>
       {view === "connected" ? (
         <Callout icon="bot">
-          Tools that registered themselves (MCP clients like Claude, Cursor, VS Code) — via dynamic registration or a client
-          metadata URL. Only admins can authorize them, every user sees a consent screen, and you can revoke any of them here.
+          Tools that registered themselves (MCP clients like Claude, Cursor, VS Code) — via dynamic
+          registration or a client metadata URL. Only admins can authorize them, every user sees a
+          consent screen, and you can revoke any of them here.
         </Callout>
       ) : null}
       <div class="card section-gap">
@@ -131,7 +163,10 @@ clientsAdmin.get("/", async (c) => {
                       ))}
                     </td>
                     <td>
-                      <GroupChips groups={x.allowed_groups} empty={x.source === "admin" ? "Everyone" : "Admins only"} />
+                      <GroupChips
+                        groups={x.allowed_groups}
+                        empty={x.source === "admin" ? "Everyone" : "Admins only"}
+                      />
                     </td>
                     <td class="muted small nowrap">
                       <Time ts={x.last_used_at} empty="Never" />
@@ -143,12 +178,21 @@ clientsAdmin.get("/", async (c) => {
           </div>
         ) : view === "connected" ? (
           <Empty icon="bot" title="No connected tools yet">
-            Add <code>{c.env.ISSUER}/mcp</code> as a connector in Claude, Claude Code, Cursor or VS Code and it will appear here after you
-            approve it.
+            Add <code>{c.env.ISSUER}/mcp</code> as a connector in Claude, Claude Code, Cursor or VS
+            Code and it will appear here after you approve it.
           </Empty>
         ) : (
-          <Empty icon="plug" title="No clients registered" action={<button class="btn primary" type="button" data-open="new-client">Register a client</button>}>
-            Start with Cloudflare Access — see <a href="/admin/connect">Connect</a> for the walkthrough.
+          <Empty
+            icon="plug"
+            title="No clients registered"
+            action={
+              <button class="btn primary" type="button" data-open="new-client">
+                Register a client
+              </button>
+            }
+          >
+            Start with Cloudflare Access — see <a href="/admin/connect">Connect</a> for the
+            walkthrough.
           </Empty>
         )}
       </div>
@@ -158,10 +202,24 @@ clientsAdmin.get("/", async (c) => {
   );
 });
 
-async function revealSecret(c: ACtx, client: { id: string; name: string }, secret: string | null, rotated: boolean) {
+async function revealSecret(
+  c: ACtx,
+  client: { id: string; name: string },
+  secret: string | null,
+  rotated: boolean,
+) {
   return await page(
     c,
-    { active: "clients", title: rotated ? "Secret rotated" : "Client registered", crumbs: [{ label: "Clients", href: "/admin/clients" }, { label: client.name, href: detailHref(client.id) }, { label: "Credentials" }], narrow: true },
+    {
+      active: "clients",
+      title: rotated ? "Secret rotated" : "Client registered",
+      crumbs: [
+        { label: "Clients", href: "/admin/clients" },
+        { label: client.name, href: detailHref(client.id) },
+        { label: "Credentials" },
+      ],
+      narrow: true,
+    },
     <div class="card">
       <div class="card-body stack">
         <div class="hero-icon ok">
@@ -170,7 +228,9 @@ async function revealSecret(c: ACtx, client: { id: string; name: string }, secre
         <div>
           <h1>{rotated ? "New secret ready" : `${client.name} is registered`}</h1>
           <p class="muted">
-            {secret ? "Copy the secret now — only its hash is stored, so it can never be shown again." : "Public client: no secret, it proves itself with PKCE."}
+            {secret
+              ? "Copy the secret now — only its hash is stored, so it can never be shown again."
+              : "Public client: no secret, it proves itself with PKCE."}
             {rotated ? " The old secret has stopped working." : ""}
           </p>
         </div>
@@ -186,7 +246,10 @@ async function revealSecret(c: ACtx, client: { id: string; name: string }, secre
         ) : null}
         <div class="field">
           <span class="label">Discovery URL</span>
-          <CopyField value={`${c.env.ISSUER}/.well-known/openid-configuration`} label="discovery URL" />
+          <CopyField
+            value={`${c.env.ISSUER}/.well-known/openid-configuration`}
+            label="discovery URL"
+          />
         </div>
         <div class="row">
           <a class="btn primary right" href={detailHref(client.id)}>
@@ -216,7 +279,10 @@ clientsAdmin.post("/", async (c) => {
     );
     return revealSecret(c, { id: r.id, name }, r.secret, false);
   } catch (e) {
-    if (e instanceof ops.OpError) return act(c, "/admin/clients?new=1", "", async () => { throw e; });
+    if (e instanceof ops.OpError)
+      return act(c, "/admin/clients?new=1", "", async () => {
+        throw e;
+      });
     throw e;
   }
 });
@@ -228,13 +294,40 @@ clientsAdmin.get("/:id", async (c) => {
   const [groups, grants, refresh, signIns] = await Promise.all([
     listGroups(db),
     count(db, "SELECT COUNT(*) AS n FROM oauth_grants WHERE client_id = ?1", client.id),
-    count(db, "SELECT COUNT(DISTINCT family_id) AS n FROM refresh_tokens WHERE client_id = ?1 AND rotated_at IS NULL AND expires_at > ?2", client.id, nowSec()),
-    count(db, "SELECT COUNT(*) AS n FROM audit_log WHERE client_id = ?1 AND event = 'CODE_ISSUED' AND created_at > ?2", client.id, nowSec() - 30 * 86400),
+    count(
+      db,
+      "SELECT COUNT(DISTINCT family_id) AS n FROM refresh_tokens WHERE client_id = ?1 AND rotated_at IS NULL AND expires_at > ?2",
+      client.id,
+      nowSec(),
+    ),
+    count(
+      db,
+      "SELECT COUNT(*) AS n FROM audit_log WHERE client_id = ?1 AND event = 'CODE_ISSUED' AND created_at > ?2",
+      client.id,
+      nowSec() - 30 * 86400,
+    ),
   ]);
   return await page(
     c,
-    { active: "clients", title: client.name, crumbs: [{ label: "Clients", href: client.source === "admin" ? "/admin/clients" : "/admin/clients?view=connected" }, { label: client.name }] },
-    <ClientDetail client={client} groups={groups} grants={grants} refresh={refresh} signIns={signIns} iss={c.env.ISSUER} />,
+    {
+      active: "clients",
+      title: client.name,
+      crumbs: [
+        {
+          label: "Clients",
+          href: client.source === "admin" ? "/admin/clients" : "/admin/clients?view=connected",
+        },
+        { label: client.name },
+      ],
+    },
+    <ClientDetail
+      client={client}
+      groups={groups}
+      grants={grants}
+      refresh={refresh}
+      signIns={signIns}
+      iss={c.env.ISSUER}
+    />,
   );
 });
 
@@ -266,7 +359,10 @@ clientsAdmin.post("/:id/rotate", async (c) => {
     const secret = await ops.rotateClientSecret(c.env.DB, client, actor(c));
     return revealSecret(c, client, secret, true);
   } catch (e) {
-    if (e instanceof ops.OpError) return act(c, detailHref(client.id), "", async () => { throw e; });
+    if (e instanceof ops.OpError)
+      return act(c, detailHref(client.id), "", async () => {
+        throw e;
+      });
     throw e;
   }
 });

@@ -9,14 +9,19 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "users_list",
     write: false,
-    description: "List all users: id, name, email, admin/disabled flags, groups, passkey count, last sign-in.",
+    description:
+      "List all users: id, name, email, admin/disabled flags, groups, passkey count, last sign-in.",
     inputSchema: obj(),
     handler: async ({ db }) => {
       const [users, { results: keys }, { results: members }] = await Promise.all([
         listUsers(db),
-        db.prepare("SELECT user_id, COUNT(*) AS n FROM webauthn_credentials GROUP BY user_id").all<{ user_id: string; n: number }>(),
         db
-          .prepare("SELECT m.user_id, g.name FROM group_members m JOIN groups g ON g.id = m.group_id")
+          .prepare("SELECT user_id, COUNT(*) AS n FROM webauthn_credentials GROUP BY user_id")
+          .all<{ user_id: string; n: number }>(),
+        db
+          .prepare(
+            "SELECT m.user_id, g.name FROM group_members m JOIN groups g ON g.id = m.group_id",
+          )
           .all<{ user_id: string; name: string }>(),
       ]);
       const keyCount = new Map(keys.map((k) => [k.user_id, k.n]));
@@ -41,26 +46,48 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "users_get",
     write: false,
-    description: "One user in detail: profile, groups, passkeys, active sessions, connected OAuth apps.",
+    description:
+      "One user in detail: profile, groups, passkeys, active sessions, connected OAuth apps.",
     inputSchema: obj(USER_REF),
     handler: async ({ db }, args) => {
       const u = await userByRef(db, args);
       const [groups, keys, sessions, grants] = await Promise.all([
         getUserGroups(db, u.id),
-        db.prepare("SELECT id, name, created_at, last_used_at, backup_state FROM webauthn_credentials WHERE user_id = ?1").bind(u.id).all(),
-        db.prepare("SELECT created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 ORDER BY last_seen_at DESC").bind(u.id).all(),
         db
-          .prepare("SELECT g.client_id, c.name, g.scope, g.last_used_at FROM oauth_grants g JOIN oidc_clients c ON c.id = g.client_id WHERE g.user_id = ?1")
+          .prepare(
+            "SELECT id, name, created_at, last_used_at, backup_state FROM webauthn_credentials WHERE user_id = ?1",
+          )
+          .bind(u.id)
+          .all(),
+        db
+          .prepare(
+            "SELECT created_at, last_seen_at, user_agent FROM sessions WHERE user_id = ?1 ORDER BY last_seen_at DESC",
+          )
+          .bind(u.id)
+          .all(),
+        db
+          .prepare(
+            "SELECT g.client_id, c.name, g.scope, g.last_used_at FROM oauth_grants g JOIN oidc_clients c ON c.id = g.client_id WHERE g.user_id = ?1",
+          )
           .bind(u.id)
           .all(),
       ]);
-      return { ...u, is_admin: !!u.is_admin, disabled: !!u.disabled, groups, passkeys: keys.results, sessions: sessions.results, connected_apps: grants.results };
+      return {
+        ...u,
+        is_admin: !!u.is_admin,
+        disabled: !!u.disabled,
+        groups,
+        passkeys: keys.results,
+        sessions: sessions.results,
+        connected_apps: grants.results,
+      };
     },
   },
   {
     name: "users_create",
     write: true,
-    description: "Create a user and return their one-time enrollment link (valid 7 days). Optionally put them in groups or make them an admin.",
+    description:
+      "Create a user and return their one-time enrollment link (valid 7 days). Optionally put them in groups or make them an admin.",
     inputSchema: obj(
       {
         name: { type: "string", description: "Display name" },
@@ -74,7 +101,12 @@ export const PEOPLE_TOOLS: ToolDef[] = [
       const r = await ops.createUser(
         db,
         env.ISSUER,
-        { name: str(args.name), email: str(args.email), groups: strList(args.groups), isAdmin: args.is_admin === true },
+        {
+          name: str(args.name),
+          email: str(args.email),
+          groups: strList(args.groups),
+          isAdmin: args.is_admin === true,
+        },
         actor,
       );
       return { id: r.id, enrollment_link: r.enrollmentLink };
@@ -90,7 +122,10 @@ export const PEOPLE_TOOLS: ToolDef[] = [
       await ops.updateUser(
         db,
         u.id,
-        { ...(args.name !== undefined ? { name: str(args.name) } : {}), ...(args.new_email !== undefined ? { email: str(args.new_email) } : {}) },
+        {
+          ...(args.name !== undefined ? { name: str(args.name) } : {}),
+          ...(args.new_email !== undefined ? { email: str(args.new_email) } : {}),
+        },
         actor,
       );
       return { ok: true };
@@ -100,7 +135,9 @@ export const PEOPLE_TOOLS: ToolDef[] = [
     name: "users_set_groups",
     write: true,
     description: "Replace a user's group memberships with exactly this list of group names.",
-    inputSchema: obj({ ...USER_REF, groups: { type: "array", items: { type: "string" } } }, ["groups"]),
+    inputSchema: obj({ ...USER_REF, groups: { type: "array", items: { type: "string" } } }, [
+      "groups",
+    ]),
     handler: async ({ db, actor }, args) => {
       const u = await userByRef(db, args);
       await ops.setUserGroupsByName(db, u.id, strList(args.groups), actor);
@@ -121,7 +158,8 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "users_set_admin",
     write: true,
-    description: "Grant or remove admin. Removing admin also deletes their API tokens and MCP refresh tokens.",
+    description:
+      "Grant or remove admin. Removing admin also deletes their API tokens and MCP refresh tokens.",
     inputSchema: obj({ ...USER_REF, is_admin: { type: "boolean" } }, ["is_admin"]),
     handler: async ({ db, actor }, args) => {
       const u = await userByRef(db, args);
@@ -132,7 +170,8 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "users_enrollment_link",
     write: true,
-    description: "Mint a new one-time passkey enrollment link for a user (first setup or recovery).",
+    description:
+      "Mint a new one-time passkey enrollment link for a user (first setup or recovery).",
     inputSchema: obj(USER_REF),
     handler: async ({ db, env, actor }, args) => {
       const u = await userByRef(db, args);
@@ -142,7 +181,8 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "users_reset_passkeys",
     write: true,
-    description: "Account recovery: delete ALL of a user's passkeys and sessions. Follow with users_enrollment_link.",
+    description:
+      "Account recovery: delete ALL of a user's passkeys and sessions. Follow with users_enrollment_link.",
     inputSchema: obj(USER_REF),
     handler: async ({ db, actor }, args) => {
       const u = await userByRef(db, args);
@@ -164,7 +204,8 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "users_delete",
     write: true,
-    description: "Permanently delete a user (passkeys, sessions, memberships cascade). Prefer users_set_disabled.",
+    description:
+      "Permanently delete a user (passkeys, sessions, memberships cascade). Prefer users_set_disabled.",
     inputSchema: obj(USER_REF),
     handler: async ({ db, actor }, args) => {
       const u = await userByRef(db, args);
@@ -183,10 +224,15 @@ export const PEOPLE_TOOLS: ToolDef[] = [
   {
     name: "groups_create",
     write: true,
-    description: "Create a group. Names: lowercase letters, numbers, dash, underscore. Group names appear in the `groups` claim.",
+    description:
+      "Create a group. Names: lowercase letters, numbers, dash, underscore. Group names appear in the `groups` claim.",
     inputSchema: obj({ name: { type: "string" }, description: { type: "string" } }, ["name"]),
     handler: async ({ db, actor }, args) => ({
-      id: await ops.createGroup(db, { name: str(args.name), description: str(args.description) }, actor),
+      id: await ops.createGroup(
+        db,
+        { name: str(args.name), description: str(args.description) },
+        actor,
+      ),
     }),
   },
   {
@@ -205,7 +251,11 @@ export const PEOPLE_TOOLS: ToolDef[] = [
     write: true,
     description: "Add (member: true) or remove (member: false) a user from a group.",
     inputSchema: obj(
-      { group: { type: "string", description: "Group id or name" }, ...USER_REF, member: { type: "boolean" } },
+      {
+        group: { type: "string", description: "Group id or name" },
+        ...USER_REF,
+        member: { type: "boolean" },
+      },
       ["group", "member"],
     ),
     handler: async ({ db, actor }, args) => {

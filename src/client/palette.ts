@@ -17,8 +17,16 @@ function toCmds(data: unknown): Cmd[] {
   if (!Array.isArray(data)) return [];
   return data.flatMap((r: unknown) => {
     if (!isRecord(r)) return [];
-    if (typeof r.kind !== "string" || typeof r.label !== "string" || typeof r.href !== "string") return [];
-    return [{ kind: r.kind, label: r.label, href: r.href, ...(typeof r.sub === "string" ? { sub: r.sub } : {}) }];
+    if (typeof r.kind !== "string" || typeof r.label !== "string" || typeof r.href !== "string")
+      return [];
+    return [
+      {
+        kind: r.kind,
+        label: r.label,
+        href: r.href,
+        ...(typeof r.sub === "string" ? { sub: r.sub } : {}),
+      },
+    ];
   });
 }
 
@@ -49,7 +57,11 @@ export function initPalette(): void {
   const render = () => {
     const q = input.value.trim().toLowerCase();
     const all = [...pages, ...actions, ...remote];
-    shown = (q ? all.filter((c) => `${c.label} ${c.sub ?? ""} ${c.kind}`.toLowerCase().includes(q)) : [...pages, ...actions]).slice(0, 40);
+    shown = (
+      q
+        ? all.filter((c) => `${c.label} ${c.sub ?? ""} ${c.kind}`.toLowerCase().includes(q))
+        : [...pages, ...actions]
+    ).slice(0, 40);
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     list.replaceChildren(
       ...shown.map((c, i) => {
@@ -107,7 +119,11 @@ export function initPalette(): void {
       e.preventDefault();
       if (dlg.open) dlg.close();
       else void open();
-    } else if (e.key === "/" && !dlg.open && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+    } else if (
+      e.key === "/" &&
+      !dlg.open &&
+      !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+    ) {
       e.preventDefault();
       void open();
     }
@@ -129,4 +145,3 @@ export function initPalette(): void {
     }
   });
 }
-

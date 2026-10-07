@@ -24,7 +24,8 @@ export type ToolDef = {
 };
 
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
-export const strList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+export const strList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 export const obj = (properties: Record<string, unknown> = {}, required: string[] = []) => ({
   type: "object",
   properties,
@@ -78,11 +79,27 @@ export async function activeAdmin(db: D1Database, userId: string): Promise<boole
 export type WaitCtx = { waitUntil(p: Promise<unknown>): void };
 
 /** Record an MCP tool call for metrics. Fire-and-forget; retention via cron. */
-export function trackCall(ctx: WaitCtx, db: D1Database, tool: string, startedAt: number, error: string | null, tokenId: string): void {
+export function trackCall(
+  ctx: WaitCtx,
+  db: D1Database,
+  tool: string,
+  startedAt: number,
+  error: string | null,
+  tokenId: string,
+): void {
   ctx.waitUntil(
     db
-      .prepare("INSERT INTO mcp_calls (tool_name, started_at, duration_ms, success, error, token_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-      .bind(tool, Math.floor(startedAt / 1000), Date.now() - startedAt, error ? 0 : 1, error, tokenId.startsWith("oauth:") ? null : tokenId)
+      .prepare(
+        "INSERT INTO mcp_calls (tool_name, started_at, duration_ms, success, error, token_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+      )
+      .bind(
+        tool,
+        Math.floor(startedAt / 1000),
+        Date.now() - startedAt,
+        error ? 0 : 1,
+        error,
+        tokenId.startsWith("oauth:") ? null : tokenId,
+      )
       .run()
       .catch(() => {}),
   );

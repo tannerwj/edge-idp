@@ -12,5 +12,11 @@
   "bracketSpacing": true,
   "arrowParens": "always",
   "endOfLine": "lf",
-  "ignorePatterns": ["dist/**", ".next/**", ".open-next/**", ".wrangler/**", "pnpm-lock.yaml"]
+  "ignorePatterns": [
+    ".wrangler/**",
+    ".cloudflare/**",
+    "package-lock.json",
+    "src/assets.gen.ts",
+    "docs/archive/**",
+  ],
 }
