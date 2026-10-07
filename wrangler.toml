@@ -16,7 +16,7 @@ compatibility_flags = ["nodejs_compat"]
 # Must exactly match the origin users visit (WebAuthn RP ID is derived from it).
 ISSUER = "https://auth.johnson.network"
 # Human name shown on the sign-in and enrollment pages.
-RP_NAME = "Sign in with Johnson"
+RP_NAME = "Johnson ID"
 
 [[d1_databases]]
 binding = "DB"
