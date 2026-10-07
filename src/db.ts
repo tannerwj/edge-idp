@@ -33,6 +33,7 @@ export interface OidcClient {
   secret_prefix: string;
   allowed_groups: string[] | null;
   require_pkce: boolean;
+  environment: string;
   created_at: number;
   created_by: string | null;
 }
@@ -195,6 +196,8 @@ function rowToClient(r: Row): OidcClient {
         : null,
     // Column added in 0002; default true for rows predating it.
     require_pkce: r.require_pkce === undefined ? true : num(r.require_pkce) === 1,
+    // Column added in 0005; default production for rows predating it.
+    environment: typeof r.environment === "string" ? r.environment : "production",
     created_at: num(r.created_at),
     created_by: strOrNull(r.created_by),
   };

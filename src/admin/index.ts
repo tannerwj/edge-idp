@@ -8,6 +8,8 @@ import { groupsAdmin } from "./groups";
 import { clientsAdmin } from "./clients";
 import { auditAdmin } from "./audit";
 import { themeAdmin } from "./theme";
+import { tokensAdmin } from "./tokens";
+import { accessAdmin } from "./access";
 
 /**
  * Admin router. The middleware is the entire authorization story: an
@@ -32,3 +34,5 @@ admin.route("/groups", groupsAdmin);
 admin.route("/clients", clientsAdmin);
 admin.route("/audit", auditAdmin);
 admin.route("/theme", themeAdmin);
+admin.route("/tokens", tokensAdmin);
+admin.route("/access", accessAdmin);

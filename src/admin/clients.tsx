@@ -32,9 +32,17 @@ async function accessCounts(db: D1Database) {
 }
 
 function clientRow(cl: ClientRow, canAccess: number) {
+  const envBadge =
+    cl.environment === "production" ? (
+      <span class="pill">prod</span>
+    ) : (
+      <span class="pill muted-pill">{cl.environment}</span>
+    );
   return (
     <tr key={cl.id}>
-      <td>{cl.name}</td>
+      <td>
+        {cl.name} {envBadge}
+      </td>
       <td class="muted small mono">{cl.id}</td>
       <td class="muted small">
         {cl.redirect_uris.map((u) => (
@@ -111,6 +119,14 @@ clientsAdmin.get("/", async (c) => {
         <label class="field">
           <span>Allowed groups (comma-separated, blank = everyone)</span>
           <input name="allowedGroups" maxLength={200} placeholder="family, finance" />
+        </label>
+        <label class="field">
+          <span>Environment</span>
+          <select name="environment">
+            <option value="production">Production</option>
+            <option value="staging">Staging</option>
+            <option value="development">Development</option>
+          </select>
         </label>
         <label class="check">
           <input type="checkbox" name="requirePkce" value="1" checked />
@@ -218,10 +234,13 @@ clientsAdmin.post("/clients", async (c) => {
   const id = randomToken(18);
   const secret = randomToken(32);
   const requirePkce = field(form, "requirePkce") === "1" ? 1 : 0;
+  const environment = ["production", "staging", "development"].includes(field(form, "environment"))
+    ? field(form, "environment")
+    : "production";
   await c.env.DB.prepare(
     `INSERT INTO oidc_clients
-       (id, name, redirect_uris, secret_hash, secret_prefix, allowed_groups, require_pkce, created_at, created_by)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+       (id, name, redirect_uris, secret_hash, secret_prefix, allowed_groups, require_pkce, environment, created_at, created_by)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
   )
     .bind(
       id,
@@ -231,6 +250,7 @@ clientsAdmin.post("/clients", async (c) => {
       secret.slice(0, 6),
       groups.length ? JSON.stringify(groups) : null,
       requirePkce,
+      environment,
       nowSec(),
       c.get("admin").id,
     )
