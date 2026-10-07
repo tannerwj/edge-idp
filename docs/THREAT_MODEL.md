@@ -123,10 +123,38 @@ challenge was issued for, so an attacker can't piggyback their own ceremony
 onto someone else's link. Admins generate them; there is no self-service
 enrollment — user creation is the admin's explicit intent.
 
+## First admin (one-click installs)
+
+`/setup` creates the first admin, then hands off to normal passkey
+enrollment. It exists only while the users table is empty and only when the
+installer set a `SETUP_TOKEN` secret (12+ characters) at deploy time. The
+token is compared in constant time, the endpoint is on the AUTH rate limit and
+the same-origin guard, wrong guesses are audited (`SETUP_REJECTED`), and the
+insert is conditional on "no users yet", so two racing requests can't both
+create an admin. After the first user exists it 404s permanently. The window
+is the gap between deploy and the installer's first visit, and the attacker
+would need both the Worker's hostname and the token. Instances seeded with
+`scripts/seed-admin.mjs` never expose it.
+
+## Issuer and signing key defaults
+
+So a one-click install needs no configuration:
+
+- **ISSUER** falls back to the request's origin. Only hostnames routed to this
+  Worker reach it, so a client can't choose the issuer. Each hostname is its
+  own issuer and its own passkey RP ID, so setting ISSUER after adding a custom
+  domain is documented as required.
+- **The signing key** falls back to one generated on first use and stored in
+  D1 (`signing_keys`; never exposed by the UI, MCP or the code sandbox).
+  Trade-off, accepted: D1 read access now yields a token-forging key. But D1
+  access already means total control (insert an admin, mint a session), so
+  the exposure barely moves. Setting the `SIGNING_KEY_JWK` secret always wins,
+  and the reference instance does.
+
 ## Admin surface
 
 Requires an authenticated session **and** `is_admin`. The first admin comes
-from the seed script; later promotions happen here. Disabling a user kills
+from the seed script or `/setup`; later promotions happen here. Disabling a user kills
 their sessions immediately; revoking keys kills sessions too, so recovery
 starts from a clean slate. Admins can't disable themselves (avoids the
 one-admin lockout).

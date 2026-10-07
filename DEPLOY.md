@@ -1,8 +1,48 @@
 # Deploying your own instance
 
+## One click
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tannerwj/edge-idp)
+
+Cloudflare copies the repo into your GitHub, creates the Worker and its D1
+database from `wrangler.jsonc`, and asks for one secret:
+
+- **SETUP_TOKEN**: any long random string (12+ characters).
+
+Every deploy (including later pushes to your copy) runs `npm run deploy`,
+which applies the D1 migrations and then `wrangler deploy`. When it's live:
+
+1. Open `https://edge-idp.<your-subdomain>.workers.dev`. A fresh install sends
+   you to **/setup**.
+2. Enter the setup token, your name and email, then create your passkey.
+   You're the admin; /setup is gone for good.
+3. Optional:
+   - Add a custom domain to the Worker, then set `ISSUER` to it in
+     `wrangler.jsonc` → `vars` and push. Passkeys belong to one hostname, so
+     do this **before** inviting people.
+   - Rename the instance with `RP_NAME`.
+   - Turn on MCP code mode by adding the `worker_loaders` binding (commented
+     out in `wrangler.jsonc`).
+   - Do the edge hardening in section 9 below.
+
+Your copy also contains `cloudflare.config.ts`, which belongs to the
+reference instance and is pinned to its Cloudflare account. Delete it (or
+replace its values with yours if you want the `cf` CLI path below); Workers
+Builds only reads `wrangler.jsonc`.
+
+What the one-click install fills in for you: `ISSUER` defaults to the
+hostname the Worker is served on, and the token-signing key is generated on
+first use and kept in D1. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
+for the trade-off. To use your own key instead, set the `SIGNING_KEY_JWK`
+secret; it always wins.
+
+## By hand, with the cf CLI
+
 A friend should be able to go from clone to a live personal identity provider
 in about fifteen minutes. Every instance-specific value lives in
 `cloudflare.config.ts`; nothing personal is hardcoded in source.
+(`wrangler.jsonc` is the template the button uses. `cf` reads
+`cloudflare.config.ts` and ignores it.)
 
 Tooling is Cloudflare's [`cf` CLI](https://github.com/cloudflare/cf)
 (installed as a devDependency). `wrangler` is still installed, but only as the
@@ -79,7 +119,7 @@ new ones. `npx cf d1 migrations list <db-id>` shows what's pending.
 ```bash
 npm run test:e2e:staging   # optional: the full suite against staging (see Staging)
 npm run deploy:check   # build + validate bindings, no upload
-npm run deploy         # builds the browser bundle, then cf deploy
+npm run deploy         # builds the browser bundle, then cf deploy (wrangler in Workers Builds)
 ```
 
 `cf deploy` attaches the route from `cloudflare.config.ts` and applies the cron
@@ -204,10 +244,15 @@ npm run dev                # http://localhost:8787
 `.dev.vars` (gitignored) holds local config:
 
 ```
-SIGNING_KEY_JWK='<output of scripts/gen-key.mjs>'
 ISSUER="http://localhost:8787"
 RP_NAME="Dev Identity"
+# optional; without it a key is generated into the local D1 on first use
+SIGNING_KEY_JWK='<output of scripts/gen-key.mjs>'
 ```
+
+`ISSUER` is required here because `cloudflare.config.ts` sets the production
+one. For a fork without that file, `wrangler dev` with `wrangler.jsonc` needs
+nothing but an optional `SETUP_TOKEN` (see `npm run test:e2e:setup`).
 
 Use `localhost`, not `127.0.0.1`. It's a secure context, so passkeys work
 locally over plain http, and the issuer check allows it. Seed yourself with

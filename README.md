@@ -5,8 +5,12 @@ Workers + D1. One sign-in (Face ID / Touch ID / a security key) for every app
 you and your people use: Cloudflare Access apps, anything that speaks OpenID
 Connect, and AI assistants over MCP.
 
-**Portable by design:** clone, set a few values in `cloudflare.config.ts`, run
-migrations, `cf deploy`. See [DEPLOY.md](DEPLOY.md).
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tannerwj/edge-idp)
+
+**One click, or by hand:** the button creates the Worker and D1 database and
+asks for one setup token; open the new URL and `/setup` makes you the admin.
+Or clone, set a few values in `cloudflare.config.ts`, run migrations,
+`cf deploy`. See [DEPLOY.md](DEPLOY.md).
 
 ## What you get
 
@@ -65,6 +69,7 @@ npx cf auth create personal && npx cf auth activate personal "$(pwd)"   # once: 
 npm run db:migrate:local          # local D1
 npm run dev                       # cf dev on http://localhost:8787 (see DEPLOY.md → Local development)
 npm run test:e2e:local            # full e2e: real passkey ceremonies, OIDC, OAuth/MCP, security regressions
+npm run test:e2e:setup            # the one-click install: wrangler.jsonc template, /setup, generated key
 npm test                          # unit tests
 npm run typecheck && npm run gates
 npm run deploy:check              # build + validate bindings without uploading
@@ -92,8 +97,11 @@ src/
   client/app.ts      browser bundle (esbuild → served from memory)
   cf-access.ts       optional read-only Cloudflare Access integration
   maintenance.ts     hourly cleanup + retention
+  instance.ts        per-request ISSUER / signing-key defaults (one-click installs)
+  setup.tsx          first-run /setup (first admin)
 migrations/          D1 schema (apply manually: npm run db:migrate)
-cloudflare.config.ts Worker config for the cf CLI (bindings, route, cron, account pin)
+cloudflare.config.ts Worker config for the cf CLI (bindings, route, cron, account pin, staging)
+wrangler.jsonc       portable template for the Deploy to Cloudflare button and forks
 tests/e2e/full.mjs   the end-to-end suite
 ```
 

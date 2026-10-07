@@ -13,6 +13,8 @@ const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
   PASSKEY_RENAMED: { label: "Renamed a passkey", icon: "fingerprint", tone: "" },
   PASSKEYS_REVOKED: { label: "Passkeys reset", icon: "fingerprint", tone: "bad" },
   PASSKEY_COUNTER_REGRESSION: { label: "Possible cloned passkey", icon: "alert", tone: "bad" },
+  SETUP_COMPLETED: { label: "First admin created (setup)", icon: "sparkles", tone: "accent" },
+  SETUP_REJECTED: { label: "Wrong setup token", icon: "alert", tone: "bad" },
   USER_CREATED: { label: "User created", icon: "userPlus", tone: "accent" },
   USER_DELETED: { label: "User deleted", icon: "trash", tone: "bad" },
   USER_DISABLED: { label: "User disabled", icon: "ban", tone: "bad" },

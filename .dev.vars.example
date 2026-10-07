@@ -1,0 +1,6 @@
+# Secrets for the Deploy to Cloudflare button (it asks for each one below).
+# For local dev, copy to .dev.vars and see DEPLOY.md → Local development.
+
+# Any long random string (12+ characters). You'll type it once at /setup to
+# create the first admin; /setup disappears after that.
+SETUP_TOKEN=
