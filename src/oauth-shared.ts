@@ -12,13 +12,19 @@ export const SCOPES = ["openid", "profile", "email", "groups", "offline_access",
 export const ADMIN_SCOPES = ["mcp", "mcp:read"];
 
 /** Apply the same client policy at authorization, code redemption, and refresh. */
-export async function clientAccessProblem(db: D1Database, user: User, client: OidcClient, scopes: string[]): Promise<string | null> {
+export async function clientAccessProblem(
+  db: D1Database,
+  user: User,
+  client: OidcClient,
+  scopes: string[],
+): Promise<string | null> {
   if (scopes.some((scope) => ADMIN_SCOPES.includes(scope)) && !user.is_admin) {
     return "admin access was removed";
   }
   if (client.allowed_groups?.length) {
     const groups = await getUserGroups(db, user.id);
-    if (!client.allowed_groups.some((group) => groups.includes(group))) return "group access was removed";
+    if (!client.allowed_groups.some((group) => groups.includes(group)))
+      return "group access was removed";
   } else if (client.source !== "admin" && !user.is_admin) {
     return "client access was removed";
   }
@@ -47,12 +53,27 @@ export function discovery(env: Env) {
     id_token_signing_alg_values_supported: ["RS256"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
-    revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
+    revocation_endpoint_auth_methods_supported: [
+      "client_secret_basic",
+      "client_secret_post",
+      "none",
+    ],
     scopes_supported: SCOPES,
     prompt_values_supported: ["none", "login", "consent"],
     claims_supported: [
-      "sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "amr",
-      "email", "email_verified", "name", "preferred_username", "groups",
+      "sub",
+      "iss",
+      "aud",
+      "exp",
+      "iat",
+      "auth_time",
+      "nonce",
+      "amr",
+      "email",
+      "email_verified",
+      "name",
+      "preferred_username",
+      "groups",
     ],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
@@ -75,7 +96,12 @@ export function protectedResource(env: Env) {
   };
 }
 /** Claims for a user straight from the DB (null when missing or disabled). */
-export async function claimsFor(db: D1Database, userId: string, authTime: number, nonce?: string | null): Promise<TokenClaims | null> {
+export async function claimsFor(
+  db: D1Database,
+  userId: string,
+  authTime: number,
+  nonce?: string | null,
+): Promise<TokenClaims | null> {
   const user = await getUser(db, userId);
   if (!user || user.disabled) return null;
   return {

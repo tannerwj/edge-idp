@@ -12,13 +12,7 @@
     "tests/e2e/**/*.mjs",
     "tests/security/**/*.mjs"
   ],
-  "ignore": [
-    "dist/**",
-    ".wrangler/**",
-    "docs/archive/**"
-  ],
+  "ignore": ["dist/**", ".wrangler/**", "docs/archive/**"],
   "ignoreExportsUsedInFile": true,
-  "ignoreDependencies": [
-    "cloudflare"
-  ]
+  "ignoreDependencies": ["cloudflare"]
 }

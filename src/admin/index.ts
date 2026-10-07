@@ -26,7 +26,8 @@ export const admin = new Hono<AdminVars>();
 // eslint-disable-next-line typescript/consistent-return
 admin.use("*", async (c, next) => {
   const user = await sessionUser(c);
-  if (!user) return c.redirect(`/login?next=${encodeURIComponent(new URL(c.req.url).pathname)}`, 302);
+  if (!user)
+    return c.redirect(`/login?next=${encodeURIComponent(new URL(c.req.url).pathname)}`, 302);
   if (!user.is_admin) return c.redirect("/", 302);
   c.set("admin", user);
   await next();
@@ -35,13 +36,36 @@ admin.use("*", async (c, next) => {
 /** Command-palette index: pages + people + apps + clients + groups. */
 admin.get("/palette.json", async (c) => {
   const db = c.env.DB;
-  const [users, apps, clients, groups] = await Promise.all([listUsers(db), listApps(db), listClients(db), listGroups(db)]);
+  const [users, apps, clients, groups] = await Promise.all([
+    listUsers(db),
+    listApps(db),
+    listClients(db),
+    listGroups(db),
+  ]);
   return c.json(
     [
-      ...users.map((u) => ({ kind: "Person", label: u.name, sub: u.email, href: `/admin/users/${u.id}`, icon: "user" })),
-      ...groups.map((g) => ({ kind: "Group", label: g.name, sub: g.description ?? "", href: `/admin/groups/${g.id}`, icon: "group" })),
+      ...users.map((u) => ({
+        kind: "Person",
+        label: u.name,
+        sub: u.email,
+        href: `/admin/users/${u.id}`,
+        icon: "user",
+      })),
+      ...groups.map((g) => ({
+        kind: "Group",
+        label: g.name,
+        sub: g.description ?? "",
+        href: `/admin/groups/${g.id}`,
+        icon: "group",
+      })),
       ...apps.map((a) => ({ kind: "App", label: a.name, sub: a.url, href: a.url, icon: "grid" })),
-      ...clients.map((x) => ({ kind: "Client", label: x.name, sub: x.id, href: `/admin/clients/${encodeURIComponent(x.id)}`, icon: "plug" })),
+      ...clients.map((x) => ({
+        kind: "Client",
+        label: x.name,
+        sub: x.id,
+        href: `/admin/clients/${encodeURIComponent(x.id)}`,
+        icon: "plug",
+      })),
     ],
     200,
     { "cache-control": "no-store" },

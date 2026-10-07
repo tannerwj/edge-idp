@@ -19,7 +19,19 @@ interface AuditRow {
   client_name: string | null;
 }
 
-function AuditTable({ rows, total, pageNo, pages, qs }: { rows: AuditRow[]; total: number; pageNo: number; pages: number; qs: (p: number) => string }) {
+function AuditTable({
+  rows,
+  total,
+  pageNo,
+  pages,
+  qs,
+}: {
+  rows: AuditRow[];
+  total: number;
+  pageNo: number;
+  pages: number;
+  qs: (p: number) => string;
+}) {
   return (
     <div class="card">
       {rows.length ? (
@@ -110,15 +122,57 @@ const catLink = (cat: string) => (cat ? `/admin/audit?category=${cat}` : "/admin
 /** Event categories for the quick filter. */
 const CATEGORIES: Record<string, string[]> = {
   signins: ["SIGN_IN", "SIGN_OUT", "ACCESS_DENIED"],
-  security: ["ACCESS_DENIED", "REFRESH_REUSE_DETECTED", "PASSKEY_COUNTER_REGRESSION", "PASSKEYS_REVOKED", "CODE_REJECTED", "ADMIN_GRANTED", "API_TOKEN_CREATED", "SETUP_REJECTED"],
-  passkeys: ["PASSKEY_REGISTERED", "PASSKEY_REMOVED", "PASSKEY_RENAMED", "PASSKEYS_REVOKED", "ENROLLMENT_STARTED"],
-  admin: [
-    "SETUP_COMPLETED", "USER_CREATED", "USER_DELETED", "USER_DISABLED", "USER_ENABLED", "USER_PROFILE_UPDATED", "USER_GROUPS_UPDATED",
-    "ADMIN_GRANTED", "ADMIN_REVOKED", "GROUP_CREATED", "GROUP_DELETED", "GROUP_MEMBER_ADDED", "GROUP_MEMBER_REMOVED",
-    "CLIENT_CREATED", "CLIENT_UPDATED", "CLIENT_DELETED", "CLIENT_SECRET_ROTATED", "APP_CREATED", "APP_UPDATED", "APP_DELETED",
-    "SETTINGS_CHANGED", "API_TOKEN_CREATED", "API_TOKEN_REVOKED",
+  security: [
+    "ACCESS_DENIED",
+    "REFRESH_REUSE_DETECTED",
+    "PASSKEY_COUNTER_REGRESSION",
+    "PASSKEYS_REVOKED",
+    "CODE_REJECTED",
+    "ADMIN_GRANTED",
+    "API_TOKEN_CREATED",
+    "SETUP_REJECTED",
   ],
-  oauth: ["CONSENT_GRANTED", "CONSENT_DENIED", "CONSENT_REVOKED", "CLIENT_REGISTERED", "CLIENT_DISCOVERED", "TOKEN_ISSUED", "REFRESH_REUSE_DETECTED"],
+  passkeys: [
+    "PASSKEY_REGISTERED",
+    "PASSKEY_REMOVED",
+    "PASSKEY_RENAMED",
+    "PASSKEYS_REVOKED",
+    "ENROLLMENT_STARTED",
+  ],
+  admin: [
+    "SETUP_COMPLETED",
+    "USER_CREATED",
+    "USER_DELETED",
+    "USER_DISABLED",
+    "USER_ENABLED",
+    "USER_PROFILE_UPDATED",
+    "USER_GROUPS_UPDATED",
+    "ADMIN_GRANTED",
+    "ADMIN_REVOKED",
+    "GROUP_CREATED",
+    "GROUP_DELETED",
+    "GROUP_MEMBER_ADDED",
+    "GROUP_MEMBER_REMOVED",
+    "CLIENT_CREATED",
+    "CLIENT_UPDATED",
+    "CLIENT_DELETED",
+    "CLIENT_SECRET_ROTATED",
+    "APP_CREATED",
+    "APP_UPDATED",
+    "APP_DELETED",
+    "SETTINGS_CHANGED",
+    "API_TOKEN_CREATED",
+    "API_TOKEN_REVOKED",
+  ],
+  oauth: [
+    "CONSENT_GRANTED",
+    "CONSENT_DENIED",
+    "CONSENT_REVOKED",
+    "CLIENT_REGISTERED",
+    "CLIENT_DISCOVERED",
+    "TOKEN_ISSUED",
+    "REFRESH_REUSE_DETECTED",
+  ],
 };
 
 auditAdmin.get("/", async (c) => {
@@ -134,25 +188,47 @@ auditAdmin.get("/", async (c) => {
     where.push(`a.event = ?${binds.length}`);
   } else if (CATEGORIES[category]) {
     const list = CATEGORIES[category];
-    where.push(`a.event IN (${list.map((e) => { binds.push(e); return `?${binds.length}`; }).join(",")})`);
+    where.push(
+      `a.event IN (${list
+        .map((e) => {
+          binds.push(e);
+          return `?${binds.length}`;
+        })
+        .join(",")})`,
+    );
   } else {
     where.push("a.event NOT IN ('CODE_ISSUED','TOKEN_ISSUED')");
   }
   if (q) {
     binds.push(`%${q}%`);
-    where.push(`(lower(u.email) LIKE ?${binds.length} OR lower(u.name) LIKE ?${binds.length} OR lower(c.name) LIKE ?${binds.length})`);
+    where.push(
+      `(lower(u.email) LIKE ?${binds.length} OR lower(u.name) LIKE ?${binds.length} OR lower(c.name) LIKE ?${binds.length})`,
+    );
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const from = `FROM audit_log a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN oidc_clients c ON c.id = a.client_id ${whereSql}`;
   const [countRow, rows, eventTypes] = await Promise.all([
-    db.prepare(`SELECT COUNT(*) AS n ${from}`).bind(...binds).first<{ n: number }>(),
+    db
+      .prepare(`SELECT COUNT(*) AS n ${from}`)
+      .bind(...binds)
+      .first<{ n: number }>(),
     db
       .prepare(
         `SELECT a.id, a.created_at, a.event, a.detail, a.user_agent, u.id AS uid, u.name, u.email, c.name AS client_name ${from}
          ORDER BY a.id DESC LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`,
       )
       .bind(...binds, PER_PAGE, (pageNo - 1) * PER_PAGE)
-      .all<{ id: number; created_at: number; event: string; detail: string | null; user_agent: string | null; uid: string | null; name: string | null; email: string | null; client_name: string | null }>(),
+      .all<{
+        id: number;
+        created_at: number;
+        event: string;
+        detail: string | null;
+        user_agent: string | null;
+        uid: string | null;
+        name: string | null;
+        email: string | null;
+        client_name: string | null;
+      }>(),
     db.prepare("SELECT DISTINCT event FROM audit_log ORDER BY event").all<{ event: string }>(),
   ]);
   const total = countRow?.n ?? 0;
@@ -199,7 +275,13 @@ auditAdmin.get("/", async (c) => {
           {category ? <input type="hidden" name="category" value={category} /> : null}
           <div class="input-search">
             <Icon name="search" size="sm" />
-            <input type="search" name="q" value={q} placeholder="Person or app…" aria-label="Search" />
+            <input
+              type="search"
+              name="q"
+              value={q}
+              placeholder="Person or app…"
+              aria-label="Search"
+            />
           </div>
           <select name="event" aria-label="Event" data-autosubmit>
             <option value="">Any event</option>
@@ -232,9 +314,19 @@ export async function auditCsv(db: D1Database): Promise<string> {
        LEFT JOIN users u ON u.id = a.user_id LEFT JOIN oidc_clients c ON c.id = a.client_id
        ORDER BY a.id DESC LIMIT 10000`,
     )
-    .all<{ created_at: number; event: string; email: string | null; client: string | null; detail: string | null }>();
+    .all<{
+      created_at: number;
+      event: string;
+      email: string | null;
+      client: string | null;
+      detail: string | null;
+    }>();
   return [
     "time,event,user,client,detail",
-    ...results.map((r) => [new Date(r.created_at * 1000).toISOString(), r.event, r.email, r.client, r.detail].map(esc).join(",")),
+    ...results.map((r) =>
+      [new Date(r.created_at * 1000).toISOString(), r.event, r.email, r.client, r.detail]
+        .map(esc)
+        .join(","),
+    ),
   ].join("\n");
 }

@@ -2,33 +2,13 @@
   "$schema": "./node_modules/@tjohnson/abacus/configs/abacus.schema.json",
   "preset": "cloudflare-worker",
   "check": {
-    "gates": [
-      "lint",
-      "abc",
-      "tsc",
-      "deadcode",
-      "secrets",
-      "cycles",
-      "dupes",
-      "todos",
-      "ratchet"
-    ]
+    "gates": ["lint", "abc", "tsc", "deadcode", "secrets", "cycles", "dupes", "todos", "ratchet"]
   },
-  "roots": [
-    "src",
-    "scripts"
-  ],
+  "roots": ["src", "scripts"],
   "tsc": {
-    "projects": [
-      "tsconfig.json",
-      "tsconfig.client.json"
-    ]
+    "projects": ["tsconfig.json", "tsconfig.client.json"]
   },
-  "exclude": [
-    "\\.d\\.ts$",
-    "\\.test\\.tsx?$",
-    "/components/ui/"
-  ],
+  "exclude": ["\\.d\\.ts$", "\\.test\\.tsx?$", "/components/ui/"],
   "abc": {
     "budget": 60,
     "allow": {}
@@ -42,17 +22,13 @@
     "file": "abacus.ratchet.json",
     "metrics": {
       "loc": {
-        "roots": [
-          "src"
-        ],
+        "roots": ["src"],
         "slack": 0.02
       },
       "oxlintWarnings": true,
       "abcMax": true,
       "comments": {
-        "roots": [
-          "src"
-        ],
+        "roots": ["src"],
         "max": 0.3
       }
     }

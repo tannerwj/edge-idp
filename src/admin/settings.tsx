@@ -14,10 +14,16 @@ import { availableUpdate, upstreamLinks, upstreamRepo } from "../upstream";
 export const settingsAdmin = new Hono<AdminVars>();
 
 /** On/off status badge. */
-const ok = (on: boolean, yes: string, no: string) => (on ? <span class="badge ok dot">{yes}</span> : <span class="badge">{no}</span>);
+const ok = (on: boolean, yes: string, no: string) =>
+  on ? <span class="badge ok dot">{yes}</span> : <span class="badge">{no}</span>;
 
 /** Version, update status and the way to send feedback upstream. */
-function About(props: { version: string; repo: string | null; update: string | null; checkedAt: number | null }) {
+function About(props: {
+  version: string;
+  repo: string | null;
+  update: string | null;
+  checkedAt: number | null;
+}) {
   const links = props.repo ? upstreamLinks(props.repo) : null;
   return (
     <section class="card" id="about">
@@ -28,7 +34,8 @@ function About(props: { version: string; repo: string | null; update: string | n
           <div class="sub">
             {links ? (
               <>
-                Built from <a href={links.source}>{props.repo}</a>. Found a bug or want something? Tell upstream; no fork needed.
+                Built from <a href={links.source}>{props.repo}</a>. Found a bug or want something?
+                Tell upstream; no fork needed.
               </>
             ) : (
               "Update checks and feedback links are off (UPSTREAM_REPO=off)."
@@ -60,7 +67,12 @@ function About(props: { version: string; repo: string | null; update: string | n
               <Icon name="sparkles" />
               <span>Suggest a feature</span>
             </a>
-            <a class="btn ghost" href={props.update ? links.updating : links.changes} target="_blank" rel="noopener">
+            <a
+              class="btn ghost"
+              href={props.update ? links.updating : links.changes}
+              target="_blank"
+              rel="noopener"
+            >
               <Icon name="arrowUpRight" />
               <span>{props.update ? "How to update" : "What's new"}</span>
             </a>
@@ -86,14 +98,20 @@ settingsAdmin.get("/", async (c) => {
     c,
     { active: "settings", title: "Settings", narrow: true },
     <>
-      <PageHead title="Settings" lede="Instance-wide settings. Identity values come from cloudflare.config.ts and secrets." />
+      <PageHead
+        title="Settings"
+        lede="Instance-wide settings. Identity values come from cloudflare.config.ts and secrets."
+      />
       <div class="stack-lg">
         <form class="card" method="post" action="/admin/settings">
           <div class="card-head">
             <Icon name="sparkles" />
             <div class="grow">
               <h2>Appearance</h2>
-              <div class="sub">Accent color for everyone. Light/dark follows each person's device (or the toggle in the sidebar).</div>
+              <div class="sub">
+                Accent color for everyone. Light/dark follows each person's device (or the toggle in
+                the sidebar).
+              </div>
             </div>
           </div>
           <div class="card-body">
@@ -110,7 +128,10 @@ settingsAdmin.get("/", async (c) => {
             <Icon name="bot" />
             <div class="grow">
               <h2>OAuth client onboarding</h2>
-              <div class="sub">How AI tools and other third-party clients may introduce themselves. Users still approve each one.</div>
+              <div class="sub">
+                How AI tools and other third-party clients may introduce themselves. Users still
+                approve each one.
+              </div>
             </div>
           </div>
           <div class="card-body stack">
@@ -119,7 +140,10 @@ settingsAdmin.get("/", async (c) => {
               <span class="track"></span>
               <span>
                 Client ID metadata documents
-                <span class="sub">Clients identified by an https URL they control (claude.ai, Claude Code, VS Code). Recommended.</span>
+                <span class="sub">
+                  Clients identified by an https URL they control (claude.ai, Claude Code, VS Code).
+                  Recommended.
+                </span>
               </span>
             </label>
             <label class="switch">
@@ -127,7 +151,10 @@ settingsAdmin.get("/", async (c) => {
               <span class="track"></span>
               <span>
                 Dynamic client registration
-                <span class="sub">Anyone can register a client (Cursor needs this). Unused ones are cleaned up after 30 days.</span>
+                <span class="sub">
+                  Anyone can register a client (Cursor needs this). Unused ones are cleaned up after
+                  30 days.
+                </span>
               </span>
             </label>
           </div>
@@ -138,7 +165,12 @@ settingsAdmin.get("/", async (c) => {
           </div>
         </form>
 
-        <About version={VERSION} repo={repo} update={update} checkedAt={Number(checkedAt) || null} />
+        <About
+          version={VERSION}
+          repo={repo}
+          update={update}
+          checkedAt={Number(checkedAt) || null}
+        />
 
         <section class="card">
           <div class="card-head">
@@ -160,7 +192,13 @@ settingsAdmin.get("/", async (c) => {
                 ))}
               </dd>
               <dt>Rate limiting</dt>
-              <dd>{ok(!!c.env.AUTH_LIMITER, "Workers rate limiter bound", "Not bound — use WAF rules")}</dd>
+              <dd>
+                {ok(
+                  !!c.env.AUTH_LIMITER,
+                  "Workers rate limiter bound",
+                  "Not bound — use WAF rules",
+                )}
+              </dd>
               <dt>Cloudflare API</dt>
               <dd>{ok(cfConfigured(c.env), "Connected (read-only)", "Not configured")}</dd>
               <dt>Error tracking</dt>
@@ -177,7 +215,8 @@ settingsAdmin.post("/", async (c) => {
   const form = await c.req.parseBody();
   return act(c, "/admin/settings", "Settings saved", async () => {
     const accent = field(form, "accent");
-    if ((ACCENTS as readonly string[]).includes(accent)) await setSetting(c.env.DB, "accent", accent);
+    if ((ACCENTS as readonly string[]).includes(accent))
+      await setSetting(c.env.DB, "accent", accent);
     await setSetting(c.env.DB, "cimd_enabled", field(form, "cimd") === "1" ? "1" : "0");
     await setSetting(c.env.DB, "dcr_enabled", field(form, "dcr") === "1" ? "1" : "0");
     invalidateSettingsCache();

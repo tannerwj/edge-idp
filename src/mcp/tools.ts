@@ -36,7 +36,8 @@ const METRICS_TOOL: ToolDef = {
           .bind(dayAgo, r.tool_name)
           .all<{ duration_ms: number }>();
         const vals = durs.results.map((d) => d.duration_ms).sort((a, b) => a - b);
-        const pct = (p: number) => (vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * p))] : 0);
+        const pct = (p: number) =>
+          vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * p))] : 0;
         const topErrors = await db
           .prepare(
             `SELECT error, COUNT(*) AS n FROM mcp_calls

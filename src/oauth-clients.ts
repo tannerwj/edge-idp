@@ -180,7 +180,8 @@ async function fetchCimd(clientId: string): Promise<{
   // CIMD clients authenticate with nothing (public) or private_key_jwt; we
   // don't support the latter, and a shared secret is meaningless here.
   const method = d.token_endpoint_auth_method ?? "none";
-  if (method !== "none") throw new Error(`unsupported token_endpoint_auth_method: ${JSON.stringify(method)}`);
+  if (method !== "none")
+    throw new Error(`unsupported token_endpoint_auth_method: ${JSON.stringify(method)}`);
   const uris = Array.isArray(d.redirect_uris)
     ? d.redirect_uris.filter((u): u is string => typeof u === "string")
     : [];
@@ -207,7 +208,8 @@ export async function resolveClient(
 ): Promise<{ client: OidcClient } | { error: string } | null> {
   if (!clientId) return null;
   const stored = await getClient(db, clientId);
-  const fresh = stored && (stored.source !== "cimd" || (stored.metadata_expires_at ?? 0) > nowSec());
+  const fresh =
+    stored && (stored.source !== "cimd" || (stored.metadata_expires_at ?? 0) > nowSec());
   if (stored && fresh) return { client: stored };
   if (!isCimdClientId(clientId)) return stored ? { client: stored } : null;
   if ((await getSetting(db, "cimd_enabled", "1")) !== "1") {
@@ -220,7 +222,9 @@ export async function resolveClient(
     // A short outage may use cached metadata, but a dead publisher cannot
     // retain redirects and display names indefinitely.
     if (stored && (stored.metadata_expires_at ?? 0) + 86400 > nowSec()) return { client: stored };
-    return { error: `Couldn't load the client's metadata: ${e instanceof Error ? e.message : "unknown error"}.` };
+    return {
+      error: `Couldn't load the client's metadata: ${e instanceof Error ? e.message : "unknown error"}.`,
+    };
   }
   const now = nowSec();
   const row = await db
@@ -234,10 +238,19 @@ export async function resolveClient(
          logo_uri = ?6, metadata_expires_at = ?7
        RETURNING *`,
     )
-    .bind(clientId, meta.name, JSON.stringify(meta.redirectUris), now, meta.clientUri, meta.logoUri, now + meta.ttl)
+    .bind(
+      clientId,
+      meta.name,
+      JSON.stringify(meta.redirectUris),
+      now,
+      meta.clientUri,
+      meta.logoUri,
+      now + meta.ttl,
+    )
     .first();
   if (!row) return { error: "Couldn't store the client." };
-  if (!stored) await audit(db, "CLIENT_DISCOVERED", { clientId, detail: { name: meta.name, via: "cimd" } });
+  if (!stored)
+    await audit(db, "CLIENT_DISCOVERED", { clientId, detail: { name: meta.name, via: "cimd" } });
   return { client: rowToClient(row) };
 }
 
@@ -248,11 +261,16 @@ registration.post("/register", async (c) => {
   const fail = (error: string, description: string) =>
     c.json({ error, error_description: description }, 400);
   if ((await getSetting(c.env.DB, "dcr_enabled", "1")) !== "1") {
-    return c.json({ error: "access_denied", error_description: "Dynamic registration is disabled." }, 403);
+    return c.json(
+      { error: "access_denied", error_description: "Dynamic registration is disabled." },
+      403,
+    );
   }
   let body: Record<string, unknown>;
   try {
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(await readBodyLimited(c.req.raw, 16 * 1024)));
+    const parsed: unknown = JSON.parse(
+      new TextDecoder().decode(await readBodyLimited(c.req.raw, 16 * 1024)),
+    );
     if (!isRecord(parsed)) throw new Error("not an object");
     body = parsed;
   } catch {
@@ -266,13 +284,17 @@ registration.post("/register", async (c) => {
   }
   const bad = uris.find((u) => !validRedirectUri(u));
   if (bad) return fail("invalid_redirect_uri", `Redirect URI not allowed: ${bad}`);
-  const method = typeof body.token_endpoint_auth_method === "string" ? body.token_endpoint_auth_method : "none";
+  const method =
+    typeof body.token_endpoint_auth_method === "string" ? body.token_endpoint_auth_method : "none";
   if (!["none", "client_secret_basic", "client_secret_post"].includes(method)) {
     return fail("invalid_client_metadata", `Unsupported token_endpoint_auth_method: ${method}`);
   }
   const grants = Array.isArray(body.grant_types) ? body.grant_types : ["authorization_code"];
   if (grants.some((g) => g !== "authorization_code" && g !== "refresh_token")) {
-    return fail("invalid_client_metadata", "Only authorization_code and refresh_token grants are supported.");
+    return fail(
+      "invalid_client_metadata",
+      "Only authorization_code and refresh_token grants are supported.",
+    );
   }
   const name = strField(body.client_name, 100) ?? "Unnamed client";
   const isPublic = method === "none";

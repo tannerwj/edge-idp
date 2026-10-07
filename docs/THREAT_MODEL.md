@@ -9,8 +9,9 @@ rationale. When in doubt, the code fails closed.
 There is no password column, no password reset flow, and no fallback factor.
 That deletes credential stuffing, password spraying, and reset-token phishing
 in one move — at the cost that account recovery is admin-assisted (revoke keys
-+ fresh enrollment link). Users are nudged to enroll two passkeys (phone +
-laptop) so losing one device is a non-event.
+
+- fresh enrollment link). Users are nudged to enroll two passkeys (phone +
+  laptop) so losing one device is a non-event.
 
 ## WebAuthn ceremony integrity
 
@@ -68,6 +69,7 @@ presents a secret is refused rather than guessed about.
 Fetching a CIMD document means fetching a URL chosen by whoever started the
 sign-in, which makes it a server-side request forgery risk. The fetch is
 limited as follows:
+
 - https only;
 - the client_id must have a path, and no userinfo, query, fragment or dot segments;
 - IP-literal, localhost and single-label hosts are refused;
@@ -95,7 +97,7 @@ can set or shadow it. It is also HttpOnly and SameSite=Lax. Sessions slide to
 30 days, die with the user row (cascade), and are destroyed on
 disable/revoke. Signing in replaces any existing session (no fixation).
 
-SameSite is per *site*, so every other host on your domain counts as
+SameSite is per _site_, so every other host on your domain counts as
 same-site. If any of those apps were compromised, Lax alone would let it post
 forms to the admin UI. Every cookie-authenticated state change therefore also
 passes a same-origin check (`Sec-Fetch-Site`, falling back to `Origin`).
@@ -110,9 +112,9 @@ by planting a new credential.
 ## Consent: first-party skip, third-party always
 
 For admin-registered clients the passkey ceremony moments before `/authorize`
-*is* the consent; an extra "Allow?" click adds nothing. That reasoning stops
+_is_ the consent; an extra "Allow?" click adds nothing. That reasoning stops
 holding the moment clients can register themselves, so dynamic and CIMD
-clients always get a consent screen (see *Who can authorize what*). Admins can
+clients always get a consent screen (see _Who can authorize what_). Admins can
 turn the screen on for any first-party client too.
 
 ## Enrollment tokens

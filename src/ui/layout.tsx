@@ -30,13 +30,18 @@ export interface Ui {
 const FLASH_COOKIE = "__Host-flash";
 
 export function setFlash(c: Context, message: string, tone: "ok" | "bad" = "ok"): void {
-  setCookie(c, FLASH_COOKIE, encodeURIComponent(JSON.stringify({ m: message.slice(0, 300), t: tone })), {
-    path: "/",
-    secure: true,
-    httpOnly: true,
-    sameSite: "Lax",
-    maxAge: 60,
-  });
+  setCookie(
+    c,
+    FLASH_COOKIE,
+    encodeURIComponent(JSON.stringify({ m: message.slice(0, 300), t: tone })),
+    {
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "Lax",
+      maxAge: 60,
+    },
+  );
 }
 
 function takeFlash(c: Context): Ui["flash"] {
@@ -45,7 +50,8 @@ function takeFlash(c: Context): Ui["flash"] {
   deleteCookie(c, FLASH_COOKIE, { path: "/", secure: true });
   try {
     const v: unknown = JSON.parse(decodeURIComponent(cookie));
-    if (typeof v !== "object" || v === null || !("m" in v) || typeof v.m !== "string") return undefined;
+    if (typeof v !== "object" || v === null || !("m" in v) || typeof v.m !== "string")
+      return undefined;
     return { m: v.m, t: "t" in v && v.t === "bad" ? "bad" : "ok" };
   } catch {
     return undefined;
@@ -81,7 +87,14 @@ const FLASH: Record<string, string> = {
 
 /* ───────────────────────────── document ───────────────────────────── */
 
-function Document(props: { ui: Ui; title: string; page?: string; children: unknown; flash?: string; bodyClass?: string }) {
+function Document(props: {
+  ui: Ui;
+  title: string;
+  page?: string;
+  children: unknown;
+  flash?: string;
+  bodyClass?: string;
+}) {
   const v = `?v=${BUILD_HASH}`;
   const coded = props.flash ? FLASH[props.flash] : undefined;
   const flash = props.ui.flash ?? (coded ? { m: coded, t: "ok" as const } : undefined);
@@ -89,23 +102,35 @@ function Document(props: { ui: Ui; title: string; page?: string; children: unkno
   // mode (forms grow margins, box sizing differs).
   return (
     <>
-    {raw("<!DOCTYPE html>")}
-    <html lang="en" data-accent={props.ui.accent} {...(props.ui.mode !== "system" ? { "data-mode": props.ui.mode } : {})}>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="color-scheme" content="light dark" />
-        <meta name="referrer" content="strict-origin-when-cross-origin" />
-        <title>{props.title === props.ui.rpName ? props.ui.rpName : `${props.title} · ${props.ui.rpName}`}</title>
-        <link rel="icon" href={`/favicon.svg${v}`} type="image/svg+xml" />
-        <link rel="stylesheet" href={`/app.css${v}`} />
-        <script src={`/app.js${v}`} defer></script>
-      </head>
-      <body data-page={props.page ?? ""} class={props.bodyClass} {...(flash ? { "data-flash": flash.m, "data-flash-tone": flash.t } : {})}>
-        {props.children}
-        <div class="toasts" id="toasts" aria-live="polite"></div>
-      </body>
-    </html>
+      {raw("<!DOCTYPE html>")}
+      <html
+        lang="en"
+        data-accent={props.ui.accent}
+        {...(props.ui.mode !== "system" ? { "data-mode": props.ui.mode } : {})}
+      >
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+          <meta name="color-scheme" content="light dark" />
+          <meta name="referrer" content="strict-origin-when-cross-origin" />
+          <title>
+            {props.title === props.ui.rpName
+              ? props.ui.rpName
+              : `${props.title} · ${props.ui.rpName}`}
+          </title>
+          <link rel="icon" href={`/favicon.svg${v}`} type="image/svg+xml" />
+          <link rel="stylesheet" href={`/app.css${v}`} />
+          <script src={`/app.js${v}`} defer></script>
+        </head>
+        <body
+          data-page={props.page ?? ""}
+          class={props.bodyClass}
+          {...(flash ? { "data-flash": flash.m, "data-flash-tone": flash.t } : {})}
+        >
+          {props.children}
+          <div class="toasts" id="toasts" aria-live="polite"></div>
+        </body>
+      </html>
     </>
   );
 }
@@ -178,10 +203,34 @@ export function navFor(isAdmin: boolean): NavItem[] {
     { id: "apps", label: "Apps", href: "/admin/apps", icon: "grid", section: "Manage" },
     { id: "clients", label: "Clients", href: "/admin/clients", icon: "plug", section: "Manage" },
     { id: "audit", label: "Audit log", href: "/admin/audit", icon: "list", section: "Manage" },
-    { id: "connect", label: "Connect", href: "/admin/connect", icon: "link", section: "Developers" },
-    { id: "tokens", label: "API tokens", href: "/admin/tokens", icon: "key", section: "Developers" },
-    { id: "metrics", label: "MCP activity", href: "/admin/metrics", icon: "bot", section: "Developers" },
-    { id: "settings", label: "Settings", href: "/admin/settings", icon: "settings", section: "Developers" },
+    {
+      id: "connect",
+      label: "Connect",
+      href: "/admin/connect",
+      icon: "link",
+      section: "Developers",
+    },
+    {
+      id: "tokens",
+      label: "API tokens",
+      href: "/admin/tokens",
+      icon: "key",
+      section: "Developers",
+    },
+    {
+      id: "metrics",
+      label: "MCP activity",
+      href: "/admin/metrics",
+      icon: "bot",
+      section: "Developers",
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      href: "/admin/settings",
+      icon: "settings",
+      section: "Developers",
+    },
   ];
 }
 
@@ -204,7 +253,12 @@ export function AppShell(props: {
   const nav = navFor(props.viewer.isAdmin);
   const crumbs = props.crumbs ?? [{ label: props.title }];
   return (
-    <Document ui={props.ui} title={props.title} page={props.page ?? props.active} flash={props.flash}>
+    <Document
+      ui={props.ui}
+      title={props.title}
+      page={props.page ?? props.active}
+      flash={props.flash}
+    >
       <div class="app">
         <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-hidden="true" />
         <aside class="sidebar" aria-label="Main navigation">
@@ -228,7 +282,11 @@ export function AppShell(props: {
               return (
                 <>
                   {header}
-                  <a href={item.href} class={props.active === item.id ? "nav-link active" : "nav-link"} {...(props.active === item.id ? { "aria-current": "page" } : {})}>
+                  <a
+                    href={item.href}
+                    class={props.active === item.id ? "nav-link active" : "nav-link"}
+                    {...(props.active === item.id ? { "aria-current": "page" } : {})}
+                  >
                     <Icon name={item.icon} />
                     <span>{item.label}</span>
                   </a>
@@ -238,13 +296,28 @@ export function AppShell(props: {
           </nav>
           <div class="sidebar-foot">
             <div class="mode-toggle" role="group" aria-label="Color mode">
-              <button type="button" data-mode-set="light" aria-pressed={props.ui.mode === "light" ? "true" : "false"} title="Light">
+              <button
+                type="button"
+                data-mode-set="light"
+                aria-pressed={props.ui.mode === "light" ? "true" : "false"}
+                title="Light"
+              >
                 <Icon name="sun" size="sm" />
               </button>
-              <button type="button" data-mode-set="system" aria-pressed={props.ui.mode === "system" ? "true" : "false"} title="Match system">
+              <button
+                type="button"
+                data-mode-set="system"
+                aria-pressed={props.ui.mode === "system" ? "true" : "false"}
+                title="Match system"
+              >
                 <Icon name="laptop" size="sm" />
               </button>
-              <button type="button" data-mode-set="dark" aria-pressed={props.ui.mode === "dark" ? "true" : "false"} title="Dark">
+              <button
+                type="button"
+                data-mode-set="dark"
+                aria-pressed={props.ui.mode === "dark" ? "true" : "false"}
+                title="Dark"
+              >
                 <Icon name="moon" size="sm" />
               </button>
             </div>
@@ -255,7 +328,12 @@ export function AppShell(props: {
                 <div class="e truncate">{props.viewer.email}</div>
               </a>
               <form method="post" action="/logout">
-                <button class="btn ghost icon sm" type="submit" title="Sign out" aria-label="Sign out">
+                <button
+                  class="btn ghost icon sm"
+                  type="submit"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
                   <Icon name="logOut" size="sm" />
                 </button>
               </form>
@@ -272,11 +350,20 @@ export function AppShell(props: {
               {crumbs.map((c, i) => (
                 <>
                   {i > 0 ? <span class="sep">/</span> : null}
-                  {c.href ? <a href={c.href}>{c.label}</a> : <span class="here truncate">{c.label}</span>}
+                  {c.href ? (
+                    <a href={c.href}>{c.label}</a>
+                  ) : (
+                    <span class="here truncate">{c.label}</span>
+                  )}
                 </>
               ))}
             </nav>
-            <button class="btn ghost icon right" type="button" data-open-palette aria-label="Search">
+            <button
+              class="btn ghost icon right"
+              type="button"
+              data-open-palette
+              aria-label="Search"
+            >
               <Icon name="search" />
             </button>
           </header>
@@ -286,7 +373,13 @@ export function AppShell(props: {
       <dialog class="palette" id="palette" aria-label="Command palette">
         <div class="palette-input">
           <Icon name="search" />
-          <input type="search" placeholder="Jump to a page, person, or app…" autocomplete="off" spellcheck={false} data-palette-input />
+          <input
+            type="search"
+            placeholder="Jump to a page, person, or app…"
+            autocomplete="off"
+            spellcheck={false}
+            data-palette-input
+          />
           <span class="kbd">esc</span>
         </div>
         <ul class="palette-list" data-palette-list role="listbox"></ul>

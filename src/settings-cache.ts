@@ -5,7 +5,17 @@
 import { getSetting } from "./db";
 import type { Env } from "./config";
 
-export const ACCENTS = ["indigo", "iris", "blue", "teal", "green", "amber", "orange", "rose", "graphite"] as const;
+export const ACCENTS = [
+  "indigo",
+  "iris",
+  "blue",
+  "teal",
+  "green",
+  "amber",
+  "orange",
+  "rose",
+  "graphite",
+] as const;
 
 let cache: { value: string; at: number } | null = null;
 

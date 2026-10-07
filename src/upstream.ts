@@ -73,7 +73,9 @@ export async function checkForUpdate(env: Env): Promise<"skipped" | "checked" | 
       redirect: "manual",
       signal: AbortSignal.timeout(5000),
     });
-    const v = r.ok ? versionOf(JSON.parse(new TextDecoder().decode(await readBodyLimited(r, 16 * 1024)))) : null;
+    const v = r.ok
+      ? versionOf(JSON.parse(new TextDecoder().decode(await readBodyLimited(r, 16 * 1024))))
+      : null;
     if (!v) return "failed";
     await setSetting(env.DB, "upstream_version", v);
     return "checked";

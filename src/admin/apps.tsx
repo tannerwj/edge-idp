@@ -7,10 +7,27 @@ import { cfConfigured, listAccessApps } from "../cf-access";
 type AccessList = Awaited<ReturnType<typeof listAccessApps>>;
 import type { AdminVars } from "./shell";
 import { act, actor, field, fields, page } from "./shell";
-import { Callout, Dialog, Empty, GroupChips, GroupPicker, hueOf, PageHead, PostButton } from "../ui/components";
+import {
+  Callout,
+  Dialog,
+  Empty,
+  GroupChips,
+  GroupPicker,
+  hueOf,
+  PageHead,
+  PostButton,
+} from "../ui/components";
 import { Icon } from "../ui/icons";
 
-function CloudflareSection({ cf, cfError, imported }: { cf: AccessList | null; cfError: string | null; imported: Set<string | null> }) {
+function CloudflareSection({
+  cf,
+  cfError,
+  imported,
+}: {
+  cf: AccessList | null;
+  cfError: string | null;
+  imported: Set<string | null>;
+}) {
   return (
     <section class="card section-gap" id="cloudflare">
       <div class="card-head">
@@ -20,8 +37,8 @@ function CloudflareSection({ cf, cfError, imported }: { cf: AccessList | null; c
           <div class="sub">
             {cf?.idp ? (
               <>
-                This IdP is registered in Access as <b>{cf.idp.name}</b>. Groups below come from policies with an <code>oidc groups</code>{" "}
-                rule for it.
+                This IdP is registered in Access as <b>{cf.idp.name}</b>. Groups below come from
+                policies with an <code>oidc groups</code> rule for it.
               </>
             ) : cf ? (
               "No Access identity provider points at this server yet — see Connect."
@@ -51,9 +68,19 @@ function CloudflareSection({ cf, cfError, imported }: { cf: AccessList | null; c
                     <div class="name">{x.name}</div>
                     <div class="muted small mono">{x.domain ?? x.type}</div>
                   </td>
-                  <td>{x.usesUs ? <span class="badge ok dot">Yes</span> : <span class="badge">No</span>}</td>
+                  <td>
+                    {x.usesUs ? (
+                      <span class="badge ok dot">Yes</span>
+                    ) : (
+                      <span class="badge">No</span>
+                    )}
+                  </td>
                   <td class="small text-2">
-                    {x.policies.length ? x.policies.map((p) => <div key={p}>{p}</div>) : <span class="muted">No allow policies</span>}
+                    {x.policies.length ? (
+                      x.policies.map((p) => <div key={p}>{p}</div>)
+                    ) : (
+                      <span class="muted">No allow policies</span>
+                    )}
                   </td>
                   <td class="actions">
                     {imported.has(x.id) ? (
@@ -61,7 +88,12 @@ function CloudflareSection({ cf, cfError, imported }: { cf: AccessList | null; c
                     ) : x.domain ? (
                       <PostButton
                         action="/admin/apps/import"
-                        fields={{ cfAppId: x.id, name: x.name, url: `https://${x.domain}`, groups: x.groups.join(",") }}
+                        fields={{
+                          cfAppId: x.id,
+                          name: x.name,
+                          url: `https://${x.domain}`,
+                          groups: x.groups.join(","),
+                        }}
                         label="Add to launcher"
                         class="btn sm"
                       />
@@ -92,7 +124,9 @@ function Glyph(props: { app: App }) {
   const emoji = !!a.icon && /\p{Extended_Pictographic}/u.test(a.icon);
   return (
     <span class="tile-mini" data-hue={hueBucket(a)}>
-      <span class={emoji ? "glyph emoji" : "glyph"}>{a.icon || a.name.slice(0, 1).toUpperCase()}</span>
+      <span class={emoji ? "glyph emoji" : "glyph"}>
+        {a.icon || a.name.slice(0, 1).toUpperCase()}
+      </span>
     </span>
   );
 }
@@ -105,20 +139,42 @@ function AppForm(props: { app?: App; groups: Group[]; clients: OidcClient[] }) {
       <div class="grid-2">
         <label class="field">
           <span class="label">Name</span>
-          <input name="name" required maxLength={80} value={a?.name ?? ""} placeholder="Home Assistant" />
+          <input
+            name="name"
+            required
+            maxLength={80}
+            value={a?.name ?? ""}
+            placeholder="Home Assistant"
+          />
         </label>
         <label class="field">
           <span class="label">Icon</span>
-          <input name="icon" maxLength={8} value={a?.icon ?? ""} placeholder="🏠  (emoji or letters)" />
+          <input
+            name="icon"
+            maxLength={8}
+            value={a?.icon ?? ""}
+            placeholder="🏠  (emoji or letters)"
+          />
         </label>
       </div>
       <label class="field">
         <span class="label">URL</span>
-        <input name="url" type="url" required value={a?.url ?? ""} placeholder="https://home.example.com" />
+        <input
+          name="url"
+          type="url"
+          required
+          value={a?.url ?? ""}
+          placeholder="https://home.example.com"
+        />
       </label>
       <label class="field">
         <span class="label">Description</span>
-        <input name="description" maxLength={200} value={a?.description ?? ""} placeholder="Optional one-liner" />
+        <input
+          name="description"
+          maxLength={200}
+          value={a?.description ?? ""}
+          placeholder="Optional one-liner"
+        />
       </label>
       <div class="field">
         <span class="label">Color</span>
@@ -149,15 +205,17 @@ function AppForm(props: { app?: App; groups: Group[]; clients: OidcClient[] }) {
               </option>
             ))}
         </select>
-        <span class="hint">Linking a client keeps launcher visibility in sync with what the IdP actually enforces.</span>
+        <span class="hint">
+          Linking a client keeps launcher visibility in sync with what the IdP actually enforces.
+        </span>
       </div>
       <div class="field">
         <span class="label">Groups (when not linked — none selected means everyone)</span>
         <GroupPicker name="groups" all={props.groups} selected={a?.allowed_groups} />
       </div>
       <Callout icon="info">
-        The launcher controls <b>visibility</b>, not access. Enforcement happens in the linked client's allowed groups or your
-        Cloudflare Access policy.
+        The launcher controls <b>visibility</b>, not access. Enforcement happens in the linked
+        client's allowed groups or your Cloudflare Access policy.
       </Callout>
     </>
   );
@@ -165,7 +223,11 @@ function AppForm(props: { app?: App; groups: Group[]; clients: OidcClient[] }) {
 
 appsAdmin.get("/", async (c) => {
   const db = c.env.DB;
-  const [apps, groups, clients] = await Promise.all([listApps(db), listGroups(db), listClients(db)]);
+  const [apps, groups, clients] = await Promise.all([
+    listApps(db),
+    listGroups(db),
+    listClients(db),
+  ]);
   const clientById = new Map(clients.map((x) => [x.id, x]));
   let cf: Awaited<ReturnType<typeof listAccessApps>> | null = null;
   let cfError: string | null = null;
@@ -192,7 +254,12 @@ appsAdmin.get("/", async (c) => {
                 Import from Cloudflare
               </a>
             ) : null}
-            <button class="btn primary" type="button" data-open="new-app" {...(c.req.query("new") ? { "data-autoopen": "" } : {})}>
+            <button
+              class="btn primary"
+              type="button"
+              data-open="new-app"
+              {...(c.req.query("new") ? { "data-autoopen": "" } : {})}
+            >
               <Icon name="plus" size="sm" />
               Add app
             </button>
@@ -225,8 +292,20 @@ appsAdmin.get("/", async (c) => {
                   <button class="btn ghost sm" type="button" data-open={`edit-${a.id}`}>
                     Edit
                   </button>
-                  <PostButton action={`/admin/apps/${a.id}/delete`} label="" icon="trash" class="btn ghost icon sm" title="Remove" confirm={`Remove ${a.name} from the launcher?`} />
-                  <Dialog id={`edit-${a.id}`} sheet title={`Edit ${a.name}`} action={`/admin/apps/${a.id}`}>
+                  <PostButton
+                    action={`/admin/apps/${a.id}/delete`}
+                    label=""
+                    icon="trash"
+                    class="btn ghost icon sm"
+                    title="Remove"
+                    confirm={`Remove ${a.name} from the launcher?`}
+                  />
+                  <Dialog
+                    id={`edit-${a.id}`}
+                    sheet
+                    title={`Edit ${a.name}`}
+                    action={`/admin/apps/${a.id}`}
+                  >
                     <AppForm app={a} groups={groups} clients={clients} />
                   </Dialog>
                 </li>
@@ -234,8 +313,17 @@ appsAdmin.get("/", async (c) => {
             })}
           </ul>
         ) : (
-          <Empty icon="grid" title="No apps yet" action={<button class="btn primary" type="button" data-open="new-app">Add your first app</button>}>
-            Add the things you and your people use — Home Assistant, Immich, Jellyfin, your router. Each shows up for the groups you pick.
+          <Empty
+            icon="grid"
+            title="No apps yet"
+            action={
+              <button class="btn primary" type="button" data-open="new-app">
+                Add your first app
+              </button>
+            }
+          >
+            Add the things you and your people use — Home Assistant, Immich, Jellyfin, your router.
+            Each shows up for the groups you pick.
           </Empty>
         )}
       </div>
@@ -244,7 +332,14 @@ appsAdmin.get("/", async (c) => {
         <CloudflareSection cf={cf} cfError={cfError} imported={imported} />
       ) : null}
 
-      <Dialog id="new-app" sheet title="Add an app" lede="It appears on the home screen of everyone allowed to see it." action="/admin/apps" submit="Add app">
+      <Dialog
+        id="new-app"
+        sheet
+        title="Add an app"
+        lede="It appears on the home screen of everyone allowed to see it."
+        action="/admin/apps"
+        submit="Add app"
+      >
         <AppForm groups={groups} clients={clients} />
       </Dialog>
     </>,
@@ -271,9 +366,20 @@ appsAdmin.post("/", async (c) => {
 appsAdmin.post("/import", async (c) => {
   const form = await c.req.parseBody();
   const known = new Set((await listGroups(c.env.DB)).map((g) => g.name));
-  const groups = field(form, "groups").split(",").filter((g) => known.has(g));
+  const groups = field(form, "groups")
+    .split(",")
+    .filter((g) => known.has(g));
   return act(c, "/admin/apps?cf=1#cloudflare", "Added to launcher", () =>
-    ops.createApp(c.env.DB, { name: field(form, "name"), url: field(form, "url"), allowedGroups: groups, cfAppId: field(form, "cfAppId") }, actor(c)),
+    ops.createApp(
+      c.env.DB,
+      {
+        name: field(form, "name"),
+        url: field(form, "url"),
+        allowedGroups: groups,
+        cfAppId: field(form, "cfAppId"),
+      },
+      actor(c),
+    ),
   );
 });
 
@@ -281,9 +387,13 @@ appsAdmin.post("/:id", async (c) => {
   const id = c.req.param("id");
   if (!(await getApp(c.env.DB, id))) return c.notFound();
   const form = await c.req.parseBody({ all: true });
-  return act(c, "/admin/apps", "App saved", () => ops.updateApp(c.env.DB, id, input(form), actor(c)));
+  return act(c, "/admin/apps", "App saved", () =>
+    ops.updateApp(c.env.DB, id, input(form), actor(c)),
+  );
 });
 
 appsAdmin.post("/:id/delete", async (c) => {
-  return act(c, "/admin/apps", "App removed", () => ops.deleteApp(c.env.DB, c.req.param("id"), actor(c)));
+  return act(c, "/admin/apps", "App removed", () =>
+    ops.deleteApp(c.env.DB, c.req.param("id"), actor(c)),
+  );
 });

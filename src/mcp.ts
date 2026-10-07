@@ -57,7 +57,10 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
     const auth = await authApiToken(c.env.DB, await sha256Hex(raw));
     if (auth) {
       c.executionCtx.waitUntil(
-        c.env.DB.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2").bind(nowSec(), auth.tokenId).run().catch(() => {}),
+        c.env.DB.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2")
+          .bind(nowSec(), auth.tokenId)
+          .run()
+          .catch(() => {}),
       );
     }
     return auth;
@@ -67,7 +70,11 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
     const scopes = typeof p.scope === "string" ? p.scope.split(" ") : [];
     if (!scopes.includes("mcp") && !scopes.includes("mcp:read")) return null;
     if (typeof p.sub !== "string" || !(await activeAdmin(c.env.DB, p.sub))) return null;
-    return { tokenId: `oauth:${typeof p.client_id === "string" ? p.client_id : "?"}`, adminId: p.sub, readOnly: !scopes.includes("mcp") };
+    return {
+      tokenId: `oauth:${typeof p.client_id === "string" ? p.client_id : "?"}`,
+      adminId: p.sub,
+      readOnly: !scopes.includes("mcp"),
+    };
   } catch {
     return null;
   }
@@ -92,14 +99,25 @@ interface RpcBody {
 }
 type C = Context<{ Bindings: Env }>;
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 function wwwAuthenticate(env: Env, extra = ""): string {
   return `Bearer resource_metadata="${env.ISSUER}/.well-known/oauth-protected-resource/mcp", scope="mcp"${extra}`;
 }
 
-function rpcError(c: C, id: RpcId, code: number, message: string, status: 200 | 400 | 403 | 404 = 200, data?: unknown) {
-  return c.json({ jsonrpc: "2.0", id, error: { code, message, ...(data ? { data } : {}) } }, status);
+function rpcError(
+  c: C,
+  id: RpcId,
+  code: number,
+  message: string,
+  status: 200 | 400 | 403 | 404 = 200,
+  data?: unknown,
+) {
+  return c.json(
+    { jsonrpc: "2.0", id, error: { code, message, ...(data ? { data } : {}) } },
+    status,
+  );
 }
 
 /** Parse a single JSON-RPC message (batches are refused). */
@@ -112,8 +130,13 @@ async function readBody(c: C): Promise<RpcBody | Response> {
   }
   if (Array.isArray(parsed)) return rpcError(c, null, -32600, "Batching is not supported.", 400);
   const b = isRecord(parsed) ? parsed : {};
-  const id = typeof b.id === "string" || typeof b.id === "number" || b.id === null ? b.id : undefined;
-  return { id, method: typeof b.method === "string" ? b.method : "", params: isRecord(b.params) ? b.params : {} };
+  const id =
+    typeof b.id === "string" || typeof b.id === "number" || b.id === null ? b.id : undefined;
+  return {
+    id,
+    method: typeof b.method === "string" ? b.method : "",
+    params: isRecord(b.params) ? b.params : {},
+  };
 }
 
 /**
@@ -126,12 +149,23 @@ function checkProtocol(c: C, body: RpcBody): boolean | Response {
   const version = c.req.header("mcp-protocol-version");
   const modern = version === MODERN_VERSION;
   if (version && !modern && !LEGACY_VERSIONS.includes(version)) {
-    return rpcError(c, id, -32022, `Unsupported protocol version ${version}`, 400, { supported: [MODERN_VERSION, ...LEGACY_VERSIONS] });
+    return rpcError(c, id, -32022, `Unsupported protocol version ${version}`, 400, {
+      supported: [MODERN_VERSION, ...LEGACY_VERSIONS],
+    });
   }
   if (modern) {
     const bodyName = typeof body.params.name === "string" ? body.params.name : undefined;
-    if (c.req.header("mcp-method") !== body.method || (body.method === "tools/call" && c.req.header("mcp-name") !== bodyName)) {
-      return rpcError(c, id, -32020, "Mcp-Method / Mcp-Name headers must match the request body.", 400);
+    if (
+      c.req.header("mcp-method") !== body.method ||
+      (body.method === "tools/call" && c.req.header("mcp-name") !== bodyName)
+    ) {
+      return rpcError(
+        c,
+        id,
+        -32020,
+        "Mcp-Method / Mcp-Name headers must match the request body.",
+        400,
+      );
     }
   }
   return modern;
@@ -142,7 +176,8 @@ function checkProtocol(c: C, body: RpcBody): boolean | Response {
 function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
   switch (body.method) {
     case "initialize": {
-      const asked = typeof body.params.protocolVersion === "string" ? body.params.protocolVersion : "";
+      const asked =
+        typeof body.params.protocolVersion === "string" ? body.params.protocolVersion : "";
       return {
         protocolVersion: LEGACY_VERSIONS.includes(asked) ? asked : LEGACY_VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
@@ -161,11 +196,16 @@ function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
       return {};
     case "tools/list":
       return {
-        tools: TOOLS.filter((t) => (t.name === "execute" ? sandbox : !auth.readOnly || !t.write)).map((t) => ({
+        tools: TOOLS.filter((t) =>
+          t.name === "execute" ? sandbox : !auth.readOnly || !t.write,
+        ).map((t) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
-          annotations: { readOnlyHint: !t.write, destructiveHint: t.write && /delete|reset|disabled|admin|rotate/.test(t.name) },
+          annotations: {
+            readOnlyHint: !t.write,
+            destructiveHint: t.write && /delete|reset|disabled|admin|rotate/.test(t.name),
+          },
         })),
       };
     default:
@@ -173,7 +213,12 @@ function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
   }
 }
 
-async function callTool(c: C, auth: McpAuth, id: RpcId, params: Record<string, unknown>): Promise<Response> {
+async function callTool(
+  c: C,
+  auth: McpAuth,
+  id: RpcId,
+  params: Record<string, unknown>,
+): Promise<Response> {
   const name = str(params.name);
   const args = isRecord(params.arguments) ? params.arguments : {};
   const tool = TOOLS.find((t) => t.name === name);
@@ -181,7 +226,11 @@ async function callTool(c: C, auth: McpAuth, id: RpcId, params: Record<string, u
   if (tool.write && auth.readOnly) {
     // MCP step-up: clients re-authorize with the scopes we name here.
     return c.json(
-      { jsonrpc: "2.0", id, error: { code: -32001, message: `${name} needs the "mcp" scope; this token is read-only.` } },
+      {
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32001, message: `${name} needs the "mcp" scope; this token is read-only.` },
+      },
       403,
       { "WWW-Authenticate": wwwAuthenticate(c.env, ', error="insufficient_scope"') },
     );
@@ -190,28 +239,50 @@ async function callTool(c: C, auth: McpAuth, id: RpcId, params: Record<string, u
   if (name === "execute") return ok(await runExecute(c.env, c.executionCtx, str(args.code), auth));
   const started = Date.now();
   try {
-    const result = await tool.handler({ db: c.env.DB, env: c.env, actor: { adminId: auth.adminId, via: "mcp" } }, args);
+    const result = await tool.handler(
+      { db: c.env.DB, env: c.env, actor: { adminId: auth.adminId, via: "mcp" } },
+      args,
+    );
     trackCall(c.executionCtx, c.env.DB, name, started, null, auth.tokenId);
-    return ok({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }], structuredContent: wrapStructured(result) });
+    return ok({
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      structuredContent: wrapStructured(result),
+    });
   } catch (e) {
-    const msg = e instanceof ops.OpError ? e.message : `Internal error: ${e instanceof Error ? e.message : String(e)}`;
+    const msg =
+      e instanceof ops.OpError
+        ? e.message
+        : `Internal error: ${e instanceof Error ? e.message : String(e)}`;
     trackCall(c.executionCtx, c.env.DB, name, started, msg.slice(0, 200), auth.tokenId);
     return ok({ content: [{ type: "text", text: `Error: ${msg}` }], isError: true });
   }
 }
 
-mcp.get("/", (c) => c.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Use POST." } }, 405, { allow: "POST" }));
+mcp.get("/", (c) =>
+  c.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Use POST." } }, 405, {
+    allow: "POST",
+  }),
+);
 mcp.delete("/", (c) => c.body(null, 405, { allow: "POST" }));
 
 mcp.post("/", async (c) => {
   // Browsers must not drive this endpoint cross-origin (DNS-rebinding /
   // drive-by): any Origin that isn't ours is refused outright.
   const origin = c.req.header("origin");
-  if (origin && origin !== c.env.ISSUER) return rpcError(c, null, -32000, "Origin not allowed.", 403);
+  if (origin && origin !== c.env.ISSUER)
+    return rpcError(c, null, -32000, "Origin not allowed.", 403);
   const auth = await authenticate(c);
   if (!auth) {
     return c.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: Bearer API token or OAuth access token for this resource required." } },
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32001,
+          message:
+            "Unauthorized: Bearer API token or OAuth access token for this resource required.",
+        },
+      },
       401,
       { "WWW-Authenticate": wwwAuthenticate(c.env) },
     );

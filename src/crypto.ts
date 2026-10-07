@@ -179,10 +179,7 @@ export async function verifyAccessToken(
 }
 
 /** Verify an ID token we minted (for id_token_hint at logout). */
-export async function verifyIdToken(
-  env: Env,
-  token: string,
-): Promise<jose.JWTPayload> {
+export async function verifyIdToken(env: Env, token: string): Promise<jose.JWTPayload> {
   const keys = await allKeys(env);
   const { kid } = jose.decodeProtectedHeader(token);
   const match = keys.find((k) => k.kid === kid);

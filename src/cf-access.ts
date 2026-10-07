@@ -16,9 +16,11 @@ export function cfConfigured(env: Env): boolean {
   return !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID);
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 const optStr = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
-const records = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isRecord) : []);
+const records = (v: unknown): Record<string, unknown>[] =>
+  Array.isArray(v) ? v.filter(isRecord) : [];
 
 /** GET a Cloudflare API path; returns the envelope's result (unvalidated). */
 async function cfGet(env: Env, path: string): Promise<{ result: unknown; totalPages: number }> {
@@ -29,11 +31,17 @@ async function cfGet(env: Env, path: string): Promise<{ result: unknown; totalPa
   const body: unknown = await res.json();
   const envelope = isRecord(body) ? body : {};
   if (!res.ok || envelope.success !== true) {
-    const msg = records(envelope.errors).map((e) => optStr(e.message) ?? "").filter(Boolean).join("; ");
+    const msg = records(envelope.errors)
+      .map((e) => optStr(e.message) ?? "")
+      .filter(Boolean)
+      .join("; ");
     throw new Error(msg || `Cloudflare API ${res.status}`);
   }
   const info = isRecord(envelope.result_info) ? envelope.result_info : {};
-  return { result: envelope.result, totalPages: typeof info.total_pages === "number" ? info.total_pages : 1 };
+  return {
+    result: envelope.result,
+    totalPages: typeof info.total_pages === "number" ? info.total_pages : 1,
+  };
 }
 
 type Rule = Record<string, Record<string, unknown> | undefined>;
@@ -56,9 +64,10 @@ interface CfApp {
   policies?: CfPolicy[];
 }
 
-
 function toRules(v: unknown): Rule[] {
-  return records(v).map((r) => Object.fromEntries(Object.entries(r).map(([k, x]) => [k, isRecord(x) ? x : undefined])));
+  return records(v).map((r) =>
+    Object.fromEntries(Object.entries(r).map(([k, x]) => [k, isRecord(x) ? x : undefined])),
+  );
 }
 
 function toApp(r: Record<string, unknown>): CfApp | null {
@@ -72,7 +81,9 @@ function toApp(r: Record<string, unknown>): CfApp | null {
     type,
     domain: optStr(r.domain),
     logo_url: optStr(r.logo_url),
-    allowed_idps: Array.isArray(r.allowed_idps) ? r.allowed_idps.filter((x): x is string => typeof x === "string") : undefined,
+    allowed_idps: Array.isArray(r.allowed_idps)
+      ? r.allowed_idps.filter((x): x is string => typeof x === "string")
+      : undefined,
     policies: records(r.policies).map((p) => ({
       id: optStr(p.id) ?? "",
       name: optStr(p.name) ?? "",
@@ -127,7 +138,9 @@ async function findOurIdp(env: Env): Promise<{ id: string; name: string } | null
   return mine && id ? { id, name: optStr(mine.name) ?? "This IdP" } : null;
 }
 
-export async function listAccessApps(env: Env): Promise<{ idp: { id: string; name: string } | null; apps: AccessAppView[] }> {
+export async function listAccessApps(
+  env: Env,
+): Promise<{ idp: { id: string; name: string } | null; apps: AccessAppView[] }> {
   const idp = await findOurIdp(env);
   const apps: CfApp[] = [];
   for (let page = 1; page <= 10; page++) {
@@ -146,12 +159,19 @@ export async function listAccessApps(env: Env): Promise<{ idp: { id: string; nam
         for (const p of a.policies ?? []) {
           for (const r of [...(p.include ?? []), ...(p.require ?? [])]) {
             const o = r.oidc;
-            if (o && o.identity_provider_id === ourId && o.claim_name === "groups" && typeof o.claim_value === "string") {
+            if (
+              o &&
+              o.identity_provider_id === ourId &&
+              o.claim_name === "groups" &&
+              typeof o.claim_value === "string"
+            ) {
               groups.add(o.claim_value);
             }
           }
           if (p.decision === "allow") {
-            policies.push(`${p.name}: ${(p.include ?? []).map((r) => describeRule(r, ourId)).join(" or ") || "—"}`);
+            policies.push(
+              `${p.name}: ${(p.include ?? []).map((r) => describeRule(r, ourId)).join(" or ") || "—"}`,
+            );
           }
         }
         return {

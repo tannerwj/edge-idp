@@ -10,7 +10,8 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "clients_list",
     write: false,
-    description: "List OAuth/OIDC clients: admin-registered, dynamically registered (DCR), and URL-based (CIMD).",
+    description:
+      "List OAuth/OIDC clients: admin-registered, dynamically registered (DCR), and URL-based (CIMD).",
     inputSchema: obj(),
     handler: async ({ db }) =>
       (await listClients(db)).map((c) => ({
@@ -35,7 +36,11 @@ export const APP_TOOLS: ToolDef[] = [
       {
         name: { type: "string" },
         redirect_uris: { type: "array", items: { type: "string" } },
-        allowed_groups: { type: "array", items: { type: "string" }, description: "Empty = everyone" },
+        allowed_groups: {
+          type: "array",
+          items: { type: "string" },
+          description: "Empty = everyone",
+        },
         type: { type: "string", enum: ["confidential", "public"] },
         require_pkce: { type: "boolean", description: "Default true" },
         environment: { type: "string", enum: ["production", "staging", "development"] },
@@ -59,7 +64,8 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "clients_update",
     write: true,
-    description: "Update a client's name, redirect URIs, allowed groups, PKCE requirement, consent behavior or environment.",
+    description:
+      "Update a client's name, redirect URIs, allowed groups, PKCE requirement, consent behavior or environment.",
     inputSchema: obj(
       {
         client_id: { type: "string" },
@@ -79,8 +85,12 @@ export const APP_TOOLS: ToolDef[] = [
         c,
         {
           ...(args.name !== undefined ? { name: str(args.name) } : {}),
-          ...(args.redirect_uris !== undefined ? { redirectUris: strList(args.redirect_uris) } : {}),
-          ...(args.allowed_groups !== undefined ? { allowedGroups: strList(args.allowed_groups) } : {}),
+          ...(args.redirect_uris !== undefined
+            ? { redirectUris: strList(args.redirect_uris) }
+            : {}),
+          ...(args.allowed_groups !== undefined
+            ? { allowedGroups: strList(args.allowed_groups) }
+            : {}),
           ...(typeof args.require_pkce === "boolean" ? { requirePkce: args.require_pkce } : {}),
           ...(typeof args.skip_consent === "boolean" ? { skipConsent: args.skip_consent } : {}),
           ...(args.environment !== undefined ? { environment: str(args.environment) } : {}),
@@ -93,7 +103,8 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "clients_rotate_secret",
     write: true,
-    description: "Issue a new client secret (returned once). The old one stops working immediately.",
+    description:
+      "Issue a new client secret (returned once). The old one stops working immediately.",
     inputSchema: obj({ client_id: { type: "string" } }, ["client_id"]),
     handler: async ({ db, actor }, args) => ({
       secret: await ops.rotateClientSecret(db, await clientByRef(db, str(args.client_id)), actor),
@@ -120,7 +131,8 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "apps_create",
     write: true,
-    description: "Add an app tile to the launcher. Link it to a client_id to inherit that client's allowed groups.",
+    description:
+      "Add an app tile to the launcher. Link it to a client_id to inherit that client's allowed groups.",
     inputSchema: obj(
       {
         name: { type: "string" },
@@ -161,7 +173,8 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "audit_query",
     write: false,
-    description: "Recent audit events, newest first. Filter by event name (e.g. SIGN_IN, ACCESS_DENIED), user email, and age.",
+    description:
+      "Recent audit events, newest first. Filter by event name (e.g. SIGN_IN, ACCESS_DENIED), user email, and age.",
     inputSchema: obj({
       event: { type: "string" },
       email: { type: "string" },
@@ -169,8 +182,13 @@ export const APP_TOOLS: ToolDef[] = [
       limit: { type: "number", description: "Default 50, max 500" },
     }),
     handler: async ({ db }, args) => {
-      const since = nowSec() - Math.round((typeof args.since_hours === "number" ? args.since_hours : 168) * 3600);
-      const limit = Math.min(500, Math.max(1, typeof args.limit === "number" ? Math.floor(args.limit) : 50));
+      const since =
+        nowSec() -
+        Math.round((typeof args.since_hours === "number" ? args.since_hours : 168) * 3600);
+      const limit = Math.min(
+        500,
+        Math.max(1, typeof args.limit === "number" ? Math.floor(args.limit) : 50),
+      );
       const where = ["a.created_at >= ?1"];
       const binds: unknown[] = [since];
       if (str(args.event)) {
@@ -189,8 +207,18 @@ export const APP_TOOLS: ToolDef[] = [
            ORDER BY a.id DESC LIMIT ?${binds.length}`,
         )
         .bind(...binds)
-        .all<{ created_at: number; event: string; email: string | null; client_id: string | null; detail: string | null }>();
-      return results.map((r) => ({ ...r, at: new Date(r.created_at * 1000).toISOString(), detail: r.detail ? JSON.parse(r.detail) : null }));
+        .all<{
+          created_at: number;
+          event: string;
+          email: string | null;
+          client_id: string | null;
+          detail: string | null;
+        }>();
+      return results.map((r) => ({
+        ...r,
+        at: new Date(r.created_at * 1000).toISOString(),
+        detail: r.detail ? JSON.parse(r.detail) : null,
+      }));
     },
   },
   {
@@ -209,14 +237,19 @@ export const APP_TOOLS: ToolDef[] = [
     write: true,
     description: "Change instance settings.",
     inputSchema: obj({
-      accent: { type: "string", enum: ["indigo", "iris", "blue", "teal", "green", "amber", "orange", "rose", "graphite"] },
+      accent: {
+        type: "string",
+        enum: ["indigo", "iris", "blue", "teal", "green", "amber", "orange", "rose", "graphite"],
+      },
       dcr_enabled: { type: "boolean" },
       cimd_enabled: { type: "boolean" },
     }),
     handler: async ({ db, actor }, args) => {
       if (str(args.accent)) await setSetting(db, "accent", str(args.accent));
-      if (typeof args.dcr_enabled === "boolean") await setSetting(db, "dcr_enabled", args.dcr_enabled ? "1" : "0");
-      if (typeof args.cimd_enabled === "boolean") await setSetting(db, "cimd_enabled", args.cimd_enabled ? "1" : "0");
+      if (typeof args.dcr_enabled === "boolean")
+        await setSetting(db, "dcr_enabled", args.dcr_enabled ? "1" : "0");
+      if (typeof args.cimd_enabled === "boolean")
+        await setSetting(db, "cimd_enabled", args.cimd_enabled ? "1" : "0");
       await audit(db, "SETTINGS_CHANGED", { userId: actor.adminId, detail: { via: "mcp" } });
       return { ok: true };
     },

@@ -70,10 +70,15 @@ export async function updateClient(
 ): Promise<void> {
   const name = input.name === undefined ? client.name : input.name.trim().slice(0, 120);
   if (!name) throw new OpError("Name is required.");
-  const uris = input.redirectUris === undefined ? client.redirect_uris : parseRedirectUris(input.redirectUris);
-  const groups = input.allowedGroups === undefined ? (client.allowed_groups ?? []) : await parseGroupList(db, input.allowedGroups);
+  const uris =
+    input.redirectUris === undefined ? client.redirect_uris : parseRedirectUris(input.redirectUris);
+  const groups =
+    input.allowedGroups === undefined
+      ? (client.allowed_groups ?? [])
+      : await parseGroupList(db, input.allowedGroups);
   const env = knownEnv(input.environment) ? input.environment : client.environment;
-  const requirePkce = client.client_type === "public" ? true : (input.requirePkce ?? client.require_pkce);
+  const requirePkce =
+    client.client_type === "public" ? true : (input.requirePkce ?? client.require_pkce);
   const skipConsent = input.skipConsent ?? client.skip_consent;
   await db
     .prepare(
@@ -87,14 +92,20 @@ export async function updateClient(
       env,
       requirePkce ? 1 : 0,
       skipConsent ? 1 : 0,
-      input.description === undefined ? client.description : input.description.trim().slice(0, 300) || null,
+      input.description === undefined
+        ? client.description
+        : input.description.trim().slice(0, 300) || null,
       client.id,
     )
     .run();
   await audit(db, "CLIENT_UPDATED", { clientId: client.id, detail: by(a) });
 }
 
-export async function rotateClientSecret(db: D1Database, client: OidcClient, a: Actor): Promise<string> {
+export async function rotateClientSecret(
+  db: D1Database,
+  client: OidcClient,
+  a: Actor,
+): Promise<string> {
   if (client.client_type === "public") throw new OpError("Public clients don't have a secret.");
   const secret = randomToken(32);
   await db
@@ -146,7 +157,9 @@ export async function createApp(db: D1Database, input: AppInput, a: Actor): Prom
   const url = validAppUrl(input.url);
   const groups = input.clientId ? [] : await parseGroupList(db, input.allowedGroups ?? []);
   const id = newId();
-  const { n } = (await db.prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM apps").first<{ n: number }>()) ?? { n: 0 };
+  const { n } = (await db
+    .prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM apps")
+    .first<{ n: number }>()) ?? { n: 0 };
   await db
     .prepare(
       `INSERT INTO apps (id, name, url, description, icon, color, allowed_groups, client_id, cf_app_id, sort_order, created_at)
@@ -170,7 +183,12 @@ export async function createApp(db: D1Database, input: AppInput, a: Actor): Prom
   return id;
 }
 
-export async function updateApp(db: D1Database, id: string, input: AppInput, a: Actor): Promise<void> {
+export async function updateApp(
+  db: D1Database,
+  id: string,
+  input: AppInput,
+  a: Actor,
+): Promise<void> {
   const name = input.name.trim().slice(0, 80);
   if (!name) throw new OpError("Name is required.");
   const url = validAppUrl(input.url);
@@ -226,6 +244,9 @@ export async function createApiToken(
       raw.slice(0, 10),
     )
     .run();
-  await audit(db, "API_TOKEN_CREATED", { userId: a.adminId, detail: by(a, { name, scope: input.scope }) });
+  await audit(db, "API_TOKEN_CREATED", {
+    userId: a.adminId,
+    detail: by(a, { name, scope: input.scope }),
+  });
   return raw;
 }

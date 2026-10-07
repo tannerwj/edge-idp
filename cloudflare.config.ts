@@ -72,8 +72,14 @@ export default defineConfig(({ mode }) => {
         DB: bindings.d1(stage.d1),
         // Per-IP Workers Rate Limiting. Generous on purpose: Claude's connector
         // egress (160.79.104.0/21) shares IPs across many users.
-        AUTH_LIMITER: bindings.rateLimit({ namespace: stage.limiters.auth, simple: { limit: 30, period: 60 } }),
-        API_LIMITER: bindings.rateLimit({ namespace: stage.limiters.api, simple: { limit: 300, period: 60 } }),
+        AUTH_LIMITER: bindings.rateLimit({
+          namespace: stage.limiters.auth,
+          simple: { limit: 30, period: 60 },
+        }),
+        API_LIMITER: bindings.rateLimit({
+          namespace: stage.limiters.api,
+          simple: { limit: 300, period: 60 },
+        }),
         // Dynamic Worker loader for the MCP code-mode sandbox.
         LOADER: bindings.workerLoader(),
       },

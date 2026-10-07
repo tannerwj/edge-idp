@@ -31,7 +31,13 @@ export async function setupPending(db: D1Database): Promise<boolean> {
   return !done;
 }
 
-function SetupPage(props: { ui: Ui; ready: boolean; error?: string; name?: string; email?: string }) {
+function SetupPage(props: {
+  ui: Ui;
+  ready: boolean;
+  error?: string;
+  name?: string;
+  email?: string;
+}) {
   return (
     <AuthLayout ui={props.ui} title="Set up" page="setup" wide>
       <div class="hero-icon">
@@ -40,7 +46,9 @@ function SetupPage(props: { ui: Ui; ready: boolean; error?: string; name?: strin
       <h1>Welcome to {props.ui.rpName}</h1>
       {props.ready ? (
         <>
-          <p class="lede">Create the first admin account. Next you'll make a passkey for it, and you're in.</p>
+          <p class="lede">
+            Create the first admin account. Next you'll make a passkey for it, and you're in.
+          </p>
           {props.error ? <Callout tone="bad">{props.error}</Callout> : null}
           <form method="post" action="/setup" class="stack-sm">
             <label class="field">
@@ -50,11 +58,24 @@ function SetupPage(props: { ui: Ui; ready: boolean; error?: string; name?: strin
             </label>
             <label class="field">
               <span class="label">Your name</span>
-              <input name="name" required maxLength={120} value={props.name ?? ""} autocomplete="name" />
+              <input
+                name="name"
+                required
+                maxLength={120}
+                value={props.name ?? ""}
+                autocomplete="name"
+              />
             </label>
             <label class="field">
               <span class="label">Email</span>
-              <input name="email" type="email" required maxLength={254} value={props.email ?? ""} autocomplete="email" />
+              <input
+                name="email"
+                type="email"
+                required
+                maxLength={254}
+                value={props.email ?? ""}
+                autocomplete="email"
+              />
             </label>
             <button class="btn primary lg block" type="submit">
               <span>Create admin</span>
@@ -64,8 +85,9 @@ function SetupPage(props: { ui: Ui; ready: boolean; error?: string; name?: strin
         </>
       ) : (
         <Callout tone="warn">
-          Set a <code>SETUP_TOKEN</code> secret ({MIN_TOKEN}+ characters) on this Worker, then reload. Or create the
-          first admin from a terminal with <code>node scripts/seed-admin.mjs</code> (see DEPLOY.md).
+          Set a <code>SETUP_TOKEN</code> secret ({MIN_TOKEN}+ characters) on this Worker, then
+          reload. Or create the first admin from a terminal with{" "}
+          <code>node scripts/seed-admin.mjs</code> (see DEPLOY.md).
         </Callout>
       )}
     </AuthLayout>
@@ -77,7 +99,9 @@ export const setup = new Hono<{ Bindings: Env }>();
 setup.get("/setup", async (c) => {
   if (!(await setupPending(c.env.DB))) return c.notFound();
   const ready = (c.env.SETUP_TOKEN ?? "").length >= MIN_TOKEN;
-  return c.html(<SetupPage ui={await uiFor(c)} ready={ready} />, 200, { "referrer-policy": "no-referrer" });
+  return c.html(<SetupPage ui={await uiFor(c)} ready={ready} />, 200, {
+    "referrer-policy": "no-referrer",
+  });
 });
 
 setup.post("/setup", async (c) => {
@@ -89,7 +113,8 @@ setup.post("/setup", async (c) => {
   const name = str("name").slice(0, 120);
   const email = str("email").slice(0, 254);
   const ui = await uiFor(c);
-  const again = (error: string, status: 400 | 401) => c.html(<SetupPage ui={ui} ready error={error} name={name} email={email} />, status);
+  const again = (error: string, status: 400 | 401) =>
+    c.html(<SetupPage ui={ui} ready error={error} name={name} email={email} />, status);
 
   if (!timingSafeEqualHex(await sha256Hex(str("token")), await sha256Hex(expected))) {
     const ip = c.req.header("cf-connecting-ip");

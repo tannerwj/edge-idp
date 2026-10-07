@@ -23,7 +23,10 @@ const { outputFiles } = await esbuild.build({
 });
 
 const js = outputFiles[0].text;
-const css = readFileSync("src/client/app.css", "utf8");
+const { code: css } = await esbuild.transform(readFileSync("src/client/app.css", "utf8"), {
+  loader: "css",
+  minify: true,
+});
 const { version } = JSON.parse(readFileSync("package.json", "utf8"));
 const buildHash = createHash("sha256").update(js).update(css).digest("hex").slice(0, 10);
 
@@ -37,4 +40,6 @@ writeFileSync(
     `export const APP_JS = ${JSON.stringify(js)};\n`,
 );
 
-console.log(`client built: app.js ${(js.length / 1024).toFixed(1)}kb, app.css ${(css.length / 1024).toFixed(1)}kb, hash ${buildHash}`);
+console.log(
+  `client built: app.js ${(js.length / 1024).toFixed(1)}kb, app.css ${(css.length / 1024).toFixed(1)}kb, hash ${buildHash}`,
+);

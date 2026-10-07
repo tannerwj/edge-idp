@@ -142,7 +142,7 @@ rm key.json
 ```
 
 Never commit it or put it in the config. Losing it invalidates every issued
-token. Rotation is covered under *Rotating the signing key* below.
+token. Rotation is covered under _Rotating the signing key_ below.
 
 ## 6. Apply the migrations
 
@@ -181,6 +181,7 @@ users, groups, and apps.
 ## 9. Harden the edge (recommended)
 
 `cloudflare.config.ts` declares two Workers Rate Limiting bindings:
+
 - `AUTH_LIMITER`, 30/min per IP: passkey ceremonies, `/register`, consent;
 - `API_LIMITER`, 300/min per IP: `/token`, `/revoke`, `/mcp`.
 
@@ -200,17 +201,17 @@ sessions, challenges and refresh tokens, and enforces audit retention.
 
 Zero Trust dashboard → **Access → Identity providers → Add new → OpenID Connect**:
 
-| Field              | Value                                              |
-|--------------------|----------------------------------------------------|
-| Auth URL           | `https://auth.yourdomain.com/authorize`            |
-| Token URL          | `https://auth.yourdomain.com/token`                |
-| Certificate URL    | `https://auth.yourdomain.com/jwks`                 |
-| Client ID          | (from your app's registration — see below)         |
-| Client Secret      | (shown once at registration)                      |
-| PKCE               | **Off** (Access doesn't send it; register the client with PKCE unchecked) |
-| Email claim name   | `email` (default)                                  |
-| Scopes             | `openid profile email groups`                      |
-| OIDC Claims        | add `groups` so policies can match on it           |
+| Field            | Value                                                                     |
+| ---------------- | ------------------------------------------------------------------------- |
+| Auth URL         | `https://auth.yourdomain.com/authorize`                                   |
+| Token URL        | `https://auth.yourdomain.com/token`                                       |
+| Certificate URL  | `https://auth.yourdomain.com/jwks`                                        |
+| Client ID        | (from your app's registration — see below)                                |
+| Client Secret    | (shown once at registration)                                              |
+| PKCE             | **Off** (Access doesn't send it; register the client with PKCE unchecked) |
+| Email claim name | `email` (default)                                                         |
+| Scopes           | `openid profile email groups`                                             |
+| OIDC Claims      | add `groups` so policies can match on it                                  |
 
 Register Access **once** before filling in that form: open
 `https://auth.yourdomain.com/admin` → **Clients** → **Register client**.

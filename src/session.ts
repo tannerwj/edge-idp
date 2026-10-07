@@ -82,7 +82,13 @@ export async function getSession<E extends { Bindings: Env }>(
     "SELECT user_id, created_at, expires_at, last_seen_at, step_up_at FROM sessions WHERE id_hash = ?1",
   )
     .bind(hash)
-    .first<{ user_id: string; created_at: number; expires_at: number; last_seen_at: number; step_up_at: number | null }>();
+    .first<{
+      user_id: string;
+      created_at: number;
+      expires_at: number;
+      last_seen_at: number;
+      step_up_at: number | null;
+    }>();
   const now = nowSec();
   if (!row || row.expires_at < now) {
     if (row) {
@@ -123,9 +129,7 @@ export function setSessionCookie(c: Context, raw: string): void {
   });
 }
 
-export async function destroySession<E extends { Bindings: Env }>(
-  c: Context<E>,
-): Promise<void> {
+export async function destroySession<E extends { Bindings: Env }>(c: Context<E>): Promise<void> {
   const raw = getCookie(c, SESSION_COOKIE);
   if (raw) {
     await c.env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1")

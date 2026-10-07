@@ -18,7 +18,11 @@ export function hueOf(seed: string): string {
 
 export function Avatar(props: { name: string; seed?: string; size?: "sm" | "lg" }) {
   return (
-    <span class={props.size ? `avatar ${props.size}` : "avatar"} data-hue={hueOf(props.seed ?? props.name)} aria-hidden="true">
+    <span
+      class={props.size ? `avatar ${props.size}` : "avatar"}
+      data-hue={hueOf(props.seed ?? props.name)}
+      aria-hidden="true"
+    >
       {initials(props.name)}
     </span>
   );
@@ -35,7 +39,12 @@ export function Time(props: { ts: number | null | undefined; empty?: string; abs
   );
 }
 
-export function PageHead(props: { title: string; lede?: unknown; actions?: unknown; leading?: unknown }) {
+export function PageHead(props: {
+  title: string;
+  lede?: unknown;
+  actions?: unknown;
+  leading?: unknown;
+}) {
   return (
     <div class="page-head">
       {props.leading}
@@ -48,7 +57,12 @@ export function PageHead(props: { title: string; lede?: unknown; actions?: unkno
   );
 }
 
-export function Empty(props: { icon: IconName; title: string; children?: unknown; action?: unknown }) {
+export function Empty(props: {
+  icon: IconName;
+  title: string;
+  children?: unknown;
+  action?: unknown;
+}) {
   return (
     <div class="empty">
       <div class="art">
@@ -67,7 +81,12 @@ export function CopyField(props: { value: string; big?: boolean; mask?: boolean;
       <span class="val" data-copy-source>
         {props.value}
       </span>
-      <button class="btn sm copy-btn" type="button" data-copy={props.value} aria-label={`Copy ${props.label ?? ""}`.trim()}>
+      <button
+        class="btn sm copy-btn"
+        type="button"
+        data-copy={props.value}
+        aria-label={`Copy ${props.label ?? ""}`.trim()}
+      >
         <Icon name="copy" size="sm" />
         <span>Copy</span>
       </button>
@@ -75,10 +94,16 @@ export function CopyField(props: { value: string; big?: boolean; mask?: boolean;
   );
 }
 
-export function Callout(props: { tone?: "accent" | "warn" | "bad" | "ok"; icon?: IconName; children: unknown }) {
+export function Callout(props: {
+  tone?: "accent" | "warn" | "bad" | "ok";
+  icon?: IconName;
+  children: unknown;
+}) {
   return (
     <div class={props.tone ? `callout ${props.tone}` : "callout"}>
-      <Icon name={props.icon ?? (props.tone === "warn" || props.tone === "bad" ? "alert" : "info")} />
+      <Icon
+        name={props.icon ?? (props.tone === "warn" || props.tone === "bad" ? "alert" : "info")}
+      />
       <div class="grow">{props.children}</div>
     </div>
   );
@@ -143,7 +168,12 @@ export function PostButton(props: {
   title?: string;
 }) {
   return (
-    <form method="post" action={props.action} class="inline-form" {...(props.confirm ? { "data-confirm": props.confirm } : {})}>
+    <form
+      method="post"
+      action={props.action}
+      class="inline-form"
+      {...(props.confirm ? { "data-confirm": props.confirm } : {})}
+    >
       {Object.entries(props.fields ?? {}).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
@@ -160,14 +190,20 @@ export function GroupChips(props: { groups: string[] | null | undefined; empty?:
   return (
     <span class="chips">
       {props.groups.map((g) => (
-        <span key={g} class="badge">{g}</span>
+        <span key={g} class="badge">
+          {g}
+        </span>
       ))}
     </span>
   );
 }
 
 /** Multi-select group picker as toggle chips. */
-export function GroupPicker(props: { name: string; all: { name: string }[]; selected: string[] | null | undefined }) {
+export function GroupPicker(props: {
+  name: string;
+  all: { name: string }[];
+  selected: string[] | null | undefined;
+}) {
   if (!props.all.length) return <p class="muted small">No groups yet — create one under Groups.</p>;
   const sel = new Set(props.selected ?? []);
   return (
@@ -181,4 +217,3 @@ export function GroupPicker(props: { name: string; all: { name: string }[]; sele
     </div>
   );
 }
-

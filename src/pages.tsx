@@ -20,7 +20,10 @@ export function LoginPage(props: {
       page="login"
       below={
         <span>
-          Passkeys only — nothing to remember, nothing to phish. <a href="https://passkeys.dev" rel="noopener">What's a passkey?</a>
+          Passkeys only — nothing to remember, nothing to phish.{" "}
+          <a href="https://passkeys.dev" rel="noopener">
+            What's a passkey?
+          </a>
         </span>
       }
     >
@@ -45,7 +48,12 @@ export function LoginPage(props: {
           ? "This app asked for a fresh sign-in. Use your passkey to continue."
           : "Use Face ID, Touch ID, Windows Hello, or a security key."}
       </p>
-      <div id="login-box" data-next={props.next} data-reauth={props.reauth ? "1" : "0"} class="stack">
+      <div
+        id="login-box"
+        data-next={props.next}
+        data-reauth={props.reauth ? "1" : "0"}
+        class="stack"
+      >
         <button id="passkey-btn" class="btn primary lg block" type="button">
           <Icon name="fingerprint" size="lg" />
           <span>Sign in with a passkey</span>
@@ -57,7 +65,13 @@ export function LoginPage(props: {
           </summary>
           <label class="field">
             <span class="label">Email</span>
-            <input id="email" name="email" type="email" autocomplete="username webauthn" placeholder="you@example.com" />
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autocomplete="username webauthn"
+              placeholder="you@example.com"
+            />
           </label>
         </details>
         <p id="login-status" class="status" role="status" aria-live="polite"></p>
@@ -78,15 +92,23 @@ export function EnrollPage(props: { ui: Ui; name?: string; email?: string; token
       </div>
       <h1>{props.name ? `Welcome, ${props.name.split(" ")[0]}` : "Create your passkey"}</h1>
       <p class="lede">
-        You've been invited to <b>{props.ui.rpName}</b>{props.email ? <> as <b>{props.email}</b></> : null}. Create a passkey
-        and you're done — no password, ever.
+        You've been invited to <b>{props.ui.rpName}</b>
+        {props.email ? (
+          <>
+            {" "}
+            as <b>{props.email}</b>
+          </>
+        ) : null}
+        . Create a passkey and you're done — no password, ever.
       </p>
       <ul class="scope-list">
         <li>
           <Icon name="shieldCheck" />
           <div>
             Your passkey lives on this device (or your password manager)
-            <span class="sub">The server only ever sees a public key. There's nothing here to steal.</span>
+            <span class="sub">
+              The server only ever sees a public key. There's nothing here to steal.
+            </span>
           </div>
         </li>
         <li>
@@ -122,20 +144,29 @@ function hostOf(u: string | null | undefined): string {
   }
 }
 
-const SCOPE_TEXT: Record<string, { icon: IconName; title: string; sub: string; danger?: boolean }> = {
-  openid: { icon: "user", title: "Know who you are", sub: "Your account ID on this server." },
-  profile: { icon: "user", title: "See your name", sub: "" },
-  email: { icon: "mail", title: "See your email address", sub: "" },
-  groups: { icon: "group", title: "See your groups", sub: "Which groups you belong to." },
-  offline_access: { icon: "refresh", title: "Stay connected", sub: "Keep access without asking you again, until you disconnect it." },
-  mcp: {
-    icon: "shield",
-    title: "Administer this identity server",
-    sub: "Create and change users, groups, apps and clients on your behalf. Only approve tools you trust.",
-    danger: true,
-  },
-  "mcp:read": { icon: "eye", title: "Read admin data", sub: "View users, groups, apps and the audit log (no changes)." },
-};
+const SCOPE_TEXT: Record<string, { icon: IconName; title: string; sub: string; danger?: boolean }> =
+  {
+    openid: { icon: "user", title: "Know who you are", sub: "Your account ID on this server." },
+    profile: { icon: "user", title: "See your name", sub: "" },
+    email: { icon: "mail", title: "See your email address", sub: "" },
+    groups: { icon: "group", title: "See your groups", sub: "Which groups you belong to." },
+    offline_access: {
+      icon: "refresh",
+      title: "Stay connected",
+      sub: "Keep access without asking you again, until you disconnect it.",
+    },
+    mcp: {
+      icon: "shield",
+      title: "Administer this identity server",
+      sub: "Create and change users, groups, apps and clients on your behalf. Only approve tools you trust.",
+      danger: true,
+    },
+    "mcp:read": {
+      icon: "eye",
+      title: "Read admin data",
+      sub: "View users, groups, apps and the audit log (no changes).",
+    },
+  };
 
 export function ConsentPage(props: {
   ui: Ui;
@@ -153,7 +184,9 @@ export function ConsentPage(props: {
   return (
     <AuthLayout ui={props.ui} title={`Allow ${client.name}?`} page="consent" wide>
       <div class="consent-apps">
-        <span class="bubble">{client.logo_uri ? initials(client.name) : initials(client.name)}</span>
+        <span class="bubble">
+          {client.logo_uri ? initials(client.name) : initials(client.name)}
+        </span>
         <span class="link" aria-hidden="true">
           <span></span>
           <span></span>
@@ -186,12 +219,17 @@ export function ConsentPage(props: {
         </dd>
         <dt>Registered</dt>
         <dd class="muted">
-          {client.source === "cimd" ? "Via its own metadata document" : client.source === "dcr" ? "Self-registered (unverified)" : "By an admin"}
+          {client.source === "cimd"
+            ? "Via its own metadata document"
+            : client.source === "dcr"
+              ? "Self-registered (unverified)"
+              : "By an admin"}
         </dd>
       </dl>
       {loopback ? (
         <Callout tone="warn">
-          This app runs on your computer (it redirects to <b>{redirectHost}</b>). Only continue if you just started it yourself.
+          This app runs on your computer (it redirects to <b>{redirectHost}</b>). Only continue if
+          you just started it yourself.
         </Callout>
       ) : null}
       <ul class="scope-list">
@@ -236,8 +274,8 @@ export function SignOutPage(props: { ui: Ui; user: User; params: Record<string, 
       </div>
       <h1>Sign out of {props.ui.rpName}?</h1>
       <p class="lede">
-        You're signed in as <b>{props.user.email}</b>. Signing out here signs you out of every app that uses {props.ui.rpName}{" "}
-        the next time it checks.
+        You're signed in as <b>{props.user.email}</b>. Signing out here signs you out of every app
+        that uses {props.ui.rpName} the next time it checks.
       </p>
       <form method="post" action="/end-session" class="grid-2">
         {Object.entries(props.params).map(([k, v]) => (

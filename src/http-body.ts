@@ -1,7 +1,11 @@
 /** Read a small remote document without buffering an unbounded response. */
-export async function readBodyLimited(response: Pick<Response, "headers" | "body">, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
+export async function readBodyLimited(
+  response: Pick<Response, "headers" | "body">,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer>> {
   const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("remote document too large");
+  if (Number.isFinite(declared) && declared > maxBytes)
+    throw new Error("remote document too large");
   if (!response.body) throw new Error("remote document has no body");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];

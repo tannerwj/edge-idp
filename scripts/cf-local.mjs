@@ -65,7 +65,10 @@ export function cfJson(args, { timeoutMs = 60_000 } = {}) {
         /* not complete yet */
       }
     };
-    const timer = setTimeout(() => finish(reject, new Error(`cf ${args.join(" ")} timed out\n${err.slice(-2000)}`)), timeoutMs);
+    const timer = setTimeout(
+      () => finish(reject, new Error(`cf ${args.join(" ")} timed out\n${err.slice(-2000)}`)),
+      timeoutMs,
+    );
     child.stdout.on("data", (d) => {
       out += d;
       tryParse();
@@ -73,14 +76,25 @@ export function cfJson(args, { timeoutMs = 60_000 } = {}) {
     child.stderr.on("data", (d) => (err += d));
     child.on("exit", (code) => {
       tryParse();
-      if (!done) finish(code === 0 ? resolve : reject, code === 0 ? null : new Error(`cf ${args.join(" ")} exited ${code}\n${err.slice(-2000)}`));
+      if (!done)
+        finish(
+          code === 0 ? resolve : reject,
+          code === 0 ? null : new Error(`cf ${args.join(" ")} exited ${code}\n${err.slice(-2000)}`),
+        );
     });
   });
 }
 
 /** Apply migrations to local D1 state. */
 export function migrateLocal(persistTo) {
-  return cfJson(["d1", "migrations", "apply", d1Id(), "--local", ...(persistTo ? ["--persist-to", persistTo] : [])]);
+  return cfJson([
+    "d1",
+    "migrations",
+    "apply",
+    d1Id(),
+    "--local",
+    ...(persistTo ? ["--persist-to", persistTo] : []),
+  ]);
 }
 
 /**
@@ -89,7 +103,13 @@ export function migrateLocal(persistTo) {
  */
 export async function sqlRows(sql, { local = true, persistTo, stage = "production" } = {}) {
   const res = await cfJson([
-    "d1", "raw", d1Id(stage), "--sql", sql, "--mode", stage,
+    "d1",
+    "raw",
+    d1Id(stage),
+    "--sql",
+    sql,
+    "--mode",
+    stage,
     ...(local ? ["--local"] : []),
     ...(local && persistTo ? ["--persist-to", persistTo] : []),
   ]);

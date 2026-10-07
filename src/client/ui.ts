@@ -12,7 +12,9 @@ export function initDialogs(): void {
       const d = $(opener.getAttribute("data-open") ?? "");
       if (d instanceof HTMLDialogElement) {
         d.showModal();
-        d.querySelector<HTMLElement>("input:not([type=hidden]):not([type=radio]):not([type=checkbox]), textarea")?.focus();
+        d.querySelector<HTMLElement>(
+          "input:not([type=hidden]):not([type=radio]):not([type=checkbox]), textarea",
+        )?.focus();
       }
       return;
     }
@@ -22,7 +24,8 @@ export function initDialogs(): void {
     if (t instanceof HTMLDialogElement && t.open) {
       const r = t.getBoundingClientRect();
       const e = ev as MouseEvent;
-      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) t.close();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
+        t.close();
     }
   });
   $$("[data-autoopen]").forEach((el) => el.click());
@@ -41,7 +44,9 @@ export function initDialogs(): void {
       setTimeout(() => (b.disabled = true), 0);
     });
   });
-  $$<HTMLSelectElement>("select[data-autosubmit]").forEach((s) => s.addEventListener("change", () => s.form?.submit()));
+  $$<HTMLSelectElement>("select[data-autosubmit]").forEach((s) =>
+    s.addEventListener("change", () => s.form?.submit()),
+  );
 }
 
 /* ───────────────────────────── copy / share / qr ───────────────────────────── */
@@ -73,7 +78,9 @@ async function onCopyClick(ev: MouseEvent): Promise<void> {
   if (share) {
     const url = share.getAttribute("data-share") ?? "";
     if (navigator.share) {
-      navigator.share({ title: share.getAttribute("data-share-title") ?? document.title, url }).catch(() => {});
+      navigator
+        .share({ title: share.getAttribute("data-share-title") ?? document.title, url })
+        .catch(() => {});
     } else {
       await navigator.clipboard.writeText(url).catch(() => {});
       toast("Link copied");
@@ -105,7 +112,8 @@ function qrSvg(text: string): SVGSVGElement {
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", "QR code for the link");
   let d = "";
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
   const path = document.createElementNS(NS, "path");
   path.setAttribute("d", d);
   path.setAttribute("fill", "#111");
@@ -166,9 +174,11 @@ export function initTables(): void {
     input.addEventListener("input", () => {
       const q = input.value.trim().toLowerCase();
       table?.querySelectorAll<HTMLElement>("tr[data-filter-text]").forEach((tr) => {
-        tr.classList.toggle("is-hidden", !!q && !(tr.getAttribute("data-filter-text") ?? "").includes(q));
+        tr.classList.toggle(
+          "is-hidden",
+          !!q && !(tr.getAttribute("data-filter-text") ?? "").includes(q),
+        );
       });
     });
   });
 }
-
