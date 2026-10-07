@@ -239,6 +239,139 @@ export interface Crumb {
   href?: string;
 }
 
+function SidebarNav({ nav, active }: { nav: NavItem[]; active: string }) {
+  return (
+    <nav class="nav">
+      {nav.map((item, i) => {
+        const header =
+          item.section && item.section !== nav[i - 1]?.section ? (
+            <div class="nav-section" key={`s-${item.section}`}>
+              {item.section}
+            </div>
+          ) : null;
+        return (
+          <>
+            {header}
+            <a
+              href={item.href}
+              class={active === item.id ? "nav-link active" : "nav-link"}
+              {...(active === item.id ? { "aria-current": "page" } : {})}
+            >
+              <Icon name={item.icon} />
+              <span>{item.label}</span>
+            </a>
+          </>
+        );
+      })}
+    </nav>
+  );
+}
+
+function ModeToggle({ mode }: { mode: Mode }) {
+  return (
+    <div class="mode-toggle" role="group" aria-label="Color mode">
+      <button
+        type="button"
+        data-mode-set="light"
+        aria-pressed={mode === "light" ? "true" : "false"}
+        title="Light"
+      >
+        <Icon name="sun" size="sm" />
+      </button>
+      <button
+        type="button"
+        data-mode-set="system"
+        aria-pressed={mode === "system" ? "true" : "false"}
+        title="Match system"
+      >
+        <Icon name="laptop" size="sm" />
+      </button>
+      <button
+        type="button"
+        data-mode-set="dark"
+        aria-pressed={mode === "dark" ? "true" : "false"}
+        title="Dark"
+      >
+        <Icon name="moon" size="sm" />
+      </button>
+    </div>
+  );
+}
+
+function ViewerMenu({ viewer }: { viewer: Viewer }) {
+  return (
+    <div class="me">
+      <Avatar name={viewer.name} seed={viewer.id} />
+      <a class="who" href="/account">
+        <div class="n truncate">{viewer.name}</div>
+        <div class="e truncate">{viewer.email}</div>
+      </a>
+      <form method="post" action="/logout">
+        <button class="btn ghost icon sm" type="submit" title="Sign out" aria-label="Sign out">
+          <Icon name="logOut" size="sm" />
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function Sidebar({ ui, viewer, active }: { ui: Ui; viewer: Viewer; active: string }) {
+  return (
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="/">
+        <BrandMark />
+        <span class="truncate">{ui.rpName}</span>
+      </a>
+      <button class="search-trigger" type="button" data-open-palette>
+        <Icon name="search" size="sm" />
+        <span>Search or jump to…</span>
+        <span class="kbd">⌘K</span>
+      </button>
+      <SidebarNav nav={navFor(viewer.isAdmin)} active={active} />
+      <div class="sidebar-foot">
+        <ModeToggle mode={ui.mode} />
+        <ViewerMenu viewer={viewer} />
+      </div>
+    </aside>
+  );
+}
+
+function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
+  return (
+    <nav class="crumbs" aria-label="Breadcrumb">
+      {crumbs.map((c, i) => (
+        <>
+          {i > 0 ? <span class="sep">/</span> : null}
+          {c.href ? <a href={c.href}>{c.label}</a> : <span class="here truncate">{c.label}</span>}
+        </>
+      ))}
+    </nav>
+  );
+}
+
+function CommandPalette() {
+  return (
+    <dialog class="palette" id="palette" aria-label="Command palette">
+      <div class="palette-input">
+        <Icon name="search" />
+        <input
+          type="search"
+          placeholder="Jump to a page, person, or app…"
+          autocomplete="off"
+          spellcheck={false}
+          data-palette-input
+        />
+        <span class="kbd">esc</span>
+      </div>
+      <ul class="palette-list" data-palette-list role="listbox"></ul>
+      <div class="palette-foot">
+        <span>↑↓ to navigate</span>
+        <span>↵ to open</span>
+      </div>
+    </dialog>
+  );
+}
+
 export function AppShell(props: {
   ui: Ui;
   viewer: Viewer;
@@ -250,7 +383,6 @@ export function AppShell(props: {
   narrow?: boolean;
   children: unknown;
 }) {
-  const nav = navFor(props.viewer.isAdmin);
   const crumbs = props.crumbs ?? [{ label: props.title }];
   return (
     <Document
@@ -261,103 +393,14 @@ export function AppShell(props: {
     >
       <div class="app">
         <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-hidden="true" />
-        <aside class="sidebar" aria-label="Main navigation">
-          <a class="brand" href="/">
-            <BrandMark />
-            <span class="truncate">{props.ui.rpName}</span>
-          </a>
-          <button class="search-trigger" type="button" data-open-palette>
-            <Icon name="search" size="sm" />
-            <span>Search or jump to…</span>
-            <span class="kbd">⌘K</span>
-          </button>
-          <nav class="nav">
-            {nav.map((item, i) => {
-              const header =
-                item.section && item.section !== nav[i - 1]?.section ? (
-                  <div class="nav-section" key={`s-${item.section}`}>
-                    {item.section}
-                  </div>
-                ) : null;
-              return (
-                <>
-                  {header}
-                  <a
-                    href={item.href}
-                    class={props.active === item.id ? "nav-link active" : "nav-link"}
-                    {...(props.active === item.id ? { "aria-current": "page" } : {})}
-                  >
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                  </a>
-                </>
-              );
-            })}
-          </nav>
-          <div class="sidebar-foot">
-            <div class="mode-toggle" role="group" aria-label="Color mode">
-              <button
-                type="button"
-                data-mode-set="light"
-                aria-pressed={props.ui.mode === "light" ? "true" : "false"}
-                title="Light"
-              >
-                <Icon name="sun" size="sm" />
-              </button>
-              <button
-                type="button"
-                data-mode-set="system"
-                aria-pressed={props.ui.mode === "system" ? "true" : "false"}
-                title="Match system"
-              >
-                <Icon name="laptop" size="sm" />
-              </button>
-              <button
-                type="button"
-                data-mode-set="dark"
-                aria-pressed={props.ui.mode === "dark" ? "true" : "false"}
-                title="Dark"
-              >
-                <Icon name="moon" size="sm" />
-              </button>
-            </div>
-            <div class="me">
-              <Avatar name={props.viewer.name} seed={props.viewer.id} />
-              <a class="who" href="/account">
-                <div class="n truncate">{props.viewer.name}</div>
-                <div class="e truncate">{props.viewer.email}</div>
-              </a>
-              <form method="post" action="/logout">
-                <button
-                  class="btn ghost icon sm"
-                  type="submit"
-                  title="Sign out"
-                  aria-label="Sign out"
-                >
-                  <Icon name="logOut" size="sm" />
-                </button>
-              </form>
-            </div>
-          </div>
-        </aside>
+        <Sidebar ui={props.ui} viewer={props.viewer} active={props.active} />
         <label class="scrim" for="nav-toggle"></label>
         <div class="main">
           <header class="topbar">
             <label class="btn ghost icon menu-btn" for="nav-toggle" aria-label="Menu">
               <Icon name="menu" />
             </label>
-            <nav class="crumbs" aria-label="Breadcrumb">
-              {crumbs.map((c, i) => (
-                <>
-                  {i > 0 ? <span class="sep">/</span> : null}
-                  {c.href ? (
-                    <a href={c.href}>{c.label}</a>
-                  ) : (
-                    <span class="here truncate">{c.label}</span>
-                  )}
-                </>
-              ))}
-            </nav>
+            <Breadcrumbs crumbs={crumbs} />
             <button
               class="btn ghost icon right"
               type="button"
@@ -370,24 +413,7 @@ export function AppShell(props: {
           <main class={props.narrow ? "content narrow" : "content"}>{props.children}</main>
         </div>
       </div>
-      <dialog class="palette" id="palette" aria-label="Command palette">
-        <div class="palette-input">
-          <Icon name="search" />
-          <input
-            type="search"
-            placeholder="Jump to a page, person, or app…"
-            autocomplete="off"
-            spellcheck={false}
-            data-palette-input
-          />
-          <span class="kbd">esc</span>
-        </div>
-        <ul class="palette-list" data-palette-list role="listbox"></ul>
-        <div class="palette-foot">
-          <span>↑↓ to navigate</span>
-          <span>↵ to open</span>
-        </div>
-      </dialog>
+      <CommandPalette />
     </Document>
   );
 }

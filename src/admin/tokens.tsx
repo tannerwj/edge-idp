@@ -9,20 +9,108 @@ import { Icon } from "../ui/icons";
 
 export const tokensAdmin = new Hono<AdminVars>();
 
+type ApiTokenRow = {
+  id: string;
+  name: string;
+  created_at: number;
+  last_used_at: number | null;
+  scope: string;
+  expires_at: number | null;
+  prefix: string | null;
+  creator: string;
+};
+
+function TokenRow({ t, now }: { t: ApiTokenRow; now: number }) {
+  const expired = !!t.expires_at && t.expires_at < now;
+  return (
+    <tr key={t.id}>
+      <td>
+        <div class="name">{t.name}</div>
+        <div class="muted small">
+          {t.prefix ? <span class="mono">{t.prefix}…</span> : null} by {t.creator}
+        </div>
+      </td>
+      <td>
+        {t.scope === "admin" ? (
+          <span class="badge warn">Full admin</span>
+        ) : (
+          <span class="badge">Read-only</span>
+        )}
+      </td>
+      <td class="muted small nowrap">
+        <Time ts={t.last_used_at} empty="Never" />
+      </td>
+      <td class="small nowrap">
+        {expired ? (
+          <span class="badge bad">Expired</span>
+        ) : t.expires_at ? (
+          <Time ts={t.expires_at} />
+        ) : (
+          <span class="muted">Never</span>
+        )}
+      </td>
+      <td class="actions">
+        <PostButton
+          action={`/admin/tokens/${t.id}/delete`}
+          label="Revoke"
+          class="btn ghost sm danger"
+          confirm={`Revoke “${t.name}”? Anything using it stops working.`}
+        />
+      </td>
+    </tr>
+  );
+}
+
+function NewTokenDialog() {
+  return (
+    <Dialog
+      id="new-token"
+      title="New API token"
+      lede="Shown once. Stored as a hash."
+      action="/admin/tokens"
+      submit="Create token"
+    >
+      <label class="field">
+        <span class="label">Name</span>
+        <input name="name" required maxLength={60} placeholder="Home automation script" />
+      </label>
+      <div class="field">
+        <span class="label">Access</span>
+        <label class="check">
+          <input type="radio" name="scope" value="read" checked />
+          <span>
+            Read-only
+            <span class="sub">List people, groups, apps, audit log. Can't change anything.</span>
+          </span>
+        </label>
+        <label class="check">
+          <input type="radio" name="scope" value="admin" />
+          <span>
+            Full admin
+            <span class="sub">Everything you can do in this UI. Guard it like a password.</span>
+          </span>
+        </label>
+      </div>
+      <label class="field">
+        <span class="label">Expires</span>
+        <select name="expires">
+          <option value="30">In 30 days</option>
+          <option value="90" selected>
+            In 90 days
+          </option>
+          <option value="365">In a year</option>
+          <option value="">Never</option>
+        </select>
+      </label>
+    </Dialog>
+  );
+}
+
 tokensAdmin.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT t.id, t.name, t.created_at, t.last_used_at, t.scope, t.expires_at, t.prefix, u.name AS creator
      FROM api_tokens t JOIN users u ON u.id = t.created_by ORDER BY t.created_at DESC`,
-  ).all<{
-    id: string;
-    name: string;
-    created_at: number;
-    last_used_at: number | null;
-    scope: string;
-    expires_at: number | null;
-    prefix: string | null;
-    creator: string;
-  }>();
+  ).all<ApiTokenRow>();
   const now = nowSec();
   return await page(
     c,
@@ -57,46 +145,9 @@ tokensAdmin.get("/", async (c) => {
                 </tr>
               </thead>
               <tbody>
-                {results.map((t) => {
-                  const expired = !!t.expires_at && t.expires_at < now;
-                  return (
-                    <tr key={t.id}>
-                      <td>
-                        <div class="name">{t.name}</div>
-                        <div class="muted small">
-                          {t.prefix ? <span class="mono">{t.prefix}…</span> : null} by {t.creator}
-                        </div>
-                      </td>
-                      <td>
-                        {t.scope === "admin" ? (
-                          <span class="badge warn">Full admin</span>
-                        ) : (
-                          <span class="badge">Read-only</span>
-                        )}
-                      </td>
-                      <td class="muted small nowrap">
-                        <Time ts={t.last_used_at} empty="Never" />
-                      </td>
-                      <td class="small nowrap">
-                        {expired ? (
-                          <span class="badge bad">Expired</span>
-                        ) : t.expires_at ? (
-                          <Time ts={t.expires_at} />
-                        ) : (
-                          <span class="muted">Never</span>
-                        )}
-                      </td>
-                      <td class="actions">
-                        <PostButton
-                          action={`/admin/tokens/${t.id}/delete`}
-                          label="Revoke"
-                          class="btn ghost sm danger"
-                          confirm={`Revoke “${t.name}”? Anything using it stops working.`}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {results.map((t) => (
+                  <TokenRow key={t.id} t={t} now={now} />
+                ))}
               </tbody>
             </table>
           </div>
@@ -114,46 +165,7 @@ tokensAdmin.get("/", async (c) => {
           </Empty>
         )}
       </div>
-      <Dialog
-        id="new-token"
-        title="New API token"
-        lede="Shown once. Stored as a hash."
-        action="/admin/tokens"
-        submit="Create token"
-      >
-        <label class="field">
-          <span class="label">Name</span>
-          <input name="name" required maxLength={60} placeholder="Home automation script" />
-        </label>
-        <div class="field">
-          <span class="label">Access</span>
-          <label class="check">
-            <input type="radio" name="scope" value="read" checked />
-            <span>
-              Read-only
-              <span class="sub">List people, groups, apps, audit log. Can't change anything.</span>
-            </span>
-          </label>
-          <label class="check">
-            <input type="radio" name="scope" value="admin" />
-            <span>
-              Full admin
-              <span class="sub">Everything you can do in this UI. Guard it like a password.</span>
-            </span>
-          </label>
-        </div>
-        <label class="field">
-          <span class="label">Expires</span>
-          <select name="expires">
-            <option value="30">In 30 days</option>
-            <option value="90" selected>
-              In 90 days
-            </option>
-            <option value="365">In a year</option>
-            <option value="">Never</option>
-          </select>
-        </label>
-      </Dialog>
+      <NewTokenDialog />
     </>,
   );
 });

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getCredentialsForUser, getUser, getUserGroups, listGroups } from "../db";
+import type { User } from "../db";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
 import { page } from "./shell";
@@ -17,13 +18,12 @@ const TABS = [
   { id: "activity", label: "Activity" },
 ] as const;
 
-userDetailAdmin.get("/", async (c) => {
-  const id = c.req.param("id") ?? "";
-  const db = c.env.DB;
-  const user = await getUser(db, id);
-  if (!user) return c.notFound();
-  const tab = TABS.find((t) => t.id === c.req.query("tab"))?.id ?? "overview";
-  const self = id === c.get("admin").id;
+async function loadTabData(
+  db: D1Database,
+  id: string,
+  user: User,
+  self: boolean,
+): Promise<TabData> {
   const [creds, groups, allGroups, sessions, grants, activity] = await Promise.all([
     getCredentialsForUser(db, id),
     getUserGroups(db, id),
@@ -60,7 +60,7 @@ userDetailAdmin.get("/", async (c) => {
       .bind(id)
       .all<{ event: string; created_at: number; client_name: string | null }>(),
   ]);
-  const data: TabData = {
+  return {
     id,
     self,
     user,
@@ -71,10 +71,21 @@ userDetailAdmin.get("/", async (c) => {
     grants: grants.results,
     activity: activity.results,
   };
+}
+
+userDetailAdmin.get("/", async (c) => {
+  const id = c.req.param("id") ?? "";
+  const db = c.env.DB;
+  const user = await getUser(db, id);
+  if (!user) return c.notFound();
+  const tab = TABS.find((t) => t.id === c.req.query("tab"))?.id ?? "overview";
+  const self = id === c.get("admin").id;
+  const data = await loadTabData(db, id, user, self);
+  const { creds } = data;
   const counts: Record<string, number> = {
     passkeys: creds.length,
-    devices: sessions.results.length,
-    apps: grants.results.length,
+    devices: data.sessions.length,
+    apps: data.grants.length,
   };
 
   return await page(

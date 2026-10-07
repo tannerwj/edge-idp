@@ -221,6 +221,82 @@ function AppForm(props: { app?: App; groups: Group[]; clients: OidcClient[] }) {
   );
 }
 
+function AppList({
+  apps,
+  clientById,
+  groups,
+  clients,
+}: {
+  apps: App[];
+  clientById: Map<string, OidcClient>;
+  groups: Group[];
+  clients: OidcClient[];
+}) {
+  return (
+    <div class="card">
+      {apps.length ? (
+        <ul class="list">
+          {apps.map((a) => {
+            const cl = a.client_id ? clientById.get(a.client_id) : null;
+            return (
+              <li key={a.id}>
+                <Glyph app={a} />
+                <div class="grow">
+                  <div class="title row-sm">
+                    {a.name}
+                    {a.cf_app_id ? <span class="badge">Cloudflare Access</span> : null}
+                    {cl ? <span class="badge">Client: {cl.name}</span> : null}
+                  </div>
+                  <div class="meta truncate">
+                    <a href={a.url} rel="noopener">
+                      {a.url}
+                    </a>
+                  </div>
+                </div>
+                <div class="hide-sm">
+                  <GroupChips groups={cl ? cl.allowed_groups : a.allowed_groups} />
+                </div>
+                <button class="btn ghost sm" type="button" data-open={`edit-${a.id}`}>
+                  Edit
+                </button>
+                <PostButton
+                  action={`/admin/apps/${a.id}/delete`}
+                  label=""
+                  icon="trash"
+                  class="btn ghost icon sm"
+                  title="Remove"
+                  confirm={`Remove ${a.name} from the launcher?`}
+                />
+                <Dialog
+                  id={`edit-${a.id}`}
+                  sheet
+                  title={`Edit ${a.name}`}
+                  action={`/admin/apps/${a.id}`}
+                >
+                  <AppForm app={a} groups={groups} clients={clients} />
+                </Dialog>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <Empty
+          icon="grid"
+          title="No apps yet"
+          action={
+            <button class="btn primary" type="button" data-open="new-app">
+              Add your first app
+            </button>
+          }
+        >
+          Add the things you and your people use — Home Assistant, Immich, Jellyfin, your router.
+          Each shows up for the groups you pick.
+        </Empty>
+      )}
+    </div>
+  );
+}
+
 appsAdmin.get("/", async (c) => {
   const db = c.env.DB;
   const [apps, groups, clients] = await Promise.all([
@@ -266,67 +342,7 @@ appsAdmin.get("/", async (c) => {
           </>
         }
       />
-      <div class="card">
-        {apps.length ? (
-          <ul class="list">
-            {apps.map((a) => {
-              const cl = a.client_id ? clientById.get(a.client_id) : null;
-              return (
-                <li key={a.id}>
-                  <Glyph app={a} />
-                  <div class="grow">
-                    <div class="title row-sm">
-                      {a.name}
-                      {a.cf_app_id ? <span class="badge">Cloudflare Access</span> : null}
-                      {cl ? <span class="badge">Client: {cl.name}</span> : null}
-                    </div>
-                    <div class="meta truncate">
-                      <a href={a.url} rel="noopener">
-                        {a.url}
-                      </a>
-                    </div>
-                  </div>
-                  <div class="hide-sm">
-                    <GroupChips groups={cl ? cl.allowed_groups : a.allowed_groups} />
-                  </div>
-                  <button class="btn ghost sm" type="button" data-open={`edit-${a.id}`}>
-                    Edit
-                  </button>
-                  <PostButton
-                    action={`/admin/apps/${a.id}/delete`}
-                    label=""
-                    icon="trash"
-                    class="btn ghost icon sm"
-                    title="Remove"
-                    confirm={`Remove ${a.name} from the launcher?`}
-                  />
-                  <Dialog
-                    id={`edit-${a.id}`}
-                    sheet
-                    title={`Edit ${a.name}`}
-                    action={`/admin/apps/${a.id}`}
-                  >
-                    <AppForm app={a} groups={groups} clients={clients} />
-                  </Dialog>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <Empty
-            icon="grid"
-            title="No apps yet"
-            action={
-              <button class="btn primary" type="button" data-open="new-app">
-                Add your first app
-              </button>
-            }
-          >
-            Add the things you and your people use — Home Assistant, Immich, Jellyfin, your router.
-            Each shows up for the groups you pick.
-          </Empty>
-        )}
-      </div>
+      <AppList apps={apps} clientById={clientById} groups={groups} clients={clients} />
 
       {cfConfigured(c.env) && c.req.query("cf") === "1" ? (
         <CloudflareSection cf={cf} cfError={cfError} imported={imported} />

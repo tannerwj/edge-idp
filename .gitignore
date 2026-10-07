@@ -12,4 +12,3 @@ dist/
 
 # cf CLI generated output/types
 .cloudflare/
-.e2e/
