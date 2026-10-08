@@ -144,7 +144,7 @@ src/
   db.ts                 D1 row types, validators, queries, audit writes
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
-  settings-cache.ts     per-isolate cache of the accent color
+  settings-cache.ts     per-isolate cache of instance settings (name, accent, Cloudflare connection)
   cf-access.ts          optional read-only Cloudflare Access integration
   util.ts               small pure helpers (encoding, hashing, comparisons)
   account.tsx           Account & security routes
@@ -152,8 +152,8 @@ src/
   home.tsx              home launcher
   pages.tsx             sign-in, enrollment, consent, sign-out, error pages
   admin/                admin UI: index (router, middleware), shell, dashboard, users, user-detail,
-                        user-tabs, groups, apps, clients, client-detail, audit, connect, tokens,
-                        metrics, settings
+                        user-tabs, groups, apps (+ apps-cloudflare import view), clients,
+                        client-detail, audit, connect, tokens, metrics, settings
   ui/                   layout (document, flash), components, icons, activity feed
   client/               browser bundle: app.ts entry, ui.ts, dom.ts, passkeys.ts, palette.ts, app.css
   assets.gen.ts         generated: bundled app.js/app.css, build hash, version
