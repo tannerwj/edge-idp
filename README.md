@@ -36,7 +36,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - Overview: sign-in trends, most-used apps, and "needs attention" items (only
   one admin, people without a passkey, expiring tokens, security events)
 - Audit log with categories, search and CSV export
-- ⌘K command palette, light and dark modes, an accent color
+- Settings: rename the instance, pick an accent color, control how AI tools
+  register, and connect a read-only Cloudflare token for the Access import
+- ⌘K command palette, light and dark modes
 
 **Standards**
 
