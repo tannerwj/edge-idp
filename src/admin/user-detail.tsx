@@ -5,13 +5,22 @@ import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
 import { page } from "./shell";
 import { Avatar, PageHead, PostButton } from "../ui/components";
-import { ActivityTab, ConnectedAppsTab, OverviewTab, PasskeysTab, SessionsTab } from "./user-tabs";
+import { userAccess } from "../access";
+import {
+  ActivityTab,
+  AppAccessTab,
+  ConnectedAppsTab,
+  OverviewTab,
+  PasskeysTab,
+  SessionsTab,
+} from "./user-tabs";
 import type { TabData } from "./user-tabs";
 
 export const userDetailAdmin = new Hono<AdminVars>();
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "access", label: "App access" },
   { id: "passkeys", label: "Passkeys" },
   { id: "devices", label: "Sessions" },
   { id: "apps", label: "Connected apps" },
@@ -24,7 +33,7 @@ async function loadTabData(
   user: User,
   self: boolean,
 ): Promise<TabData> {
-  const [creds, groups, allGroups, sessions, grants, activity] = await Promise.all([
+  const [creds, groups, allGroups, sessions, grants, activity, access] = await Promise.all([
     getCredentialsForUser(db, id),
     getUserGroups(db, id),
     listGroups(db),
@@ -59,6 +68,7 @@ async function loadTabData(
       )
       .bind(id)
       .all<{ event: string; created_at: number; client_name: string | null }>(),
+    userAccess(db, id),
   ]);
   return {
     id,
@@ -70,6 +80,9 @@ async function loadTabData(
     sessions: sessions.results,
     grants: grants.results,
     activity: activity.results,
+    access: access.apps
+      .filter((a) => access.access.has(a.id))
+      .map((a) => ({ name: a.name, slug: a.slug, roles: access.access.get(a.id) ?? [] })),
   };
 }
 
@@ -155,6 +168,7 @@ userDetailAdmin.get("/", async (c) => {
 
       {tab === "overview" ? <OverviewTab {...data} /> : null}
 
+      {tab === "access" ? <AppAccessTab {...data} /> : null}
       {tab === "passkeys" ? <PasskeysTab {...data} /> : null}
 
       {tab === "devices" ? <SessionsTab {...data} /> : null}

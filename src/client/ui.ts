@@ -197,10 +197,16 @@ export function initTables(): void {
     const table = $(input.getAttribute("data-filter-table") ?? "");
     input.addEventListener("input", () => {
       const q = input.value.trim().toLowerCase();
-      table?.querySelectorAll<HTMLElement>("tr[data-filter-text]").forEach((tr) => {
-        tr.classList.toggle(
+      table?.querySelectorAll<HTMLElement>("[data-filter-text]").forEach((el) => {
+        el.classList.toggle(
           "is-hidden",
-          !!q && !(tr.getAttribute("data-filter-text") ?? "").includes(q),
+          !!q && !(el.getAttribute("data-filter-text") ?? "").includes(q),
+        );
+      });
+      table?.querySelectorAll<HTMLElement>("[data-filter-section]").forEach((sec) => {
+        sec.classList.toggle(
+          "is-hidden",
+          !!q && !sec.querySelector("[data-filter-text]:not(.is-hidden)"),
         );
       });
     });

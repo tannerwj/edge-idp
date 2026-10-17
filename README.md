@@ -32,8 +32,8 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - Access grants: give a user, a group or everyone access to an app or an app
   group, with an optional role; admin-registered clients receive `apps` and
   `roles` claims (`<app>:<role>`) to enforce
-- Apps: the launcher, with per-group visibility; optional import of your
-  Cloudflare Access apps and their policies (read-only)
+- Apps: the launcher, organized into app groups, with favorites and search;
+  optional import of your Cloudflare Access apps and their policies (read-only)
 - Clients: OIDC/OAuth clients, both confidential and public, with exact
   redirect matching, per-client groups, PKCE and consent settings
 - Overview: sign-in trends, most-used apps, and "needs attention" items (only
