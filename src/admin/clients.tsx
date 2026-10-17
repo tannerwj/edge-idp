@@ -291,8 +291,12 @@ clientsAdmin.get("/:id", async (c) => {
   const db = c.env.DB;
   const client = await getClient(db, c.req.param("id"));
   if (!client) return c.notFound();
-  const [groups, grants, refresh, signIns] = await Promise.all([
+  const [groups, linked, grants, refresh, signIns] = await Promise.all([
     listGroups(db),
+    db
+      .prepare("SELECT name FROM apps WHERE client_id = ?1 ORDER BY name LIMIT 1")
+      .bind(client.id)
+      .first<{ name: string }>(),
     count(db, "SELECT COUNT(*) AS n FROM oauth_grants WHERE client_id = ?1", client.id),
     count(
       db,
@@ -323,6 +327,7 @@ clientsAdmin.get("/:id", async (c) => {
     <ClientDetail
       client={client}
       groups={groups}
+      linkedApp={linked?.name ?? null}
       grants={grants}
       refresh={refresh}
       signIns={signIns}

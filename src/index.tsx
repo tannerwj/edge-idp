@@ -11,6 +11,7 @@ import { registration } from "./oauth-clients";
 import { admin } from "./admin";
 import { account } from "./account";
 import { home } from "./home";
+import { pickup } from "./secret-pickup";
 import { mcp } from "./mcp";
 import { EnrollPage, ErrorPage, LoginPage } from "./pages";
 import { destroySession, getSession } from "./session";
@@ -41,7 +42,8 @@ function limiterFor(env: Env, path: string): RateLimit | undefined {
     path.startsWith("/webauthn/") ||
     path === "/register" ||
     path === "/authorize/decision" ||
-    path === "/setup"
+    path === "/setup" ||
+    path === "/client-secret/pickup"
   )
     return env.AUTH_LIMITER;
   if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp"))
@@ -216,6 +218,7 @@ app.route("/", oidc);
 app.route("/", tokens);
 app.route("/", account);
 app.route("/", home);
+app.route("/", pickup);
 
 app.notFound(async (c) =>
   c.html(

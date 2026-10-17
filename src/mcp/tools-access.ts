@@ -1,20 +1,11 @@
-import { getApp, listApps } from "../db";
-import type { App } from "../db";
+import { listApps } from "../db";
 import { DEFAULT_ROLES, listAppGroups, listGrants, resolveAccess } from "../access";
 import type { Grant } from "../access";
 import { cfConfigured, listAccessApps } from "../cf-access";
 import * as ops from "../ops";
-import { groupByRef, obj, str, USER_REF, userByRef } from "./common";
+import { TEMPLATES } from "../app-templates";
+import { groupByRef, obj, str, strList, USER_REF, userByRef } from "./common";
 import type { ToolDef } from "./common";
-
-export async function appByRef(db: D1Database, ref: string): Promise<App> {
-  const byId = await getApp(db, ref);
-  if (byId) return byId;
-  const key = ref.trim().toLowerCase();
-  const app = (await listApps(db)).find((a) => a.slug === key || a.name.toLowerCase() === key);
-  if (!app) throw new ops.OpError(`App not found: ${ref}`);
-  return app;
-}
 
 async function grantView(db: D1Database, grants: Grant[]) {
   const [apps, appGroups, { results: groups }, { results: users }] = await Promise.all([
@@ -54,14 +45,88 @@ const SUBJECT = {
 };
 
 async function grantInput(db: D1Database, args: Record<string, unknown>): Promise<ops.GrantInput> {
-  const appId = str(args.app) ? (await appByRef(db, str(args.app))).id : null;
+  const appId = str(args.app) ? (await ops.appByRef(db, str(args.app))).id : null;
   const appGroupId = str(args.app_group) ? await ops.appGroupIdOf(db, str(args.app_group)) : null;
   const userId = str(args.user_id) || str(args.email) ? (await userByRef(db, args)).id : null;
   const groupId = str(args.group) ? (await groupByRef(db, str(args.group))).id : null;
   return { appId, appGroupId, userId, groupId, everyone: args.everyone === true };
 }
 
+const CONNECT_TOOLS: ToolDef[] = [
+  {
+    name: "app_templates_list",
+    write: false,
+    description:
+      "Apps Johnson ID knows how to connect with apps_connect: id, how the settings are applied (api, env or ui), redirect URIs it registers, and notes.",
+    inputSchema: obj(),
+    handler: async () =>
+      TEMPLATES.map((t) => ({
+        id: t.id,
+        name: t.name,
+        apply: t.apply,
+        pkce: t.pkce,
+        redirects_for_example: t.redirects("https://app.example.com"),
+        notes: t.notes,
+        docs: t.docs,
+      })),
+  },
+  {
+    name: "apps_connect",
+    write: true,
+    description:
+      "Connect an app so it signs in with Johnson ID: creates (or reuses) its launcher tile, registers an OIDC client linked to it with the template's redirect URIs, and returns the app-side config. Who may sign in = the tile's grants; the app's token carries only its own roles. The client secret is NOT returned: POST token=<secret_pickup.token> to secret_pickup.url once (10 minutes) and pipe the response into the app, replacing ${CLIENT_SECRET} in config. Re-running on a connected app rotates the secret and refreshes redirect URIs.",
+    inputSchema: obj(
+      {
+        template: {
+          type: "string",
+          description: "From app_templates_list, e.g. grafana or generic",
+        },
+        base_url: {
+          type: "string",
+          description: "The app's URL, e.g. https://grafana.example.com",
+        },
+        app: {
+          type: "string",
+          description: "Existing tile (id, slug or name); omit to create one",
+        },
+        name: { type: "string", description: "Tile name when creating" },
+        app_group: { type: "string", description: "App group for a new tile" },
+        icon: { type: "string" },
+        groups: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Groups to grant on a new tile (default: the app group's grants, or everyone)",
+        },
+        redirect_uris: {
+          type: "array",
+          items: { type: "string" },
+          description: "Required for the generic template",
+        },
+      },
+      ["template", "base_url"],
+    ),
+    handler: async ({ db, env, actor }, args) =>
+      ops.connectApp(
+        db,
+        env.ISSUER,
+        {
+          template: str(args.template),
+          baseUrl: str(args.base_url),
+          app: str(args.app) || undefined,
+          name: str(args.name) || undefined,
+          appGroup: str(args.app_group) || undefined,
+          icon: str(args.icon) || undefined,
+          groups: strList(args.groups),
+          redirectUris: strList(args.redirect_uris),
+        },
+        actor,
+      ),
+  },
+];
+
 export const ACCESS_TOOLS: ToolDef[] = [
+  ...CONNECT_TOOLS,
   {
     name: "app_groups_list",
     write: false,
@@ -135,7 +200,7 @@ export const ACCESS_TOOLS: ToolDef[] = [
     handler: async ({ db }, args) => {
       let grants = await listGrants(db);
       if (str(args.app)) {
-        const app = await appByRef(db, str(args.app));
+        const app = await ops.appByRef(db, str(args.app));
         grants = grants.filter(
           (g) => g.app_id === app.id || (!!app.app_group_id && g.app_group_id === app.app_group_id),
         );
@@ -178,7 +243,7 @@ export const ACCESS_TOOLS: ToolDef[] = [
     name: "access_explain",
     write: false,
     description:
-      "Effective access for one user: every app they can open, their roles there, and the grants that give it. These are the `apps` and `roles` claims Cloudflare Access and admin-registered clients receive.",
+      "Effective access for one user: every app they can open, their roles there, and the grants that give it. Cloudflare Access gets the app list as the `apps` claim; an app connected with its own client gets only its roles as `roles`.",
     inputSchema: obj(USER_REF),
     handler: async ({ db }, args) => {
       const user = await userByRef(db, args);

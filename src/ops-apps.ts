@@ -130,6 +130,7 @@ export interface AppInput {
   cfAppId?: string | null;
   slug?: string;
   appGroup?: string;
+  seedGrants?: boolean;
 }
 
 function validAppUrl(raw: string): string {
@@ -180,7 +181,7 @@ export async function createApp(db: D1Database, input: AppInput, a: Actor): Prom
       appGroupId,
     )
     .run();
-  if (!input.clientId) await seedAppGrants(db, id, groups, a);
+  if (!input.clientId && input.seedGrants !== false) await seedAppGrants(db, id, groups, a);
   await audit(db, "APP_CREATED", { detail: by(a, { name }) });
   return id;
 }

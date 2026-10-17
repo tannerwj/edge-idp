@@ -24,6 +24,7 @@ export async function runMaintenance(db: D1Database): Promise<Record<string, num
     audit_cap: db.prepare(
       `DELETE FROM audit_log WHERE id < (SELECT id FROM audit_log ORDER BY id DESC LIMIT 1 OFFSET ${AUDIT_MAX_ROWS})`,
     ),
+    secret_pickups: db.prepare("DELETE FROM secret_pickups WHERE expires_at < ?1").bind(now),
     mcp_calls: db
       .prepare("DELETE FROM mcp_calls WHERE started_at < ?1")
       .bind(now - MCP_CALLS_MAX_AGE),

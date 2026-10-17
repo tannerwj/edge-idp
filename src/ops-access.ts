@@ -1,4 +1,5 @@
-import { audit } from "./db";
+import { audit, getApp, listApps } from "./db";
+import type { App } from "./db";
 import { ROLE_RE, SLUG_RE, slugify } from "./access";
 import { newId, nowSec } from "./util";
 import { by, OpError } from "./ops-core";
@@ -191,4 +192,13 @@ export async function setFavorite(
         .prepare("DELETE FROM app_favorites WHERE user_id = ?1 AND app_id = ?2")
         .bind(userId, appId);
   await stmt.run();
+}
+
+export async function appByRef(db: D1Database, ref: string): Promise<App> {
+  const byId = await getApp(db, ref);
+  if (byId) return byId;
+  const key = ref.trim().toLowerCase();
+  const app = (await listApps(db)).find((a) => a.slug === key || a.name.toLowerCase() === key);
+  if (!app) throw new OpError(`App not found: ${ref}`);
+  return app;
 }

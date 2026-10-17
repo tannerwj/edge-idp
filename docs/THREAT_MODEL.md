@@ -102,9 +102,11 @@ a Client ID Metadata Document (an https `client_id` URL), are third-party:
 they always get a consent screen. The screen shows the redirect host, plus the
 metadata URL's domain for CIMD clients. Self-registered clients are labelled
 unverified. Only admins can authorize them until an admin assigns groups. The
-`mcp` / `mcp:read` scopes are admin-only regardless of client. The same policy
-is applied at authorization, code redemption and refresh
-(`src/oauth-shared.ts › clientAccessProblem`). Consent is remembered per
+`mcp` / `mcp:read` scopes are admin-only regardless of client. A client linked to a launcher app ignores its own
+groups and admits exactly the users that app's grants cover, so "who can open
+it" is decided in one place for the launcher, the client and the token's
+roles. The same policy is applied at authorization, code redemption and
+refresh (`src/oauth-shared.ts › clientAccessProblem`). Consent is remembered per
 (user, client). Revoking it under Account → Connected apps deletes the grant
 and that client's refresh tokens for the user.
 
@@ -130,6 +132,22 @@ The `next` parameter on `/login` accepts only same-origin relative paths.
 Values starting with `//` (protocol-relative) or `/\` (which browsers treat as
 `//`) fall back to `/`, so a fresh login can never be redirected off-site
 (`src/index.tsx › safeNext`).
+
+## Client secret pickup
+
+`apps_connect` (and `clients_rotate_secret` with `pickup: true`) never return
+a client secret to the MCP caller, so it never enters an AI tool's context or
+transcript. They return a one-time pickup token instead; the agent POSTs it to
+`/client-secret/pickup` from a shell and pipes the response straight into the
+app's configuration. The token is 256-bit, single use (a `DELETE … RETURNING`
+consumes it, so two racing pickups can't both get the secret), expires after
+10 minutes, and travels in the POST body, never a URL. The row stores the
+secret AES-GCM-encrypted under a key derived from the token, and only the
+token's hash, so a D1 read during those 10 minutes yields nothing usable. The
+endpoint is rate-limited with the authentication budget, unused rows are
+purged by the hourly cron, and each pickup is audited
+(`src/secret-pickup.ts`). The admin UI still shows a new secret once, on
+screen, to the admin.
 
 ## Client authentication
 
@@ -321,15 +339,26 @@ TTL, and `auth_time` taken from the passkey ceremony (not the mint time).
 Everything Cloudflare Access needs (email, groups) is **in** the ID token
 because Access never calls userinfo.
 
-The `apps` and `roles` claims (which apps a user may open and their role in
-each, from access grants) go only to admin-registered clients that request the
-`groups` scope, in the ID token, the access token and `/userinfo`. Clients that
-introduce themselves (DCR, CIMD) still get `groups` but never the app
-inventory: a third-party tool the user signs in to has no business learning
-every service in the household or who administers which one
-(`src/oauth-shared.ts › wantsAccessClaims`). Like `groups`, these claims are
-read at sign-in, so Cloudflare Access sees a grant change only when its own
-session for that app ends. ID tokens are verified only as an
+Access-grant claims follow the audience: a token says only what its recipient
+needs (`src/access.ts › claimsForClient`). They go only to admin-registered
+clients that request the `groups` scope, in the ID token, the access token and
+`/userinfo`.
+
+- A client linked to a launcher app (an app that signs in here itself) gets
+  `roles`: the user's roles in that app and nothing else. It never learns which
+  other apps exist or what the user may do in them.
+- An unlinked client, in practice Cloudflare Access fronting many apps, gets
+  `apps`: the slugs of the apps the user may open, so one Access policy per app
+  can match on it. It gets no roles. Every app behind Access can read the
+  identity Access holds, so roles there would leak each app's permissions to
+  all the others, and apps that sit only behind Access can't enforce roles
+  anyway.
+- Clients that introduce themselves (DCR, CIMD) still get `groups` but neither
+  claim: a third-party tool has no business learning every service in the
+  household or who administers which one.
+
+Like `groups`, these claims are read at sign-in, so Cloudflare Access sees a
+grant change only when its own session for that app ends. ID tokens are verified only as an
 `id_token_hint` at logout, with 30 days of clock skew allowed: logout hints
 are often expired, and there the signature, issuer and `typ` matter, not
 freshness (`src/crypto.ts › verifyIdToken`).

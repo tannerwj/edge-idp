@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { base64url, emailKey, rpIdFromIssuer, sha256Hex, timingSafeEqualHex } from "../src/util";
 import { newerVersion } from "../src/upstream";
-import { accessClaims, resolveAccess } from "../src/access";
+import { claimsForClient, resolveAccess } from "../src/access";
 import type { Grant } from "../src/access";
 
 describe("base64url", () => {
@@ -147,17 +147,30 @@ describe("resolveAccess", () => {
     expect(access.get("nas")).toEqual([]);
     expect(access.get("solar")).toEqual(["reader", "writer"]);
   });
+});
 
-  it("builds sorted apps and slug:role claims and skips apps without a slug", () => {
-    const access = new Map([
-      ["solar", ["writer", "admin"]],
-      ["legacy", ["admin"]],
-      ["nas", []],
-    ]);
-    const apps = [solar, nas, { id: "legacy", slug: null }];
-    expect(accessClaims(apps, access)).toEqual({
-      apps: ["nas", "solar"],
-      roles: ["solar:admin", "solar:writer"],
-    });
+describe("claimsForClient", () => {
+  const apps = [
+    { id: "grafana", slug: "grafana", client_id: "c-grafana" },
+    { id: "nas", slug: "nas", client_id: null },
+    { id: "legacy", slug: null, client_id: null },
+  ];
+  const access = new Map([
+    ["grafana", ["writer"]],
+    ["nas", ["admin"]],
+    ["legacy", ["admin"]],
+  ]);
+
+  it("never gives a linked client another app's roles or the app inventory", () => {
+    expect(claimsForClient(apps, access, "c-grafana")).toEqual({ roles: ["writer"] });
+  });
+
+  it("gives a linked client an empty role list when the user has access but no role", () => {
+    const noRole = new Map([["grafana", []]]);
+    expect(claimsForClient(apps, noRole, "c-grafana")).toEqual({ roles: [] });
+  });
+
+  it("gives an unlinked client the sorted app list without roles, skipping slugless apps", () => {
+    expect(claimsForClient(apps, access, "c-access")).toEqual({ apps: ["grafana", "nas"] });
   });
 });

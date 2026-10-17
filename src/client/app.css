@@ -1615,7 +1615,8 @@ textarea.mono {
   color: var(--muted);
 }
 .tile-wrap.is-hidden,
-.launcher-section.is-hidden {
+.launcher-section.is-hidden,
+.field.is-hidden {
   display: none;
 }
 .launcher-head {
