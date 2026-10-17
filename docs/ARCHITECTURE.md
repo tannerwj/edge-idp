@@ -152,10 +152,11 @@ src/
   util.ts               small pure helpers (encoding, hashing, comparisons)
   account.tsx           Account & security routes
   account-sections.tsx  Account & security views
-  home.tsx              home launcher
+  home.tsx              home launcher: app-group sections, favorites, search
   pages.tsx             sign-in, enrollment, consent, sign-out, error pages
   admin/                admin UI: index (router, middleware), shell, dashboard, users, user-detail,
-                        user-tabs, groups, apps (+ apps-cloudflare import view), clients,
+                        user-tabs, groups, apps (+ apps-form, apps-access grants and app groups,
+                        apps-cloudflare import view), clients,
                         client-detail, audit, connect, tokens, metrics, settings
   ui/                   layout (document, flash), components, icons, activity feed
   client/               browser bundle: app.ts entry, ui.ts, dom.ts, passkeys.ts, palette.ts, app.css
@@ -384,6 +385,11 @@ the client's groups. Migration 0011 turned each existing app's
 `allowed_groups` into grants (NULL became an everyone grant) and leaves the
 column in place, unused, so a rolled-back Worker still runs. Tiles open in a
 new tab so the launcher stays put as a home base (`src/home.tsx › AppTile`).
+The launcher shows one section per app group (in the admin's order), then
+ungrouped apps, with the user's favorites first; a favorite is a per-user row
+that can only be set on an app the user can see, and it goes away with the app
+or the user (`src/home.tsx › /apps/:id/favorite`). Search filters tiles in the
+browser and hides sections left empty (`src/client/ui.ts › initTables`).
 
 Deleting a user group is refused while a grant names it, for the same reason
 as client and Access references. Deleting an app group removes its grants and

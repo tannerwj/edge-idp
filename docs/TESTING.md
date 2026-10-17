@@ -75,7 +75,9 @@ virtual authenticator through:
 
 - seeding an admin, then enrollment and passkey sign-in;
 - the step-up requirement for credential changes;
-- the admin UI;
+- the admin UI, including creating an app group and an app in it, granting a
+  group a role through the Access dialog, and the launcher showing the section,
+  opening tiles in a new tab and moving a favorited app under Favorites;
 - the same-origin guard;
 - the OIDC authorization code flow, `prompt` and `max_age`;
 - the regression that app tokens can't drive the admin API;

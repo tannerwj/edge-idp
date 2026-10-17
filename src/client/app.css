@@ -1558,6 +1558,80 @@ textarea.mono {
   color: var(--text-2);
   transform: translate(2px, -2px);
 }
+.tile-wrap {
+  position: relative;
+  display: flex;
+}
+.tile-wrap > .tile {
+  flex: 1;
+}
+.fav-form {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+.fav {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.tile-wrap:hover .fav,
+.fav:focus-visible {
+  opacity: 1;
+}
+.fav:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.fav.on {
+  opacity: 1;
+  color: oklch(0.78 0.16 80);
+}
+.fav.on svg {
+  fill: currentColor;
+}
+@media (hover: none) {
+  .fav {
+    opacity: 0.7;
+  }
+}
+.launcher-section .section-title h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tile-wrap.is-hidden,
+.launcher-section.is-hidden {
+  display: none;
+}
+.launcher-head {
+  flex-wrap: wrap;
+}
+.launcher-search {
+  margin-left: auto;
+  max-width: 220px;
+}
+@media (max-width: 640px) {
+  .launcher-search {
+    flex-basis: 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+}
 .tile.add {
   border-style: dashed;
   background: transparent;

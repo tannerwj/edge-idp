@@ -178,6 +178,57 @@ try {
   await page.click("form[action='/admin/users/admin-1/groups'] button[type=submit]");
   await page.waitForLoadState();
 
+  step("app groups, grants and the launcher");
+  await page.goto(`${BASE}/admin/apps`);
+  await page.click("[data-open='new-app-group']");
+  await page.fill("#new-app-group input[name=name]", "Home");
+  await page.click("#new-app-group button[type=submit]");
+  await page.waitForLoadState();
+  check(
+    "app group created via UI",
+    (await sql("SELECT COUNT(*) AS n FROM app_groups WHERE name = 'Home'"))[0]?.n === 1,
+  );
+  await page.click("[data-open='new-app']");
+  await page.fill("#new-app input[name=name]", "Solar Panel");
+  await page.fill("#new-app input[name=url]", "https://solar.example.test");
+  await page.selectOption("#new-app select[name=appGroup]", { label: "Home" });
+  await page.click("#new-app label.chip-toggle:has-text('family')");
+  await page.click("#new-app button[type=submit]");
+  await page.waitForLoadState();
+  const solar = (await sql("SELECT id, slug FROM apps WHERE name = 'Solar Panel'"))[0];
+  check("app gets a slug from its name", solar?.slug === "solar-panel", JSON.stringify(solar));
+  const grantForm = `#access-${solar?.id} form[action='/admin/apps/${solar?.id}/grants']`;
+  await page.click(`[data-open='access-${solar?.id}']`);
+  await page.selectOption(`${grantForm} select[name=subject]`, { label: "family" });
+  await page.fill(`${grantForm} input[name=role]`, "reader");
+  await page.click(`${grantForm} button[type=submit]`);
+  await page.waitForLoadState();
+  const roles = (
+    await sql(`SELECT role FROM app_grants WHERE app_id = '${solar?.id}' ORDER BY role`)
+  ).map((r) => r.role);
+  check(
+    "initial group access plus a role grant via UI",
+    JSON.stringify(roles) === JSON.stringify([null, "reader"]),
+    JSON.stringify(roles),
+  );
+  await page.goto(`${BASE}/`);
+  check(
+    "launcher shows the app group as a section",
+    await page.isVisible(".launcher-section h3:has-text('Home') >> nth=0"),
+  );
+  check(
+    "tiles open in a new tab",
+    (await page.getAttribute(".tile:has-text('Solar Panel')", "target")) === "_blank",
+  );
+  await page.click(`form[action='/apps/${solar?.id}/favorite'] button`);
+  await page.waitForLoadState();
+  check(
+    "favorited app shows under Favorites",
+    await page.isVisible(
+      ".launcher-section:has(h3:has-text('Favorites')) .tile:has-text('Solar Panel')",
+    ),
+  );
+
   await page.goto(`${BASE}/admin/users`);
   await page.click("button[data-open='invite']");
   await page.fill("#invite input[name=name]", "Bob Member");

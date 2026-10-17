@@ -174,3 +174,21 @@ export async function seedAppGrants(
   for (const g of results.filter((x) => groupNames.includes(x.name)))
     await addGrant(db, { appId, groupId: g.id }, a);
 }
+
+export async function setFavorite(
+  db: D1Database,
+  userId: string,
+  appId: string,
+  on: boolean,
+): Promise<void> {
+  const stmt = on
+    ? db
+        .prepare(
+          "INSERT OR IGNORE INTO app_favorites (user_id, app_id, created_at) VALUES (?1, ?2, ?3)",
+        )
+        .bind(userId, appId, nowSec())
+    : db
+        .prepare("DELETE FROM app_favorites WHERE user_id = ?1 AND app_id = ?2")
+        .bind(userId, appId);
+  await stmt.run();
+}

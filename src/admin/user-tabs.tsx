@@ -26,6 +26,7 @@ export interface TabData {
     name: string;
   }[];
   activity: FeedRow[];
+  access: { name: string; slug: string | null; roles: string[] }[];
 }
 
 function RoleCard({ id, self, user }: Pick<TabData, "id" | "self" | "user">) {
@@ -264,6 +265,49 @@ export function SessionsTab({ id, user, sessions }: TabData) {
         </>
       ) : (
         <Empty icon="monitor" title="Not signed in anywhere" />
+      )}
+    </div>
+  );
+}
+
+export function AppAccessTab({ user, access }: TabData) {
+  return (
+    <div class="card">
+      <div class="card-head">
+        <h2 class="grow">Apps {user.name} can open</h2>
+        <a class="right small" href="/admin/apps">
+          Manage access
+        </a>
+      </div>
+      {access.length ? (
+        <ul class="list">
+          {access.map((a) => (
+            <li key={a.slug ?? a.name}>
+              <Icon name="grid" />
+              <div class="grow">
+                <div class="title">{a.name}</div>
+                <div class="meta">
+                  <code>{a.slug}</code>
+                </div>
+              </div>
+              {a.roles.length ? (
+                <span class="chips">
+                  {a.roles.map((r) => (
+                    <span key={r} class="badge">
+                      {r}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span class="muted small">No role</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Empty icon="grid" title="No app access">
+          Grant access from Apps, to {user.name} directly or to one of their groups.
+        </Empty>
       )}
     </div>
   );

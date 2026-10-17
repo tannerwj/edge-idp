@@ -192,19 +192,17 @@ export const ACCESS_TOOLS: ToolDef[] = [
       ]);
       const groupIds = results.map((r) => r.group_id);
       const access = resolveAccess(apps, grants, { userId: user.id, groupIds });
-      const out = [];
-      for (const a of apps.filter((x) => access.has(x.id))) {
-        const via = grants.filter(
-          (g) => resolveAccess([a], [g], { userId: user.id, groupIds }).size > 0,
-        );
-        out.push({
+      const views = new Map((await grantView(db, grants)).map((v) => [v.id, v]));
+      return apps
+        .filter((a) => access.has(a.id))
+        .map((a) => ({
           app: a.slug,
           name: a.name,
           roles: access.get(a.id),
-          via: await grantView(db, via),
-        });
-      }
-      return out;
+          via: grants
+            .filter((g) => resolveAccess([a], [g], { userId: user.id, groupIds }).size > 0)
+            .map((g) => views.get(g.id)),
+        }));
     },
   },
   {

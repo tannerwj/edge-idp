@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { listApps, listClients, listGroups, listUsers } from "../db";
 import type { User } from "../db";
+import { listAppGroups, listGrants } from "../access";
 import * as ops from "../ops";
 import type { AdminVars } from "./shell";
 import { act, actor, field, page } from "./shell";
@@ -10,10 +11,25 @@ import { Icon } from "../ui/icons";
 export const groupsAdmin = new Hono<AdminVars>();
 
 async function usage(db: D1Database) {
-  const [clients, apps] = await Promise.all([listClients(db), listApps(db)]);
+  const [clients, apps, appGroups, grants, groups] = await Promise.all([
+    listClients(db),
+    listApps(db),
+    listAppGroups(db),
+    listGrants(db),
+    listGroups(db),
+  ]);
+  const idOf = new Map(groups.map((g) => [g.name, g.id]));
+  const appName = new Map(apps.map((a) => [a.id, a.name]));
+  const appGroupName = new Map(appGroups.map((g) => [g.id, `${g.name} (app group)`]));
   return (name: string) => ({
     clients: clients.filter((c) => c.allowed_groups?.includes(name)),
-    apps: apps.filter((a) => !a.client_id && a.allowed_groups?.includes(name)),
+    apps: grants
+      .filter((g) => g.group_id === idOf.get(name))
+      .map((g) => ({
+        id: g.id,
+        name: (g.app_id ? appName.get(g.app_id) : appGroupName.get(g.app_group_id ?? "")) ?? "?",
+        role: g.role,
+      })),
   });
 }
 
@@ -204,8 +220,10 @@ function GrantsCard({ name, u }: { name: string; u: Usage }) {
           {u.apps.map((x) => (
             <li key={x.id}>
               <Icon name="grid" />
-              <span class="grow title">{x.name}</span>
-              <span class="badge">Launcher</span>
+              <a class="grow title" href="/admin/apps">
+                {x.name}
+              </a>
+              <span class="badge">{x.role ? `Role: ${x.role}` : "App access"}</span>
             </li>
           ))}
         </ul>
