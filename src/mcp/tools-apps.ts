@@ -65,7 +65,7 @@ export const APP_TOOLS: ToolDef[] = [
     name: "clients_update",
     write: true,
     description:
-      "Update a client's name, redirect URIs, allowed groups, PKCE requirement, consent behavior or environment.",
+      "Update a client's name, redirect URIs, allowed groups, PKCE requirement, consent behavior or environment. A client linked to a launcher app ignores allowed groups: that app's grants decide who signs in.",
     inputSchema: obj(
       {
         client_id: { type: "string" },

@@ -60,6 +60,7 @@ const grafana: AppTemplate = {
     return {
       api: { method: "PUT", path: "/api/v1/sso-settings/generic_oauth", body: { settings: s } },
       env: {
+        GF_SERVER_ROOT_URL: `${i.baseUrl}/`,
         GF_AUTH_GENERIC_OAUTH_ENABLED: "true",
         GF_AUTH_GENERIC_OAUTH_NAME: s.name,
         GF_AUTH_GENERIC_OAUTH_CLIENT_ID: s.clientId,
@@ -79,6 +80,7 @@ const grafana: AppTemplate = {
     "Apply with a Grafana service account token (Admin role): the SSO settings API takes effect without a restart.",
     "GF_AUTH_GENERIC_OAUTH_* environment variables, if set, override settings saved through the API.",
     "Roles map admin → Admin, writer → Editor, anything else → Viewer.",
+    "Grafana builds its redirect URI from root_url, which must equal the base URL; that's server config, not an SSO setting.",
   ],
 };
 
@@ -108,6 +110,7 @@ const openWebui: AppTemplate = {
   }),
   notes: [
     "Restart the container after changing the environment.",
+    "Confidential client authenticated by its secret; PKCE is off for this template.",
     "Anyone with access but no role is refused by Open WebUI; grant admin, writer or reader.",
     "Set ENABLE_LOGIN_FORM=false once Johnson ID sign-in works to hide local passwords.",
   ],
