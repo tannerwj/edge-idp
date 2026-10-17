@@ -129,7 +129,7 @@ export const APP_TOOLS: ToolDef[] = [
     name: "apps_create",
     write: true,
     description:
-      "Add an app tile to the launcher. Link it to a client_id to inherit that client's allowed groups.",
+      "Add an app tile to the launcher. Link it to a client_id to inherit that client's allowed groups. Pass cf_app_id when the tile fronts a Cloudflare Access application so the admin UI shows it as imported.",
     inputSchema: obj(
       {
         name: { type: "string" },
@@ -138,6 +138,7 @@ export const APP_TOOLS: ToolDef[] = [
         icon: { type: "string", description: "Emoji (optional)" },
         allowed_groups: { type: "array", items: { type: "string" } },
         client_id: { type: "string" },
+        cf_app_id: { type: "string", description: "Cloudflare Access application id (optional)" },
       },
       ["name", "url"],
     ),
@@ -151,6 +152,7 @@ export const APP_TOOLS: ToolDef[] = [
           icon: str(args.icon),
           allowedGroups: strList(args.allowed_groups),
           clientId: str(args.client_id) || null,
+          cfAppId: str(args.cf_app_id) || null,
         },
         actor,
       ),

@@ -363,7 +363,8 @@ could change who has access in ways the admin didn't intend
 Launcher visibility: an app linked to an OIDC client follows that client's
 `allowed_groups`, because that is what `/authorize` enforces; an unlinked app
 follows its own list. A NULL or empty list means everyone (`src/db.ts ›
-appsForUser`).
+appsForUser`). Tiles open in a new tab so the launcher stays put as a
+home base (`src/home.tsx › AppTile`).
 
 Old admin URLs from the previous UI (`/admin/access`, `/admin/preferences`,
 `/admin/theme`, `/admin/mcp`) permanently redirect to their current pages so
@@ -371,7 +372,10 @@ bookmarks keep working.
 
 **Cloudflare Access integration** (`src/cf-access.ts`) is read-only. It lists
 Access applications, shows which ones sign in through this IdP and which
-groups their policies require, and imports them into the launcher. Nothing
+groups their policies require, and imports them into the launcher. An import
+records the Access app id on the tile (`cf_app_id`), which is how the list
+marks it "In launcher"; MCP `apps_create` accepts the same id so tiles made
+by an agent link up the same way (`src/mcp/tools-apps.ts`). Nothing
 writes to Cloudflare: Access stays the enforcement point and the source of
 truth for its policies. "Our" Access IdP is the OIDC provider whose auth URL
 is this server's `/authorize`.
