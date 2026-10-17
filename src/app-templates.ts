@@ -36,7 +36,7 @@ const grafana: AppTemplate = {
   icon: "📈",
   docs: "https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-authentication/generic-oauth/",
   pkce: true,
-  apply: "api",
+  apply: "env",
   redirects: (b) => [`${b}/login/generic_oauth`],
   config: (i) => {
     const s = {
@@ -77,10 +77,9 @@ const grafana: AppTemplate = {
     };
   },
   notes: [
-    "Apply with a Grafana service account token (Admin role): the SSO settings API takes effect without a restart.",
-    "GF_AUTH_GENERIC_OAUTH_* environment variables, if set, override settings saved through the API.",
-    "Roles map admin → Admin, writer → Editor, anything else → Viewer.",
-    "Grafana builds its redirect URI from root_url, which must equal the base URL; that's server config, not an SSO setting.",
+    "Usually applied as container environment: Grafana builds its redirect URI from root_url, which must equal the base URL and can only be set in server config, so GF_SERVER_ROOT_URL is required and a restart follows.",
+    "The SSO settings API (the api block) needs a Grafana server admin signing in with basic auth; service account tokens are org-level and get 403. GF_AUTH_GENERIC_OAUTH_* environment variables override API settings.",
+    "Roles map admin → Admin, writer → Editor, anything else → Viewer. /login?disableAutoLogin=true still reaches the local login form.",
   ],
 };
 

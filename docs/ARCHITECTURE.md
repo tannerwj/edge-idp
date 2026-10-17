@@ -399,8 +399,8 @@ URIs, links the two, and returns the configuration to apply on the app side
 with a `${CLIENT_SECRET}` placeholder plus a one-time secret pickup (see
 THREAT_MODEL › Client secret pickup). Templates (`src/app-templates.ts`)
 describe each app: its callback paths, whether it can do PKCE, and its
-settings, as an API call (Grafana's SSO settings API), environment variables
-(Open WebUI, Paperless-ngx) or form fields (Immich, any OIDC app). Roles map
+settings, as environment variables (Grafana, Open WebUI, Paperless-ngx; Grafana
+also gets its SSO settings API body) or form fields (Immich, any OIDC app). Roles map
 onto each app's own model, for example `admin`/`writer` to Grafana
 Admin/Editor and everything else to Viewer. Running it again on a connected
 app rotates the secret and refreshes the redirect URIs, so a failed setup can
