@@ -6,6 +6,7 @@ import type { Actor } from "./ops-core";
 export { OpError } from "./ops-core";
 export * from "./ops-apps";
 export * from "./ops-access";
+export * from "./ops-connect";
 export * from "./ops-settings";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

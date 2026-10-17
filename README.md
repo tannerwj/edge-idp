@@ -30,8 +30,13 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - Groups in ID tokens and in access tokens granted the `groups` scope, so
   Access policies and authorized apps can match on them
 - Access grants: give a user, a group or everyone access to an app or an app
-  group, with an optional role; admin-registered clients receive `apps` and
-  `roles` claims (`<app>:<role>`) to enforce
+  group, with an optional role; Cloudflare Access receives an `apps` claim to
+  match its policies on, and each app that signs in here receives only its own
+  `roles`
+- Connect an app in one step (MCP `apps_connect`): templates for Grafana, Open
+  WebUI, Immich, Paperless-ngx and any OIDC app create the client, link it to
+  the launcher and return the app-side settings; the client secret is handed
+  over through a one-time pickup instead of the response
 - Apps: the launcher, organized into app groups, with favorites and search;
   optional import of your Cloudflare Access apps and their policies (read-only)
 - Clients: OIDC/OAuth clients, both confidential and public, with exact

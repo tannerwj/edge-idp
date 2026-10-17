@@ -59,6 +59,10 @@ grant for another user or a group the user isn't in, an app-group grant
 reaching an ungrouped app, and a grant with no target matching an ungrouped
 app (both sides `NULL`). Then roles: a role-less grant still grants access, and
 roles from user, group and app-group grants are unioned and de-duplicated.
+`claimsForClient` then starts from leaks across audiences: a client linked to
+one app must never see another app's roles or the app list; with access but no
+role it gets an empty list; an unlinked client gets the sorted app list
+without roles, skipping apps that have no slug.
 
 The `newerVersion` expected values were worked out by hand from MAJOR.MINOR.PATCH
 ordering, not by running the code: numeric (not lexical) comparison, major
@@ -86,6 +90,11 @@ virtual authenticator through:
 - that a dynamically registered client asking for `openid groups` gets
   `groups` but no `apps` or `roles` (it uses its own registration so the
   remembered-consent checks that follow are unaffected);
+- `apps_connect` with the Grafana template: the registered redirect URI, a
+  secret pickup that works once (and the secret never appearing in the MCP
+  result), a sign-in through the new client whose ID token carries only that
+  app's role and no app list, and the same sign-in refused once its grants are
+  removed;
 - refresh token rotation and reuse detection, and revoking consent;
 - API tokens;
 - CIMD, using Claude Code's real metadata document;
@@ -99,10 +108,11 @@ session, `family` and `friends` groups, an app group, three apps and four
 grants straight into D1, then checks discovery, JWKS, `/authorize` validation,
 the full code flow (PKCE mismatch, wrong secret, code reuse), the ID token
 signature and claims, `/userinfo`, and a confidential client with
-`require_pkce = 0`. The grants are chosen so the expected `apps` and `roles`
-can be worked out by hand: a group grant with a role on the app group, a user
-grant with another role on one of its apps, an everyone grant without a role,
-and a grant to a group the user isn't in. Because the port is fixed, don't run two
+`require_pkce = 0`. The grants are chosen so the expected `apps` can be worked
+out by hand: a group grant with a role on the app group, a user grant with
+another role on one of its apps, an everyone grant without a role, and a grant
+to a group the user isn't in. The client isn't linked to an app, like
+Cloudflare Access, so it must get `apps` and no `roles`. Because the port is fixed, don't run two
 copies at once.
 
 ### One-click install (`npm run test:e2e:setup`)
@@ -197,6 +207,11 @@ Each suite gets its own throwaway instance, so tests never touch your
   `api.mjs` uses 18877.
 
 ## Why the tests do non-obvious things
+
+- `authorizeInBrowser` (`full.mjs`) waits for the browser to settle on the
+  redirect target after capturing the callback URL. The test redirect hosts
+  don't resolve, so Chromium finishes the redirect as a late `chrome-error://`
+  navigation that otherwise interrupts the test's next `page.goto`.
 
 **Issuer and hosts.**
 

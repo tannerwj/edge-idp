@@ -206,8 +206,8 @@ try {
       JSON.stringify(payload.apps),
     );
     check(
-      "id_token roles union user and app-group grants",
-      JSON.stringify(payload.roles) === JSON.stringify(["solar:admin", "solar:reader"]),
+      "Access-style client (no linked app) gets no roles",
+      payload.roles === undefined,
       JSON.stringify(payload.roles),
     );
     check("id_token nonce", payload.nonce === "n-123");
@@ -233,9 +233,8 @@ try {
       JSON.stringify(j),
     );
     check(
-      "userinfo apps and roles",
-      JSON.stringify(j.apps) === JSON.stringify(["nas", "solar"]) &&
-        JSON.stringify(j.roles) === JSON.stringify(["solar:admin", "solar:reader"]),
+      "userinfo apps without roles",
+      JSON.stringify(j.apps) === JSON.stringify(["nas", "solar"]) && j.roles === undefined,
       JSON.stringify(j),
     );
   }

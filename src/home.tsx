@@ -293,7 +293,7 @@ home.get("/", async (c) => {
   const db = c.env.DB;
   const groups = await getUserGroups(db, s.user.id);
   const [apps, appGroups, favorites, creds, recent] = await Promise.all([
-    appsForUser(db, s.user.id, groups),
+    appsForUser(db, s.user.id),
     listAppGroups(db),
     favoritesOf(db, s.user.id),
     getCredentialsForUser(db, s.user.id),
@@ -337,7 +337,7 @@ home.post("/apps/:id/favorite", async (c) => {
   if (!s) return c.redirect("/login", 302);
   const db = c.env.DB;
   const id = c.req.param("id");
-  const visible = await appsForUser(db, s.user.id, await getUserGroups(db, s.user.id));
+  const visible = await appsForUser(db, s.user.id);
   if (!visible.some((a) => a.id === id)) return c.notFound();
   const form = await c.req.parseBody();
   await setFavorite(db, s.user.id, id, form.on === "1");

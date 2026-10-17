@@ -114,7 +114,15 @@ function ClientSidebar({
   );
 }
 
-function ClientSettingsForm({ client, groups }: { client: OidcClient; groups: Group[] }) {
+function ClientSettingsForm({
+  client,
+  groups,
+  linkedApp,
+}: {
+  client: OidcClient;
+  groups: Group[];
+  linkedApp: string | null;
+}) {
   return (
     <form class="card" method="post" action={detailHref(client.id)}>
       <div class="card-head">
@@ -132,7 +140,14 @@ function ClientSettingsForm({ client, groups }: { client: OidcClient; groups: Gr
             {client.redirect_uris.join("\n")}
           </textarea>
         </label>
-        <div class="field">
+        {linkedApp ? (
+          <Callout icon="info">
+            Signs in for <b>{linkedApp}</b>: who may sign in, and with which role, comes from that
+            app's access grants on the <a href="/admin/apps">Apps</a> page. Its tokens carry only
+            that app's roles.
+          </Callout>
+        ) : null}
+        <div class={linkedApp ? "field is-hidden" : "field"}>
           <span class="label">Allowed groups</span>
           <GroupPicker name="groups" all={groups} selected={client.allowed_groups} />
           <span class="hint">
@@ -189,6 +204,7 @@ function ClientSettingsForm({ client, groups }: { client: OidcClient; groups: Gr
 export function ClientDetail(props: {
   client: OidcClient;
   groups: Group[];
+  linkedApp: string | null;
   grants: number;
   refresh: number;
   signIns: number;
@@ -246,7 +262,7 @@ export function ClientDetail(props: {
             </Callout>
           ) : null}
 
-          <ClientSettingsForm client={client} groups={groups} />
+          <ClientSettingsForm client={client} groups={groups} linkedApp={props.linkedApp} />
         </div>
 
         <ClientSidebar

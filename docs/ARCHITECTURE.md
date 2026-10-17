@@ -57,7 +57,8 @@ middleware follows the same pattern (`src/admin/index.ts › admin.use`).
 **Rate limiting** uses the optional Workers Rate Limiting bindings with two
 budgets (`src/index.tsx › limiterFor`):
 
-- `AUTH_LIMITER`: `/webauthn/*`, `/register`, `/authorize/decision`, `/setup`;
+- `AUTH_LIMITER`: `/webauthn/*`, `/register`, `/authorize/decision`, `/setup`,
+  `/client-secret/pickup`;
 - `API_LIMITER`: `/authorize`, `/token`, `/revoke`, `/mcp*`.
 
 Only mutating requests and `/authorize` are counted. The key is the first path
@@ -136,7 +137,8 @@ src/
   mcp/tools.ts          tool registry (TOOLS) and metrics_summary
   mcp/tools-people.ts   user and group tools
   mcp/tools-apps.ts     client, app, audit and settings tools
-  mcp/tools-access.ts   app group, grant, access-explain and Cloudflare Access listing tools
+  mcp/tools-access.ts   app templates, apps_connect, app group, grant, access-explain and
+                        Cloudflare Access listing tools
   mcp/sandbox.ts        execute code mode: Dynamic Worker sandbox and its host RPC entrypoint
   ops.ts                domain operations shared by the admin UI and MCP (users, groups)
   ops-core.ts           OpError, Actor, shared parsing helpers
@@ -145,6 +147,9 @@ src/
   db.ts                 D1 row types, validators, queries, audit writes
   access.ts             access grants: resolution, app/role claims, launcher visibility
   ops-access.ts         app group, grant and slug operations
+  ops-connect.ts        apps_connect: tile + linked client + app-side config
+  app-templates.ts      per-app connection templates (Grafana, Open WebUI, Immich, Paperless-ngx, generic)
+  secret-pickup.ts      one-time encrypted client secret pickup (/client-secret/pickup)
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
   settings-cache.ts     per-isolate cache of instance settings (name, accent, Cloudflare connection)
@@ -370,20 +375,37 @@ in it), optionally with a role. Roles are free text so each app can define its
 own; the UI offers `admin`, `writer` and `reader` because a role on an
 app-group grant applies to every app in the group under the same name. A user's
 access to an app is the union of every matching grant, and their roles there
-are the union of those grants' roles (`src/access.ts › resolveAccess`). Tokens
-for admin-registered clients carry the result as `apps` (app slugs) and
-`roles` (`<slug>:<role>`), which Access policies and OIDC apps match on; see
-THREAT_MODEL › Token design for who receives them. Slugs default from the app
+are the union of those grants' roles (`src/access.ts › resolveAccess`).
+Cloudflare Access receives the result as `apps` (app slugs) to match its
+policies on; an app connected with its own client receives `roles` for itself
+only. THREAT_MODEL › Token design explains why the claims are split by
+audience. Slugs default from the app
 name, are unique, and are the stable name policies refer to, so renaming an app
 doesn't change its slug.
 
-Launcher visibility: an app linked to an OIDC client follows that client's
-`allowed_groups`, because that is what `/authorize` enforces; an unlinked app
-is visible to whoever its grants cover (`src/access.ts › appsForUser`). Grants
-never change who an OIDC client admits: `clientAccessProblem` still reads only
-the client's groups. Migration 0011 turned each existing app's
-`allowed_groups` into grants (NULL became an everyone grant) and leaves the
-column in place, unused, so a rolled-back Worker still runs. Tiles open in a
+Launcher visibility follows grants for every app (`src/access.ts ›
+appsForUser`). For an app linked to an OIDC client the same grants decide who
+that client admits, so the tile, the sign-in and the token's roles always
+agree; the client's own groups apply only to clients with no linked app.
+Migration 0011 turned each unlinked app's `allowed_groups` into grants (NULL
+became an everyone grant) and 0012 did the same for linked apps from their
+client's groups, which is what `/authorize` had enforced. Both leave the old
+columns in place, unused, so a rolled-back Worker still runs.
+
+**Connecting an app** (`src/ops-connect.ts`, MCP `apps_connect`). One call
+turns an app into a Johnson ID sign-in: it creates the launcher tile (or uses
+an existing one), registers a confidential client with the template's redirect
+URIs, links the two, and returns the configuration to apply on the app side
+with a `${CLIENT_SECRET}` placeholder plus a one-time secret pickup (see
+THREAT_MODEL › Client secret pickup). Templates (`src/app-templates.ts`)
+describe each app: its callback paths, whether it can do PKCE, and its
+settings, as an API call (Grafana's SSO settings API), environment variables
+(Open WebUI, Paperless-ngx) or form fields (Immich, any OIDC app). Roles map
+onto each app's own model, for example `admin`/`writer` to Grafana
+Admin/Editor and everything else to Viewer. Running it again on a connected
+app rotates the secret and refreshes the redirect URIs, so a failed setup can
+simply be retried. A new tile gets the groups passed in as grants; with none,
+an app group's grants cover it, or everyone if it has no app group. Tiles open in a
 new tab so the launcher stays put as a home base (`src/home.tsx › AppTile`).
 The launcher shows one section per app group (in the admin's order), then
 ungrouped apps, with the user's favorites first; a favorite is a per-user row
@@ -454,6 +476,7 @@ no user-facing request pays for a table scan. One D1 batch
   50,000th-newest id (an id comparison that uses the primary key, instead of a
   `NOT IN (… LIMIT n)` scan);
 - `mcp_calls` older than 30 days;
+- secret pickups past their 10-minute expiry;
 - dynamically registered (DCR) clients older than 30 days that never received
   a consent.
 

@@ -5,7 +5,7 @@ import { audit, getClient, getUser } from "./db";
 import type { OidcClient } from "./db";
 import { ACCESS_TOKEN_TTL, mintAccessToken, mintIdToken, verifyAccessToken } from "./crypto";
 import type { TokenClaims } from "./crypto";
-import { claimsFor, clientAccessProblem, mcpResource, wantsAccessClaims } from "./oauth-shared";
+import { claimsFor, clientAccessProblem, mcpResource, accessClaimsClient } from "./oauth-shared";
 import { base64url, newId, nowSec, randomToken, sha256Hex, timingSafeEqualHex } from "./util";
 
 const REFRESH_TTL = 30 * 86400;
@@ -187,7 +187,7 @@ async function codeGrant(
   const authTime = row.auth_time ?? nowSec();
   const claims = await claimsFor(c.env.DB, row.user_id, authTime, {
     nonce: row.nonce,
-    access: wantsAccessClaims(client, row.scope),
+    accessFor: accessClaimsClient(client, row.scope),
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = wantsRefresh(row.scope)
@@ -286,7 +286,7 @@ async function refreshGrant(
     }>();
   if (!row) return replay();
   const claims = await claimsFor(c.env.DB, row.user_id, row.auth_time, {
-    access: wantsAccessClaims(client, row.scope),
+    accessFor: accessClaimsClient(client, row.scope),
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = await mintRefresh(c.env.DB, {
@@ -368,7 +368,7 @@ async function userinfo(c: Context<{ Bindings: Env }>): Promise<Response> {
   const client =
     typeof payload.client_id === "string" ? await getClient(c.env.DB, payload.client_id) : null;
   const claims = await claimsFor(c.env.DB, payload.sub, 0, {
-    access: !!client && wantsAccessClaims(client, scopes.join(" ")),
+    accessFor: client ? accessClaimsClient(client, scopes.join(" ")) : null,
   });
   if (!claims) return unauthorized();
   return c.json({
@@ -376,6 +376,7 @@ async function userinfo(c: Context<{ Bindings: Env }>): Promise<Response> {
     ...(scopes.includes("email") ? { email: claims.email, email_verified: true } : {}),
     ...(scopes.includes("profile") ? { name: claims.name, preferred_username: claims.email } : {}),
     ...(scopes.includes("groups") ? { groups: claims.groups } : {}),
-    ...(claims.apps ? { apps: claims.apps, roles: claims.roles ?? [] } : {}),
+    ...(claims.apps ? { apps: claims.apps } : {}),
+    ...(claims.roles ? { roles: claims.roles } : {}),
   });
 }

@@ -2,8 +2,8 @@ import { audit, getSetting, listApps, listClients, setSetting } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
 import { listAppGroups } from "../access";
+import { createPickup, PICKUP_TTL } from "../secret-pickup";
 import { clientByRef, obj, str, strList } from "./common";
-import { appByRef } from "./tools-access";
 import type { ToolDef } from "./common";
 
 export const APP_TOOLS: ToolDef[] = [
@@ -104,11 +104,20 @@ export const APP_TOOLS: ToolDef[] = [
     name: "clients_rotate_secret",
     write: true,
     description:
-      "Issue a new client secret (returned once). The old one stops working immediately.",
-    inputSchema: obj({ client_id: { type: "string" } }, ["client_id"]),
-    handler: async ({ db, actor }, args) => ({
-      secret: await ops.rotateClientSecret(db, await clientByRef(db, str(args.client_id)), actor),
-    }),
+      "Issue a new client secret. The old one stops working immediately. With pickup: true the secret is not returned; you get a one-time pickup token (10 minutes) to POST to /client-secret/pickup, so the secret can be piped into the app without passing through the model.",
+    inputSchema: obj({ client_id: { type: "string" }, pickup: { type: "boolean" } }, ["client_id"]),
+    handler: async ({ db, env, actor }, args) => {
+      const client = await clientByRef(db, str(args.client_id));
+      const secret = await ops.rotateClientSecret(db, client, actor);
+      if (args.pickup !== true) return { secret };
+      return {
+        secret_pickup: {
+          url: `${env.ISSUER}/client-secret/pickup`,
+          token: await createPickup(db, client.id, secret),
+          expires_in: PICKUP_TTL,
+        },
+      };
+    },
   },
   {
     name: "clients_delete",
@@ -198,7 +207,7 @@ export const APP_TOOLS: ToolDef[] = [
       ["app"],
     ),
     handler: async ({ db, actor }, args) => {
-      const app = await appByRef(db, str(args.app));
+      const app = await ops.appByRef(db, str(args.app));
       const pick = (k: string) => (typeof args[k] === "string" ? str(args[k]) : undefined);
       await ops.updateApp(
         db,
@@ -225,7 +234,7 @@ export const APP_TOOLS: ToolDef[] = [
       "app_id",
     ]),
     handler: async ({ db, actor }, args) => {
-      await ops.deleteApp(db, (await appByRef(db, str(args.app_id))).id, actor);
+      await ops.deleteApp(db, (await ops.appByRef(db, str(args.app_id))).id, actor);
       return { ok: true };
     },
   },

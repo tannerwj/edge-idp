@@ -84,6 +84,12 @@ async function authorizeInBrowser(params, { approve } = {}) {
     for (let i = 0; i < 50 && !captured; i++) await page.waitForTimeout(100);
   }
   page.off("request", onReq);
+  if (captured)
+    await page
+      .waitForURL((u) => u.href.startsWith("chrome-error:") || u.origin === redirect.origin, {
+        timeout: 5000,
+      })
+      .catch(() => {});
   await page.waitForLoadState("load").catch(() => {});
   return captured;
 }
@@ -582,6 +588,77 @@ try {
     (recursion.body?.result?.content?.[0]?.text ?? "").includes("not available inside execute"),
     recursion.body,
   );
+  step("apps_connect: one-time secret pickup and per-app roles");
+  const tool = async (name, args) => {
+    const r = await mcpCall(mt.access_token, "tools/call", { name, arguments: args });
+    return JSON.parse(r.body?.result?.content?.[0]?.text ?? "null");
+  };
+  const conn = await tool("apps_connect", {
+    template: "grafana",
+    base_url: "https://grafana.example.test/",
+    name: "Grafana",
+    groups: ["family"],
+  });
+  const grafanaRedirect = "https://grafana.example.test/login/generic_oauth";
+  check(
+    "apps_connect registers the template's redirect URI and returns a pickup",
+    conn?.redirect_uris?.[0] === grafanaRedirect && conn?.secret_pickup?.token?.length === 43,
+    conn,
+  );
+  const pick = () =>
+    fetch(`${BASE}/client-secret/pickup`, {
+      method: "POST",
+      body: new URLSearchParams({ token: conn?.secret_pickup?.token ?? "" }),
+    });
+  const first = await pick();
+  const grafanaSecret = await first.text();
+  check("pickup returns the secret once", first.status === 200 && grafanaSecret.length === 43);
+  check("pickup is single use", (await pick()).status === 404);
+  check(
+    "the secret never appears in the MCP result",
+    !JSON.stringify(conn).includes(grafanaSecret),
+  );
+  await tool("grants_add", { app: conn?.app?.slug, group: "family", role: "writer" });
+  const p4 = pkce();
+  const grafanaAuth = {
+    client_id: conn?.client_id,
+    redirect_uri: grafanaRedirect,
+    response_type: "code",
+    scope: "openid profile email groups",
+    state: "g1",
+    code_challenge: p4.challenge,
+    code_challenge_method: "S256",
+  };
+  const gcode = (await authorizeInBrowser(grafanaAuth))?.searchParams.get("code");
+  const gt = await (
+    await tokenReq(
+      {
+        grant_type: "authorization_code",
+        code: gcode,
+        redirect_uri: grafanaRedirect,
+        code_verifier: p4.verifier,
+      },
+      "Basic " + Buffer.from(`${conn?.client_id}:${grafanaSecret}`).toString("base64"),
+    )
+  ).json();
+  const gid = gt.id_token ? decodeJwt(gt.id_token) : {};
+  check(
+    "a connected app's token carries only its own roles, no app list",
+    JSON.stringify(gid.roles) === JSON.stringify(["writer"]) && gid.apps === undefined,
+    JSON.stringify(gid),
+  );
+  for (const g of (await tool("grants_list", { app: conn?.app?.slug })) ?? [])
+    await tool("grants_remove", { grant_id: g.id });
+  const refused = await page.goto(
+    `${BASE}/authorize?${new URLSearchParams({ ...grafanaAuth, state: "g2" })}`,
+  );
+  check(
+    "without a grant the connected app's sign-in is refused",
+    refused?.status() === 403 &&
+      (await page.textContent("body")).includes("app access was removed"),
+    String(refused?.status()),
+  );
+
   await sql(
     `INSERT INTO mcp_calls (tool_name, started_at, duration_ms, success) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1200) SELECT 'percentile_probe', ${Math.floor(Date.now() / 1000)}, i, 1 FROM n`,
   );

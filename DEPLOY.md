@@ -248,7 +248,7 @@ Zero Trust dashboard → **Access → Identity providers → Add new → OpenID 
 | PKCE             | **Off** (Access doesn't send it; register the client with PKCE unchecked) |
 | Email claim name | `email` (default)                                                         |
 | Scopes           | `openid profile email groups`                                             |
-| OIDC Claims      | add `groups`, `apps` and `roles` so policies can match on them            |
+| OIDC Claims      | add `groups` and `apps` so policies can match on them                     |
 
 Register Access **once** before filling in that form: open
 `https://auth.yourdomain.com/admin` → **Clients** → **Register client**.

@@ -54,6 +54,8 @@ const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
   APP_GROUP_DELETED: { label: "App group deleted", icon: "trash", tone: "warn" },
   APP_GRANT_ADDED: { label: "App access granted", icon: "key", tone: "accent" },
   APP_GRANT_REMOVED: { label: "App access removed", icon: "key", tone: "warn" },
+  APP_CONNECTED: { label: "App connected", icon: "plug", tone: "accent" },
+  CLIENT_SECRET_PICKED_UP: { label: "Client secret picked up", icon: "key", tone: "" },
   SETTINGS_CHANGED: { label: "Settings changed", icon: "settings", tone: "" },
   CF_API_CONNECTED: { label: "Cloudflare connected", icon: "cloud", tone: "warn" },
   CF_API_DISCONNECTED: { label: "Cloudflare disconnected", icon: "cloud", tone: "" },

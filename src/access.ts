@@ -1,4 +1,4 @@
-import { listApps, listClients } from "./db";
+import { listApps } from "./db";
 import type { App } from "./db";
 
 export interface Grant {
@@ -66,19 +66,21 @@ export function resolveAccess(
   return out;
 }
 
-export function accessClaims(
+export function appSlugs(
   apps: Pick<App, "id" | "slug">[],
   access: Map<string, string[]>,
-): { apps: string[]; roles: string[] } {
-  const slugs = new Set<string>();
-  const roles = new Set<string>();
-  for (const app of apps) {
-    const granted = access.get(app.id);
-    if (!granted || !app.slug) continue;
-    slugs.add(app.slug);
-    for (const r of granted) roles.add(`${app.slug}:${r}`);
-  }
-  return { apps: [...slugs].sort(), roles: [...roles].sort() };
+): string[] {
+  return [...new Set(apps.flatMap((a) => (a.slug && access.has(a.id) ? [a.slug] : [])))].sort();
+}
+
+export function claimsForClient(
+  apps: Pick<App, "id" | "slug" | "client_id">[],
+  access: Map<string, string[]>,
+  clientId: string,
+): { apps?: string[]; roles?: string[] } {
+  const linked = apps.filter((a) => a.client_id === clientId);
+  if (!linked.length) return { apps: appSlugs(apps, access) };
+  return { roles: [...new Set(linked.flatMap((a) => access.get(a.id) ?? []))].sort() };
 }
 
 export async function listGrants(db: D1Database): Promise<Grant[]> {
@@ -115,24 +117,26 @@ export async function userAccess(
   return { apps, access: resolveAccess(apps, grants, { userId, groupIds }) };
 }
 
-export async function userAccessClaims(
+export async function clientAccessClaims(
   db: D1Database,
   userId: string,
-): Promise<{ apps: string[]; roles: string[] }> {
+  clientId: string,
+): Promise<{ apps?: string[]; roles?: string[] }> {
   const { apps, access } = await userAccess(db, userId);
-  return accessClaims(apps, access);
+  return claimsForClient(apps, access, clientId);
 }
 
-export async function appsForUser(
+export async function linkedAppAccess(
   db: D1Database,
   userId: string,
-  userGroups: string[],
-): Promise<App[]> {
-  const [{ apps, access }, clients] = await Promise.all([userAccess(db, userId), listClients(db)]);
-  const byId = new Map(clients.map((c) => [c.id, c]));
-  return apps.filter((a) => {
-    if (!a.client_id) return access.has(a.id);
-    const groups = byId.get(a.client_id)?.allowed_groups ?? null;
-    return !groups?.length || groups.some((g) => userGroups.includes(g));
-  });
+  clientId: string,
+): Promise<boolean | null> {
+  const { apps, access } = await userAccess(db, userId);
+  const linked = apps.filter((a) => a.client_id === clientId);
+  return linked.length ? linked.some((a) => access.has(a.id)) : null;
+}
+
+export async function appsForUser(db: D1Database, userId: string): Promise<App[]> {
+  const { apps, access } = await userAccess(db, userId);
+  return apps.filter((a) => access.has(a.id));
 }

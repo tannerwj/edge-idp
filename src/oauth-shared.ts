@@ -1,6 +1,6 @@
 import type { Env } from "./config";
 import { getUser, getUserGroups } from "./db";
-import { userAccessClaims } from "./access";
+import { clientAccessClaims, linkedAppAccess } from "./access";
 import type { OidcClient, User } from "./db";
 import type { TokenClaims } from "./crypto";
 
@@ -16,6 +16,8 @@ export async function clientAccessProblem(
   if (scopes.some((scope) => ADMIN_SCOPES.includes(scope)) && !user.is_admin) {
     return "admin access was removed";
   }
+  const linked = client.source === "admin" ? await linkedAppAccess(db, user.id, client.id) : null;
+  if (linked !== null) return linked ? null : "app access was removed";
   if (client.allowed_groups?.length) {
     const groups = await getUserGroups(db, user.id);
     if (!client.allowed_groups.some((group) => groups.includes(group)))
@@ -87,15 +89,15 @@ export function protectedResource(env: Env) {
     resource_documentation: `${env.ISSUER}/admin/tokens`,
   };
 }
-export function wantsAccessClaims(client: Pick<OidcClient, "source">, scope: string): boolean {
-  return client.source === "admin" && scope.split(" ").includes("groups");
+export function accessClaimsClient(client: OidcClient, scope: string): string | null {
+  return client.source === "admin" && scope.split(" ").includes("groups") ? client.id : null;
 }
 
 export async function claimsFor(
   db: D1Database,
   userId: string,
   authTime: number,
-  opts: { nonce?: string | null; access?: boolean } = {},
+  opts: { nonce?: string | null; accessFor?: string | null } = {},
 ): Promise<TokenClaims | null> {
   const user = await getUser(db, userId);
   if (!user || user.disabled) return null;
@@ -106,6 +108,6 @@ export async function claimsFor(
     groups: await getUserGroups(db, user.id),
     authTime,
     ...(opts.nonce ? { nonce: opts.nonce } : {}),
-    ...(opts.access ? await userAccessClaims(db, user.id) : {}),
+    ...(opts.accessFor ? await clientAccessClaims(db, user.id, opts.accessFor) : {}),
   };
 }
