@@ -148,7 +148,7 @@ src/
   access.ts             access grants: resolution, app/role claims, launcher visibility
   ops-access.ts         app group, grant and slug operations
   ops-connect.ts        apps_connect: tile + linked client + app-side config
-  app-templates.ts      per-app connection templates (Grafana, Open WebUI, Immich, Paperless-ngx, generic)
+  app-templates.ts      per-app connection templates (Grafana, Open WebUI, LiteLLM, Immich, Paperless-ngx, generic)
   secret-pickup.ts      one-time encrypted client secret pickup (/client-secret/pickup)
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
@@ -399,7 +399,7 @@ URIs, links the two, and returns the configuration to apply on the app side
 with a `${CLIENT_SECRET}` placeholder plus a one-time secret pickup (see
 THREAT_MODEL › Client secret pickup). Templates (`src/app-templates.ts`)
 describe each app: its callback paths, whether it can do PKCE, and its
-settings, as environment variables (Grafana, Open WebUI, Paperless-ngx; Grafana
+settings, as environment variables (Grafana, Open WebUI, LiteLLM, Paperless-ngx; Grafana
 also gets its SSO settings API body) or form fields (Immich, any OIDC app). Roles map
 onto each app's own model, for example `admin`/`writer` to Grafana
 Admin/Editor and everything else to Viewer. Running it again on a connected

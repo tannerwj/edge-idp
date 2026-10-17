@@ -34,7 +34,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   match its policies on, and each app that signs in here receives only its own
   `roles`
 - Connect an app in one step (MCP `apps_connect`): templates for Grafana, Open
-  WebUI, Immich, Paperless-ngx and any OIDC app create the client, link it to
+  WebUI, LiteLLM, Immich, Paperless-ngx and any OIDC app create the client, link it to
   the launcher and return the app-side settings; the client secret is handed
   over through a one-time pickup instead of the response
 - Apps: the launcher, organized into app groups, with favorites and search;

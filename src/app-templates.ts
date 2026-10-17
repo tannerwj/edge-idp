@@ -93,6 +93,8 @@ const openWebui: AppTemplate = {
   redirects: (b) => [`${b}/oauth/oidc/callback`],
   config: (i) => ({
     env: {
+      WEBUI_URL: i.baseUrl,
+      ENABLE_OAUTH_PERSISTENT_CONFIG: "false",
       OAUTH_CLIENT_ID: i.clientId,
       OAUTH_CLIENT_SECRET: CLIENT_SECRET,
       OPENID_PROVIDER_URL: discovery(i.issuer),
@@ -108,7 +110,8 @@ const openWebui: AppTemplate = {
     },
   }),
   notes: [
-    "Restart the container after changing the environment.",
+    "Restart the container after changing the environment. WEBUI_URL must be set or OAuth sign-in fails; ENABLE_OAUTH_PERSISTENT_CONFIG=false keeps these variables in charge over settings saved in the database.",
+    "OAUTH_MERGE_ACCOUNTS_BY_EMAIL links an existing local account only when its email equals the Johnson ID email; change the local email first if they differ.",
     "Confidential client authenticated by its secret; PKCE is off for this template.",
     "Anyone with access but no role is refused by Open WebUI; grant admin, writer or reader.",
     "Set ENABLE_LOGIN_FORM=false once Johnson ID sign-in works to hide local passwords.",
@@ -176,6 +179,35 @@ const paperless: AppTemplate = {
   notes: ["Restart the container after changing the environment."],
 };
 
+const litellm: AppTemplate = {
+  id: "litellm",
+  name: "LiteLLM",
+  icon: "🧠",
+  docs: "https://docs.litellm.ai/docs/proxy/admin_ui_sso",
+  pkce: false,
+  apply: "env",
+  redirects: (b) => [`${b}/sso/callback`],
+  config: (i) => ({
+    env: {
+      PROXY_BASE_URL: i.baseUrl,
+      GENERIC_CLIENT_ID: i.clientId,
+      GENERIC_CLIENT_SECRET: CLIENT_SECRET,
+      GENERIC_AUTHORIZATION_ENDPOINT: `${i.issuer}/authorize`,
+      GENERIC_TOKEN_ENDPOINT: `${i.issuer}/token`,
+      GENERIC_USERINFO_ENDPOINT: `${i.issuer}/userinfo`,
+      GENERIC_SCOPE: SCOPES,
+      GENERIC_USER_ID_ATTRIBUTE: "sub",
+      GENERIC_USER_EMAIL_ATTRIBUTE: "email",
+      GENERIC_USER_DISPLAY_NAME_ATTRIBUTE: "name",
+    },
+  }),
+  notes: [
+    "Admin UI sign-in only; API keys are unaffected. LiteLLM's SSO is free for up to 5 users.",
+    "LiteLLM roles come from its own names (proxy_admin, internal_user, …), so set PROXY_ADMIN_ID to the admin's Johnson ID user id (the sub claim); everyone else gets LiteLLM's default internal user role.",
+    "Restart the container after changing the environment. UI_USERNAME/UI_PASSWORD keep working as a fallback until disable_env_credential_login is set.",
+  ],
+};
+
 const generic: AppTemplate = {
   id: "generic",
   name: "Any OIDC app",
@@ -201,7 +233,7 @@ const generic: AppTemplate = {
   notes: ["Pass redirect_uris: the app's OAuth callback URL(s), exactly as the app sends them."],
 };
 
-export const TEMPLATES: AppTemplate[] = [grafana, openWebui, immich, paperless, generic];
+export const TEMPLATES: AppTemplate[] = [grafana, openWebui, litellm, immich, paperless, generic];
 
 export function templateById(id: string): AppTemplate | undefined {
   return TEMPLATES.find((t) => t.id === id);
