@@ -86,6 +86,64 @@ async function loadTabData(
   };
 }
 
+function UserLede({ user, hasPasskey }: { user: User; hasPasskey: boolean }) {
+  return (
+    <span class="row-sm wrap">
+      {user.public ? "Signed up through a public app (no email)" : user.email}
+      {user.is_admin ? <span class="badge accent">Admin</span> : null}
+      {user.public ? <span class="badge">Public</span> : null}
+      {user.disabled ? (
+        <span class="badge bad dot">Disabled</span>
+      ) : (
+        <span class="badge ok dot">Active</span>
+      )}
+      {!hasPasskey && !user.disabled ? <span class="badge warn">No passkey yet</span> : null}
+    </span>
+  );
+}
+
+function UserActions({
+  user,
+  self,
+  hasPasskey,
+}: {
+  user: User;
+  self: boolean;
+  hasPasskey: boolean;
+}) {
+  const id = user.id;
+  return (
+    <>
+      {user.public ? (
+        <PostButton
+          action={`/admin/users/${id}/member`}
+          label="Make member"
+          icon="userPlus"
+          class="btn"
+          confirm={`Make ${user.name} a member? Members can open apps granted to everyone and sign in to members-only apps, subject to their grants.`}
+        />
+      ) : null}
+      <PostButton
+        action={`/admin/users/${id}/enrollment`}
+        label={hasPasskey ? "New enrollment link" : "Get invite link"}
+        icon="link"
+        class="btn"
+      />
+      {self ? null : user.disabled ? (
+        <PostButton action={`/admin/users/${id}/enable`} label="Enable" icon="check" class="btn" />
+      ) : (
+        <PostButton
+          action={`/admin/users/${id}/disable`}
+          label="Disable"
+          icon="ban"
+          class="btn danger"
+          confirm={`Disable ${user.name}? They'll be signed out everywhere immediately.`}
+        />
+      )}
+    </>
+  );
+}
+
 userDetailAdmin.get("/", async (c) => {
   const id = c.req.param("id") ?? "";
   const db = c.env.DB;
@@ -112,46 +170,8 @@ userDetailAdmin.get("/", async (c) => {
       <PageHead
         leading={<Avatar name={user.name} seed={user.id} size="lg" />}
         title={user.name}
-        lede={
-          <span class="row-sm wrap">
-            {user.email}
-            {user.is_admin ? <span class="badge accent">Admin</span> : null}
-            {user.disabled ? (
-              <span class="badge bad dot">Disabled</span>
-            ) : (
-              <span class="badge ok dot">Active</span>
-            )}
-            {!creds.length && !user.disabled ? (
-              <span class="badge warn">No passkey yet</span>
-            ) : null}
-          </span>
-        }
-        actions={
-          <>
-            <PostButton
-              action={`/admin/users/${id}/enrollment`}
-              label={creds.length ? "New enrollment link" : "Get invite link"}
-              icon="link"
-              class="btn"
-            />
-            {self ? null : user.disabled ? (
-              <PostButton
-                action={`/admin/users/${id}/enable`}
-                label="Enable"
-                icon="check"
-                class="btn"
-              />
-            ) : (
-              <PostButton
-                action={`/admin/users/${id}/disable`}
-                label="Disable"
-                icon="ban"
-                class="btn danger"
-                confirm={`Disable ${user.name}? They'll be signed out everywhere immediately.`}
-              />
-            )}
-          </>
-        }
+        lede={<UserLede user={user} hasPasskey={creds.length > 0} />}
+        actions={<UserActions user={user} self={self} hasPasskey={creds.length > 0} />}
       />
       <nav class="tabs">
         {TABS.map((t) => (

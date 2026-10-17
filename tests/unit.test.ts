@@ -116,7 +116,25 @@ function grant(g: Partial<Grant>): Grant {
 describe("resolveAccess", () => {
   const solar = { id: "solar", app_group_id: "home", slug: "solar" };
   const nas = { id: "nas", app_group_id: null, slug: "nas" };
-  const me = { userId: "u1", groupIds: ["family"] };
+  const me = { userId: "u1", groupIds: ["family"], isPublic: false };
+  const stranger = { userId: "p1", groupIds: ["public"], isPublic: true };
+
+  it("does not let an everyone grant reach a public (self-registered) account", () => {
+    const grants = [
+      grant({ app_id: "nas", everyone: 1 }),
+      grant({ app_group_id: "home", everyone: 1 }),
+    ];
+    expect(resolveAccess([solar, nas], grants, stranger).size).toBe(0);
+  });
+
+  it("lets a public account in only through a grant that names it or its group", () => {
+    const grants = [
+      grant({ app_id: "nas", everyone: 1 }),
+      grant({ app_id: "solar", group_id: "public", role: "player" }),
+    ];
+    const access = resolveAccess([solar, nas], grants, stranger);
+    expect([...access.entries()]).toEqual([["solar", ["player"]]]);
+  });
 
   it("ignores grants for another user or a group the user is not in", () => {
     const grants = [

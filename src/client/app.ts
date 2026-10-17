@@ -1,11 +1,12 @@
 import { toast } from "./dom";
-import { initAccount, initEnroll, initLogin } from "./passkeys";
+import { initAccount, initEnroll, initLogin, initSignup } from "./passkeys";
 import { initCopy, initDialogs, initMode, initTables, initTimes } from "./ui";
 import { initPalette } from "./palette";
 
 const page = document.body.getAttribute("data-page");
 if (page === "login") void initLogin();
 if (page === "enroll") initEnroll();
+if (page === "signup") initSignup();
 if (page === "account") initAccount();
 initDialogs();
 initCopy();

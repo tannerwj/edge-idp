@@ -182,6 +182,19 @@ function ClientSettingsForm({
             <span class="sub">Always on for public clients. Cloudflare Access needs it off.</span>
           </span>
         </label>
+        {client.source === "admin" ? (
+          <label class="check">
+            <input type="checkbox" name="publicSignup" value="1" checked={client.public_signup} />
+            <span>
+              Open to the public
+              <span class="sub">
+                Anyone who reaches this app's sign-in can create an account (a name and a passkey,
+                no email), which joins the public group. Public accounts can only sign in to apps
+                with this on.
+              </span>
+            </span>
+          </label>
+        ) : null}
         <label class="check">
           <input type="checkbox" name="skipConsent" value="1" checked={client.skip_consent} />
           <span>

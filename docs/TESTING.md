@@ -90,6 +90,11 @@ virtual authenticator through:
 - that a dynamically registered client asking for `openid groups` gets
   `groups` but no `apps` or `roles` (it uses its own registration so the
   remembered-consent checks that follow are unaffected);
+- public sign-up in a second browser with its own virtual authenticator: the
+  "Create an account" link on an open app's sign-in, sign-up landing back in
+  the app with a code, an ID token with the name and `public` group but no
+  email, refusal at a members-only app (and of sign-up there), refusal to make
+  the account an admin, and admission after "Make member";
 - `apps_connect` with the Grafana template: the registered redirect URI, a
   secret pickup that works once (and the secret never appearing in the MCP
   result), a sign-in through the new client whose ID token carries only that
@@ -145,6 +150,7 @@ failure. They come from the October 2026 security review.
 | `d1-read-forgery.mjs`      | portable        | Read access to D1 alone can't reveal the generated signing key: `signing_keys.current` starts with `enc:v1:` and has no private `"d"` member, and JWKS exposes exactly one key. It prints no key or token.                                                                                                                                                                       |
 | `first-run-failure.mjs`    | portable        | If a dependency fails after the first-admin insert (simulated by dropping `audit_log`), the setup POST returns 500, no users or enrollment tokens remain, and `/setup` stays open.                                                                                                                                                                                               |
 | `no-user-verification.mjs` | local, Chromium | An authenticator without user verification can't enroll: options demand `userVerification: "required"`, the enrollment page shows an error, and no credential is stored.                                                                                                                                                                                                         |
+| `public-accounts.mjs`      | local           | A public account (seeded with a real-looking email) can't redeem a code at an admin client that admits every member, the way Cloudflare Access's does, and gets no token; at a client open to the public it can, and its ID token carries no `email`, `email_verified` or `preferred_username`.                                                                                  |
 | `token-boundaries.mjs`     | local           | A code or refresh token presented by the wrong client is rejected without being consumed; a group-restricted client's refresh is denied and its family revoked after the user leaves the group; an `offline_access`-only access token is rejected by `/userinfo` and carries no email; a read-only API token can't write through `execute`; the sandbox has no outbound network. |
 
 "Local" means `startLocal` (`cf dev`, `cloudflare.config.ts`); "portable"

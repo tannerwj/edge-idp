@@ -41,7 +41,7 @@ export async function validEnrollmentToken(
   return { user, tokenHash };
 }
 
-function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
+export function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
   return c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for") ?? null;
 }
 
@@ -114,20 +114,20 @@ async function checkEnrollmentBinding(
   return !stored.data["enrollmentTokenHash"];
 }
 
-type RegistrationInfo = NonNullable<
+export type RegistrationInfo = NonNullable<
   Awaited<ReturnType<typeof verifyRegistrationResponse>>["registrationInfo"]
 >;
 
-async function persistCredential(
+export function credentialInsert(
   db: D1Database,
   userId: string,
   response: RegistrationResponseJSON,
   info: RegistrationInfo,
   name: string,
-): Promise<string> {
+): { id: string; stmt: D1PreparedStatement } {
   const deviceType = info.credentialDeviceType ?? "singleDevice";
   const id = newId();
-  await db
+  const stmt = db
     .prepare(
       `INSERT INTO webauthn_credentials
          (id, user_id, credential_id, public_key, counter, transports, name,
@@ -146,8 +146,19 @@ async function persistCredential(
       info.credentialBackedUp ? 1 : 0,
       info.aaguid ?? null,
       nowSec(),
-    )
-    .run();
+    );
+  return { id, stmt };
+}
+
+async function persistCredential(
+  db: D1Database,
+  userId: string,
+  response: RegistrationResponseJSON,
+  info: RegistrationInfo,
+  name: string,
+): Promise<string> {
+  const { id, stmt } = credentialInsert(db, userId, response, info, name);
+  await stmt.run();
   return id;
 }
 
@@ -159,7 +170,7 @@ async function burnEnrollmentToken(db: D1Database, token: string): Promise<boole
   return burned.meta.changes > 0;
 }
 
-function credentialName(requested: string | undefined, info: RegistrationInfo): string {
+export function credentialName(requested: string | undefined, info: RegistrationInfo): string {
   const deviceType = info.credentialDeviceType ?? "singleDevice";
   return (
     requested?.trim().slice(0, 60) ||

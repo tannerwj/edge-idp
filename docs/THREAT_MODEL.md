@@ -248,9 +248,49 @@ checkEnrollmentBinding`). The token is burned with a conditional `UPDATE … SET
 used = 1 WHERE … AND used = 0` before the credential is stored, so if two
 ceremonies race on one link, only one enrolls; the other gets
 `invalid_enrollment_token` (`src/webauthn.ts › burnEnrollmentToken`). Admins
-generate tokens; there is no self-service enrollment, because user creation is
-the admin's explicit intent. A fresh link is revealed once in the admin UI and
-never stored in plaintext.
+generate tokens: becoming a member is always the admin's explicit intent. A
+fresh link is revealed once in the admin UI and never stored in plaintext.
+
+## Public sign-up
+
+An admin can mark one admin-registered client "open to the public". Its
+sign-in page then offers "Create an account", which creates a **public
+account**: a name and a passkey, nothing else. This is the one self-service
+path, and it exists for things like games, where asking for an invitation per
+player defeats the point. What keeps it safe is that a public account is
+contained rather than trusted:
+
+- **It can only reach apps that opted in.** A public account is refused at
+  any client that isn't open to the public, before groups or grants are
+  considered, at authorization, code redemption and refresh alike
+  (`src/oauth-shared.ts › clientAccessProblem`). That includes Cloudflare
+  Access, whose client admits every member. Dynamically registered and CIMD
+  clients can't be opened at all.
+- **It has no email.** Sign-up never asks for one, so there is no unverified
+  address to impersonate someone with. The required column holds a
+  placeholder (`<id>@public.invalid`) that is never put in a token:
+  `email`, `email_verified` and `preferred_username` are left out of ID
+  tokens, access tokens and `/userinfo` (`src/crypto.ts › mintIdToken`).
+  Access policies that match on an email can't be met by one.
+- **"Everyone" means members.** Everyone grants don't cover public accounts;
+  only a grant naming the account or one of its groups does
+  (`src/access.ts › resolveAccess`). New accounts join the `public` group,
+  which is what an admin grants a public app to.
+- **It can't be an admin.** Making a public account an admin is refused;
+  an admin has to make it a member first, and that is the only way out of
+  the containment.
+- **Creation is atomic and late.** The account, its passkey and its group
+  membership are written in one batch only after the passkey verifies, with
+  the client re-checked at that moment, so abandoned ceremonies leave nothing
+  behind and closing a client takes effect immediately. The passkey must be
+  discoverable, since there is no email to look it up by. The name is
+  length-capped and control characters are refused, because it reaches the
+  admin UI and every app's `name` claim. Both endpoints sit under
+  `/webauthn/`, on the authentication rate limit (`src/signup.ts`).
+
+Anyone who can reach an open app's sign-in can create an account; that is
+the point. The cost is bounded by the rate limit, and an admin can close the
+client, disable or delete accounts, or make individual ones members.
 
 ## First admin (one-click installs)
 

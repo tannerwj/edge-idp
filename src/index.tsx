@@ -13,7 +13,8 @@ import { account } from "./account";
 import { home } from "./home";
 import { pickup } from "./secret-pickup";
 import { mcp } from "./mcp";
-import { EnrollPage, ErrorPage, LoginPage } from "./pages";
+import { EnrollPage, ErrorPage, LoginPage, SignupPage } from "./pages";
+import { signup, signupClient } from "./signup";
 import { destroySession, getSession } from "./session";
 import { audit, getClient } from "./db";
 import { uiFor } from "./ui/layout";
@@ -144,7 +145,7 @@ function safeNext(raw: string | undefined): string {
 async function loginContext(
   db: D1Database,
   next: string,
-): Promise<{ name: string; host: string } | null> {
+): Promise<{ name: string; host: string; signup: boolean } | null> {
   if (!next.startsWith("/authorize?")) return null;
   const q = new URLSearchParams(next.slice("/authorize?".length));
   const client = await getClient(db, q.get("client_id") ?? "");
@@ -153,7 +154,7 @@ async function loginContext(
   try {
     host = new URL(q.get("redirect_uri") ?? client.redirect_uris[0] ?? "").host;
   } catch {}
-  return { name: client.name, host };
+  return { name: client.name, host, signup: client.source === "admin" && client.public_signup };
 }
 
 app.get("/login", async (c) => {
@@ -171,6 +172,22 @@ app.get("/login", async (c) => {
       signedOut={c.req.query("signed_out") === "1"}
     />,
   );
+});
+
+app.get("/signup", async (c) => {
+  const next = safeNext(c.req.query("next"));
+  if (await getSession(c)) return c.redirect(next, 302);
+  const ui = await uiFor(c);
+  if (!(await signupClient(c.env.DB, next)))
+    return c.html(
+      <ErrorPage
+        ui={ui}
+        title="Sign-up isn't open here"
+        message="This app only lets invited people in. Sign in if you already have an account."
+      />,
+      404,
+    );
+  return c.html(<SignupPage ui={ui} next={next} app={await loginContext(c.env.DB, next)} />);
 });
 
 app.get("/enroll", async (c) =>
@@ -211,6 +228,7 @@ app.post("/logout", async (c) => {
 
 app.route("/", setup);
 app.route("/webauthn", webauthn);
+app.route("/webauthn", signup);
 app.route("/admin", admin);
 app.route("/mcp", mcp);
 app.route("/", registration);

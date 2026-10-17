@@ -8,7 +8,7 @@ import type { IconName } from "./ui/icons";
 export function LoginPage(props: {
   ui: Ui;
   next: string;
-  app?: { name: string; host: string } | null;
+  app?: { name: string; host: string; signup?: boolean } | null;
   reauth?: boolean;
   signedOut?: boolean;
 }) {
@@ -74,6 +74,54 @@ export function LoginPage(props: {
           </label>
         </details>
         <p id="login-status" class="status" role="status" aria-live="polite"></p>
+        {props.app?.signup && !props.reauth ? (
+          <p class="muted small center">
+            New here?{" "}
+            <a href={`/signup?next=${encodeURIComponent(props.next)}`}>Create an account</a>
+          </p>
+        ) : null}
+      </div>
+    </AuthLayout>
+  );
+}
+
+export function SignupPage(props: {
+  ui: Ui;
+  next: string;
+  app: { name: string; host: string } | null;
+}) {
+  const appName = props.app?.name ?? "this app";
+  return (
+    <AuthLayout ui={props.ui} title="Create an account" page="signup">
+      {props.app ? (
+        <div class="context-chip">
+          <span class="app-glyph">{initials(props.app.name)}</span>
+          <div class="grow truncate">
+            Continue to <b>{props.app.name}</b>
+            <div class="muted tiny truncate">{props.app.host}</div>
+          </div>
+        </div>
+      ) : null}
+      <h1>Create an account</h1>
+      <p class="lede">
+        Your {props.ui.rpName} account signs you in to {appName}. It's just a name and a passkey: no
+        email, no password.
+      </p>
+      <div id="signup-box" data-next={props.next} class="stack">
+        <label class="field">
+          <span class="label">What should we call you?</span>
+          <input id="signup-name" maxLength={60} autocomplete="nickname" placeholder="Your name" />
+          <span class="hint">Shown to the apps you use, like on a leaderboard.</span>
+        </label>
+        <button id="signup-btn" class="btn primary lg block" type="button">
+          <Icon name="fingerprint" size="lg" />
+          <span>Create account with a passkey</span>
+        </button>
+        <p id="signup-status" class="status" role="status" aria-live="polite"></p>
+        <p class="muted small center">
+          Already have an account?{" "}
+          <a href={`/login?next=${encodeURIComponent(props.next)}`}>Sign in</a>
+        </p>
       </div>
     </AuthLayout>
   );

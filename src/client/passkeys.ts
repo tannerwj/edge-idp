@@ -28,6 +28,9 @@ function friendlyError(e: unknown): string {
     if (e.message === "invalid_enrollment_token")
       return "This enrollment link was already used or has expired.";
     if (e.message === "rate_limited") return "Too many attempts — wait a minute and try again.";
+    if (e.message === "invalid_name") return "Pick a name up to 60 characters.";
+    if (e.message === "signup_closed") return "This app isn't taking new accounts right now.";
+    if (e.message === "already_signed_in") return "You're already signed in.";
   }
   return "Something went wrong — please try again.";
 }
@@ -177,6 +180,47 @@ async function onAddKeyClick(btn: HTMLElement): Promise<void> {
     }
     status("account-status", friendlyError(e), "error");
   } finally {
+    setBusy(btn, false);
+  }
+}
+
+export function initSignup(): void {
+  const box = $("signup-box");
+  if (!box) return;
+  const next = box.getAttribute("data-next") || "/";
+  const btn = $("signup-btn");
+  if (!browserSupportsWebAuthn()) {
+    status(
+      "signup-status",
+      "This browser doesn't support passkeys. Try Safari, Chrome, Edge or Firefox.",
+      "error",
+    );
+    setBusy(btn, true);
+    return;
+  }
+  btn?.addEventListener("click", () => void onSignupClick(btn, next));
+}
+
+async function onSignupClick(btn: HTMLElement, next: string): Promise<void> {
+  const nameEl = $("signup-name");
+  const name = nameEl instanceof HTMLInputElement ? nameEl.value.trim() : "";
+  if (!name) {
+    status("signup-status", "Pick a name first.", "error");
+    return;
+  }
+  status("signup-status", "Follow the prompt on your device…");
+  setBusy(btn, true);
+  try {
+    const raw = await postJSON("/webauthn/signup/options", { name, next });
+    if (!isRegOptions(raw)) throw new Error("bad_response");
+    const resp = await startRegistration({ optionsJSON: raw });
+    const result = await postJSON("/webauthn/signup/verify", { response: resp });
+    if (result.ok === true) {
+      status("signup-status", "Account created — one moment…", "ok");
+      window.location.href = next;
+    }
+  } catch (e) {
+    status("signup-status", friendlyError(e), "error");
     setBusy(btn, false);
   }
 }

@@ -24,6 +24,7 @@ export const APP_TOOLS: ToolDef[] = [
         allowed_groups: c.allowed_groups,
         require_pkce: c.require_pkce,
         skip_consent: c.skip_consent,
+        public_signup: c.public_signup,
         last_used_at: c.last_used_at,
       })),
   },
@@ -74,6 +75,11 @@ export const APP_TOOLS: ToolDef[] = [
         allowed_groups: { type: "array", items: { type: "string" } },
         require_pkce: { type: "boolean" },
         skip_consent: { type: "boolean" },
+        public_signup: {
+          type: "boolean",
+          description:
+            "Open to the public: anyone can create an account from this app's sign-in, and public accounts may sign in to it",
+        },
         environment: { type: "string", enum: ["production", "staging", "development"] },
       },
       ["client_id"],
@@ -93,6 +99,7 @@ export const APP_TOOLS: ToolDef[] = [
             : {}),
           ...(typeof args.require_pkce === "boolean" ? { requirePkce: args.require_pkce } : {}),
           ...(typeof args.skip_consent === "boolean" ? { skipConsent: args.skip_consent } : {}),
+          ...(typeof args.public_signup === "boolean" ? { publicSignup: args.public_signup } : {}),
           ...(args.environment !== undefined ? { environment: str(args.environment) } : {}),
         },
         actor,

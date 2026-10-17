@@ -263,6 +263,16 @@ Then make this IdP the app's only login method and enable instant auth so
 nobody sees the Access chooser. **Connect** in the admin UI walks through all
 of this with copy buttons.
 
+## 10b. Optional: let people sign themselves up for one app
+
+For apps anyone may use, such as a game, open the app's client to the public:
+Admin → Clients → the client → **Open to the public** (MCP `clients_update`
+with `public_signup: true`). Its sign-in page then offers "Create an account".
+New accounts have a name and a passkey but no email, join the `public` group,
+and can only sign in to apps that are open to the public. Grant the app's
+launcher tile to `public` so they see it. Close the client again to stop
+sign-ups immediately.
+
 ## 11. Optional: Cloudflare Access import
 
 To list your Access applications (and which groups their policies require) and

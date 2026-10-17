@@ -8,7 +8,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 export interface StoredChallenge {
-  type: "registration" | "authentication";
+  type: "registration" | "authentication" | "signup";
   userId: string | null;
   data: Record<string, unknown>;
 }
@@ -42,7 +42,8 @@ export async function takeChallenge(
       expires_at: number;
     }>();
   if (!row) return null;
-  if (row.type !== "registration" && row.type !== "authentication") return null;
+  if (row.type !== "registration" && row.type !== "authentication" && row.type !== "signup")
+    return null;
   const data: unknown = JSON.parse(row.data);
   return {
     type: row.type,

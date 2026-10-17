@@ -63,7 +63,7 @@ export async function createClient(
 export async function updateClient(
   db: D1Database,
   client: OidcClient,
-  input: Partial<ClientInput> & { skipConsent?: boolean },
+  input: Partial<ClientInput> & { skipConsent?: boolean; publicSignup?: boolean },
   a: Actor,
 ): Promise<void> {
   const name = input.name === undefined ? client.name : input.name.trim().slice(0, 120);
@@ -78,10 +78,12 @@ export async function updateClient(
   const requirePkce =
     client.client_type === "public" ? true : (input.requirePkce ?? client.require_pkce);
   const skipConsent = input.skipConsent ?? client.skip_consent;
+  const publicSignup =
+    client.source === "admin" ? (input.publicSignup ?? client.public_signup) : false;
   await db
     .prepare(
       `UPDATE oidc_clients SET name = ?1, redirect_uris = ?2, allowed_groups = ?3, environment = ?4,
-         require_pkce = ?5, skip_consent = ?6, description = ?7 WHERE id = ?8`,
+         require_pkce = ?5, skip_consent = ?6, description = ?7, public_signup = ?9 WHERE id = ?8`,
     )
     .bind(
       name,
@@ -94,6 +96,7 @@ export async function updateClient(
         ? client.description
         : input.description.trim().slice(0, 300) || null,
       client.id,
+      publicSignup ? 1 : 0,
     )
     .run();
   await audit(db, "CLIENT_UPDATED", { clientId: client.id, detail: by(a) });

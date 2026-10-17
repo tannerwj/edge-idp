@@ -9,6 +9,7 @@ export interface User {
   disabled: number;
   updated_at: number;
   last_sign_in_at: number | null;
+  public: number;
 }
 
 export interface WebAuthnCredential {
@@ -48,6 +49,7 @@ export interface OidcClient {
   last_used_at: number | null;
   skip_consent: boolean;
   metadata_expires_at: number | null;
+  public_signup: boolean;
 }
 
 interface Row {
@@ -95,6 +97,7 @@ function rowToUser(r: Row): User {
     disabled: num(r.disabled),
     updated_at: num(r.updated_at),
     last_sign_in_at: numOrNull(r.last_sign_in_at),
+    public: r.public === undefined ? 0 : num(r.public),
   };
 }
 
@@ -190,6 +193,7 @@ function rowToClient(r: Row): OidcClient {
     last_used_at: numOrNull(r.last_used_at),
     skip_consent: r.skip_consent === undefined ? true : num(r.skip_consent) === 1,
     metadata_expires_at: numOrNull(r.metadata_expires_at),
+    public_signup: r.public_signup === undefined ? false : num(r.public_signup) === 1,
   };
 }
 

@@ -16,6 +16,9 @@ export async function clientAccessProblem(
   if (scopes.some((scope) => ADMIN_SCOPES.includes(scope)) && !user.is_admin) {
     return "admin access was removed";
   }
+  if (user.public && !(client.source === "admin" && client.public_signup)) {
+    return "this app is for members only";
+  }
   const linked = client.source === "admin" ? await linkedAppAccess(db, user.id, client.id) : null;
   if (linked !== null) return linked ? null : "app access was removed";
   if (client.allowed_groups?.length) {
@@ -105,6 +108,7 @@ export async function claimsFor(
     sub: user.id,
     email: user.email,
     name: user.name,
+    public: user.public === 1,
     groups: await getUserGroups(db, user.id),
     authTime,
     ...(opts.nonce ? { nonce: opts.nonce } : {}),

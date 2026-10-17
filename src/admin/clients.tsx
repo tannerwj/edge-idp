@@ -351,6 +351,7 @@ clientsAdmin.post("/:id", async (c) => {
         environment: field(form, "environment"),
         requirePkce: field(form, "requirePkce") === "1",
         skipConsent: field(form, "skipConsent") === "1",
+        publicSignup: field(form, "publicSignup") === "1",
       },
       actor(c),
     ),

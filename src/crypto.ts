@@ -62,6 +62,7 @@ export interface TokenClaims {
   groups: string[];
   authTime: number;
   nonce?: string;
+  public?: boolean;
   apps?: string[];
   roles?: string[];
 }
@@ -77,10 +78,10 @@ export async function mintIdToken(
   const { key, kid } = await getSigningKey(env);
   const now = nowSec();
   return await new jose.SignJWT({
-    email: claims.email,
-    email_verified: true,
+    ...(claims.public
+      ? {}
+      : { email: claims.email, email_verified: true, preferred_username: claims.email }),
     name: claims.name,
-    preferred_username: claims.email,
     groups: claims.groups,
     ...(claims.apps ? { apps: claims.apps } : {}),
     ...(claims.roles ? { roles: claims.roles } : {}),
@@ -108,7 +109,7 @@ export async function mintAccessToken(
   return await new jose.SignJWT({
     scope: opts.scope,
     client_id: opts.clientId,
-    ...(scopes.includes("email") ? { email: claims.email } : {}),
+    ...(scopes.includes("email") && !claims.public ? { email: claims.email } : {}),
     ...(scopes.includes("profile") ? { name: claims.name } : {}),
     ...(scopes.includes("groups") ? { groups: claims.groups } : {}),
     ...(scopes.includes("groups") && claims.apps ? { apps: claims.apps } : {}),

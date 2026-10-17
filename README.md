@@ -33,6 +33,8 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   group, with an optional role; Cloudflare Access receives an `apps` claim to
   match its policies on, and each app that signs in here receives only its own
   `roles`
+- Public sign-up per app: open one app (say, a game) to the public and anyone
+  can create a name-and-passkey account for it, contained to apps you opened
 - Connect an app in one step (MCP `apps_connect`): templates for Grafana, Open
   WebUI, LiteLLM, Immich, Paperless-ngx and any OIDC app create the client, link it to
   the launcher and return the app-side settings; the client secret is handed

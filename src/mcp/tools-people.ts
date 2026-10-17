@@ -8,7 +8,7 @@ export const PEOPLE_TOOLS: ToolDef[] = [
     name: "users_list",
     write: false,
     description:
-      "List all users: id, name, email, admin/disabled flags, groups, passkey count, last sign-in.",
+      "List all users: id, name, email, admin/disabled/public flags, groups, passkey count, last sign-in. Public users signed themselves up through an app open to the public; their email is a placeholder and never sent to apps.",
     inputSchema: obj(),
     handler: async ({ db }) => {
       const [users, { results: keys }, { results: members }] = await Promise.all([
@@ -35,6 +35,7 @@ export const PEOPLE_TOOLS: ToolDef[] = [
         email: u.email,
         is_admin: !!u.is_admin,
         disabled: !!u.disabled,
+        public: !!u.public,
         groups: groupsByUser.get(u.id) ?? [],
         passkeys: keyCount.get(u.id) ?? 0,
         last_sign_in_at: u.last_sign_in_at,
@@ -162,6 +163,17 @@ export const PEOPLE_TOOLS: ToolDef[] = [
     handler: async ({ db, actor }, args) => {
       const u = await userByRef(db, args);
       await ops.setAdmin(db, u.id, args.is_admin === true, actor);
+      return { ok: true };
+    },
+  },
+  {
+    name: "users_make_member",
+    write: true,
+    description:
+      "Turn a public (self-registered) account into a member: it can then sign in to members-only apps and is covered by everyone grants, subject to its groups and grants.",
+    inputSchema: obj(USER_REF),
+    handler: async ({ db, actor }, args) => {
+      await ops.makeMember(db, (await userByRef(db, args)).id, actor);
       return { ok: true };
     },
   },

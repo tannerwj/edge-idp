@@ -1,5 +1,5 @@
 import { listApps } from "../db";
-import { DEFAULT_ROLES, listAppGroups, listGrants, resolveAccess } from "../access";
+import { DEFAULT_ROLES, listAppGroups, listGrants, resolveAccess, subjectOf } from "../access";
 import type { Grant } from "../access";
 import { cfConfigured, listAccessApps } from "../cf-access";
 import * as ops from "../ops";
@@ -247,16 +247,12 @@ export const ACCESS_TOOLS: ToolDef[] = [
     inputSchema: obj(USER_REF),
     handler: async ({ db }, args) => {
       const user = await userByRef(db, args);
-      const [apps, grants, { results }] = await Promise.all([
+      const [apps, grants, subject] = await Promise.all([
         listApps(db),
         listGrants(db),
-        db
-          .prepare("SELECT group_id FROM group_members WHERE user_id = ?1")
-          .bind(user.id)
-          .all<{ group_id: string }>(),
+        subjectOf(db, user.id),
       ]);
-      const groupIds = results.map((r) => r.group_id);
-      const access = resolveAccess(apps, grants, { userId: user.id, groupIds });
+      const access = resolveAccess(apps, grants, subject);
       const views = new Map((await grantView(db, grants)).map((v) => [v.id, v]));
       return apps
         .filter((a) => access.has(a.id))
@@ -265,7 +261,7 @@ export const ACCESS_TOOLS: ToolDef[] = [
           name: a.name,
           roles: access.get(a.id),
           via: grants
-            .filter((g) => resolveAccess([a], [g], { userId: user.id, groupIds }).size > 0)
+            .filter((g) => resolveAccess([a], [g], subject).size > 0)
             .map((g) => views.get(g.id)),
         }));
     },
