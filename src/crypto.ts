@@ -62,6 +62,8 @@ export interface TokenClaims {
   groups: string[];
   authTime: number;
   nonce?: string;
+  apps?: string[];
+  roles?: string[];
 }
 
 export const ID_TOKEN_TTL = 3600;
@@ -80,6 +82,7 @@ export async function mintIdToken(
     name: claims.name,
     preferred_username: claims.email,
     groups: claims.groups,
+    ...(claims.apps ? { apps: claims.apps, roles: claims.roles ?? [] } : {}),
     auth_time: claims.authTime,
     amr: ["pop", "user"],
     ...(claims.nonce ? { nonce: claims.nonce } : {}),
@@ -107,6 +110,9 @@ export async function mintAccessToken(
     ...(scopes.includes("email") ? { email: claims.email } : {}),
     ...(scopes.includes("profile") ? { name: claims.name } : {}),
     ...(scopes.includes("groups") ? { groups: claims.groups } : {}),
+    ...(scopes.includes("groups") && claims.apps
+      ? { apps: claims.apps, roles: claims.roles ?? [] }
+      : {}),
     auth_time: claims.authTime,
   })
     .setProtectedHeader({ alg: "RS256", kid, typ: "at+jwt" })

@@ -2,6 +2,7 @@ import { obj } from "./common";
 import type { ToolDef } from "./common";
 import { PEOPLE_TOOLS } from "./tools-people";
 import { APP_TOOLS } from "./tools-apps";
+import { ACCESS_TOOLS } from "./tools-access";
 
 const METRICS_TOOL: ToolDef = {
   name: "metrics_summary",
@@ -82,4 +83,4 @@ const METRICS_TOOL: ToolDef = {
   },
 };
 
-export const TOOLS: ToolDef[] = [...PEOPLE_TOOLS, ...APP_TOOLS, METRICS_TOOL];
+export const TOOLS: ToolDef[] = [...PEOPLE_TOOLS, ...APP_TOOLS, ...ACCESS_TOOLS, METRICS_TOOL];

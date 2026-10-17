@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { base64url, emailKey, rpIdFromIssuer, sha256Hex, timingSafeEqualHex } from "../src/util";
 import { newerVersion } from "../src/upstream";
+import { accessClaims, resolveAccess } from "../src/access";
+import type { Grant } from "../src/access";
 
 describe("base64url", () => {
   it("encodes without padding or url-unsafe chars", () => {
@@ -94,5 +96,68 @@ describe("newerVersion", () => {
     expect(newerVersion("latest", "2.1.0")).toBe(false);
     expect(newerVersion("2.1", "2.0.0")).toBe(false);
     expect(newerVersion("9.9.9", "not-a-version")).toBe(false);
+  });
+});
+
+function grant(g: Partial<Grant>): Grant {
+  return {
+    id: "g",
+    app_id: null,
+    app_group_id: null,
+    user_id: null,
+    group_id: null,
+    everyone: 0,
+    role: null,
+    created_at: 0,
+    ...g,
+  };
+}
+
+describe("resolveAccess", () => {
+  const solar = { id: "solar", app_group_id: "home", slug: "solar" };
+  const nas = { id: "nas", app_group_id: null, slug: "nas" };
+  const me = { userId: "u1", groupIds: ["family"] };
+
+  it("ignores grants for another user or a group the user is not in", () => {
+    const grants = [
+      grant({ app_id: "solar", user_id: "u2" }),
+      grant({ app_id: "solar", group_id: "friends" }),
+    ];
+    expect(resolveAccess([solar], grants, me).size).toBe(0);
+  });
+
+  it("does not let an app-group grant reach an ungrouped app", () => {
+    const grants = [grant({ app_group_id: "home", everyone: 1 })];
+    const access = resolveAccess([solar, nas], grants, me);
+    expect([...access.keys()]).toEqual(["solar"]);
+  });
+
+  it("does not match an ungrouped app to a grant with no target", () => {
+    expect(resolveAccess([nas], [grant({ everyone: 1 })], me).size).toBe(0);
+  });
+
+  it("grants access without a role and unions roles across user, group and app-group grants", () => {
+    const grants = [
+      grant({ app_id: "nas", everyone: 1 }),
+      grant({ app_id: "solar", user_id: "u1", role: "writer" }),
+      grant({ app_group_id: "home", group_id: "family", role: "reader" }),
+      grant({ app_group_id: "home", group_id: "family", role: "writer" }),
+    ];
+    const access = resolveAccess([solar, nas], grants, me);
+    expect(access.get("nas")).toEqual([]);
+    expect(access.get("solar")).toEqual(["reader", "writer"]);
+  });
+
+  it("builds sorted apps and slug:role claims and skips apps without a slug", () => {
+    const access = new Map([
+      ["solar", ["writer", "admin"]],
+      ["legacy", ["admin"]],
+      ["nas", []],
+    ]);
+    const apps = [solar, nas, { id: "legacy", slug: null }];
+    expect(accessClaims(apps, access)).toEqual({
+      apps: ["nas", "solar"],
+      roles: ["solar:admin", "solar:writer"],
+    });
   });
 });

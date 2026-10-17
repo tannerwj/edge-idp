@@ -1,7 +1,9 @@
 import { audit, getSetting, listApps, listClients, setSetting } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
+import { listAppGroups } from "../access";
 import { clientByRef, obj, str, strList } from "./common";
+import { appByRef } from "./tools-access";
 import type { ToolDef } from "./common";
 
 export const APP_TOOLS: ToolDef[] = [
@@ -121,15 +123,30 @@ export const APP_TOOLS: ToolDef[] = [
   {
     name: "apps_list",
     write: false,
-    description: "List launcher apps (what users see on their home page) and who can see each.",
+    description:
+      "List launcher apps: slug (used in the `apps`/`roles` token claims), app group, Cloudflare Access link and URL. Use grants_list for who can open each.",
     inputSchema: obj(),
-    handler: async ({ db }) => listApps(db),
+    handler: async ({ db }) => {
+      const [apps, groups] = await Promise.all([listApps(db), listAppGroups(db)]);
+      const groupName = new Map(groups.map((g) => [g.id, g.name]));
+      return apps.map((a) => ({
+        id: a.id,
+        slug: a.slug,
+        name: a.name,
+        url: a.url,
+        description: a.description,
+        icon: a.icon,
+        app_group: a.app_group_id ? (groupName.get(a.app_group_id) ?? null) : null,
+        client_id: a.client_id,
+        cf_app_id: a.cf_app_id,
+      }));
+    },
   },
   {
     name: "apps_create",
     write: true,
     description:
-      "Add an app tile to the launcher. Link it to a client_id to inherit that client's allowed groups. Pass cf_app_id when the tile fronts a Cloudflare Access application so the admin UI shows it as imported.",
+      "Add an app tile to the launcher. allowed_groups seeds grants (empty = everyone); refine with grants_add. Link it to a client_id to follow that client's allowed groups instead. Pass cf_app_id when the tile fronts a Cloudflare Access application so the admin UI shows it as imported.",
     inputSchema: obj(
       {
         name: { type: "string" },
@@ -139,6 +156,8 @@ export const APP_TOOLS: ToolDef[] = [
         allowed_groups: { type: "array", items: { type: "string" } },
         client_id: { type: "string" },
         cf_app_id: { type: "string", description: "Cloudflare Access application id (optional)" },
+        slug: { type: "string", description: "Claim name; defaults from the name" },
+        app_group: { type: "string", description: "App group id or name (optional)" },
       },
       ["name", "url"],
     ),
@@ -153,18 +172,60 @@ export const APP_TOOLS: ToolDef[] = [
           allowedGroups: strList(args.allowed_groups),
           clientId: str(args.client_id) || null,
           cfAppId: str(args.cf_app_id) || null,
+          slug: str(args.slug),
+          appGroup: str(args.app_group),
         },
         actor,
       ),
     }),
   },
   {
+    name: "apps_update",
+    write: true,
+    description:
+      "Change an app tile: name, url, description, icon, slug, app group (empty string ungroups), Cloudflare Access link. Only the fields you pass change.",
+    inputSchema: obj(
+      {
+        app: { type: "string", description: "App id, slug or name" },
+        name: { type: "string" },
+        url: { type: "string" },
+        description: { type: "string" },
+        icon: { type: "string" },
+        slug: { type: "string" },
+        app_group: { type: "string" },
+        cf_app_id: { type: "string" },
+      },
+      ["app"],
+    ),
+    handler: async ({ db, actor }, args) => {
+      const app = await appByRef(db, str(args.app));
+      const pick = (k: string) => (typeof args[k] === "string" ? str(args[k]) : undefined);
+      await ops.updateApp(
+        db,
+        app,
+        {
+          name: pick("name"),
+          url: pick("url"),
+          description: pick("description"),
+          icon: pick("icon"),
+          slug: pick("slug"),
+          appGroup: pick("app_group"),
+          cfAppId: pick("cf_app_id"),
+        },
+        actor,
+      );
+      return { ok: true };
+    },
+  },
+  {
     name: "apps_delete",
     write: true,
-    description: "Remove an app from the launcher.",
-    inputSchema: obj({ app_id: { type: "string" } }, ["app_id"]),
+    description: "Remove an app from the launcher (its grants and favorites go with it).",
+    inputSchema: obj({ app_id: { type: "string", description: "App id, slug or name" } }, [
+      "app_id",
+    ]),
     handler: async ({ db, actor }, args) => {
-      await ops.deleteApp(db, str(args.app_id), actor);
+      await ops.deleteApp(db, (await appByRef(db, str(args.app_id))).id, actor);
       return { ok: true };
     },
   },

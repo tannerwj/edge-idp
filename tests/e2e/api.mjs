@@ -36,9 +36,16 @@ await instance.sql(
     `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at) VALUES ('${sha256Hex(SESSION_TOKEN)}', '${USER_ID}', ${now}, ${now + 3600}, ${now});`,
     `INSERT INTO groups (id, name, created_at) VALUES ('${randomUUID()}', 'family', ${now});`,
     `INSERT INTO group_members (group_id, user_id, created_at) VALUES ((SELECT id FROM groups WHERE name='family'), '${USER_ID}', ${now});`,
+    `INSERT INTO groups (id, name, created_at) VALUES ('${randomUUID()}', 'friends', ${now});`,
+    `INSERT INTO app_groups (id, name, sort_order, created_at) VALUES ('ag-home', 'Home', 1, ${now});`,
+    `INSERT INTO apps (id, name, url, sort_order, created_at, slug, app_group_id) VALUES ('app-solar', 'Solar', 'https://solar.example.test', 1, ${now}, 'solar', 'ag-home'), ('app-nas', 'NAS', 'https://nas.example.test', 2, ${now}, 'nas', NULL), ('app-hidden', 'Hidden', 'https://hidden.example.test', 3, ${now}, 'hidden', NULL);`,
+    `INSERT INTO app_grants (id, app_group_id, group_id, role, created_at) VALUES ('gr-1', 'ag-home', (SELECT id FROM groups WHERE name='family'), 'reader', ${now});`,
+    `INSERT INTO app_grants (id, app_id, user_id, role, created_at) VALUES ('gr-2', 'app-solar', '${USER_ID}', 'admin', ${now});`,
+    `INSERT INTO app_grants (id, app_id, everyone, created_at) VALUES ('gr-3', 'app-nas', 1, ${now});`,
+    `INSERT INTO app_grants (id, app_id, group_id, role, created_at) VALUES ('gr-4', 'app-hidden', (SELECT id FROM groups WHERE name='friends'), 'admin', ${now});`,
   ].join("\n"),
 );
-console.log("  seeded user, client, session, group; ready");
+console.log("  seeded user, client, session, groups, apps, grants; ready");
 
 const sessionHeaders = { cookie: `__Host-idp_session=${SESSION_TOKEN}` };
 
@@ -193,6 +200,16 @@ try {
       JSON.stringify(payload.groups) === JSON.stringify(["family"]),
       JSON.stringify(payload.groups),
     );
+    check(
+      "id_token apps from user, group and everyone grants",
+      JSON.stringify(payload.apps) === JSON.stringify(["nas", "solar"]),
+      JSON.stringify(payload.apps),
+    );
+    check(
+      "id_token roles union user and app-group grants",
+      JSON.stringify(payload.roles) === JSON.stringify(["solar:admin", "solar:reader"]),
+      JSON.stringify(payload.roles),
+    );
     check("id_token nonce", payload.nonce === "n-123");
     check("id_token alg RS256", true);
   }
@@ -213,6 +230,12 @@ try {
     check(
       "userinfo claims",
       j.sub === USER_ID && j.email === "test@example.test" && j.groups?.[0] === "family",
+      JSON.stringify(j),
+    );
+    check(
+      "userinfo apps and roles",
+      JSON.stringify(j.apps) === JSON.stringify(["nas", "solar"]) &&
+        JSON.stringify(j.roles) === JSON.stringify(["solar:admin", "solar:reader"]),
       JSON.stringify(j),
     );
   }

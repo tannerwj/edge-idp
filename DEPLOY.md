@@ -248,7 +248,7 @@ Zero Trust dashboard → **Access → Identity providers → Add new → OpenID 
 | PKCE             | **Off** (Access doesn't send it; register the client with PKCE unchecked) |
 | Email claim name | `email` (default)                                                         |
 | Scopes           | `openid profile email groups`                                             |
-| OIDC Claims      | add `groups` so policies can match on it                                  |
+| OIDC Claims      | add `groups`, `apps` and `roles` so policies can match on them            |
 
 Register Access **once** before filling in that form: open
 `https://auth.yourdomain.com/admin` → **Clients** → **Register client**.
@@ -256,7 +256,9 @@ Choose confidential, uncheck PKCE, and use the redirect URI
 `https://<your-team>.cloudflareaccess.com/cdn-cgi/access/callback`. Copy the
 client ID + secret into the IdP form above. Every Access app shares this one
 client, so do per-app access in each Access policy: add an **Include → OIDC
-Claims** rule with `groups` = `family`, matching on groups from the admin UI.
+Claims** rule with `groups` = `family`, matching on groups from the admin UI,
+or with `apps` = the app's slug, which follows the access grants made in the
+admin UI or over MCP.
 Then make this IdP the app's only login method and enable instant auth so
 nobody sees the Access chooser. **Connect** in the admin UI walks through all
 of this with copy buttons.

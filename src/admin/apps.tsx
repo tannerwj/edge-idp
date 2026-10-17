@@ -313,11 +313,11 @@ appsAdmin.post("/import", async (c) => {
 });
 
 appsAdmin.post("/:id", async (c) => {
-  const id = c.req.param("id");
-  if (!(await getApp(c.env.DB, id))) return c.notFound();
+  const app = await getApp(c.env.DB, c.req.param("id"));
+  if (!app) return c.notFound();
   const form = await c.req.parseBody({ all: true });
   return act(c, "/admin/apps", "App saved", () =>
-    ops.updateApp(c.env.DB, id, input(form), actor(c)),
+    ops.updateApp(c.env.DB, app, input(form), actor(c)),
   );
 });
 

@@ -244,6 +244,8 @@ export interface App {
   allowed_groups: string[] | null;
   client_id: string | null;
   cf_app_id: string | null;
+  app_group_id: string | null;
+  slug: string | null;
   sort_order: number;
   created_at: number;
 }
@@ -259,6 +261,8 @@ function rowToApp(r: Row): App {
     allowed_groups: typeof r.allowed_groups === "string" ? strArray(r.allowed_groups) : null,
     client_id: strOrNull(r.client_id),
     cf_app_id: strOrNull(r.cf_app_id),
+    app_group_id: strOrNull(r.app_group_id),
+    slug: strOrNull(r.slug),
     sort_order: num(r.sort_order),
     created_at: num(r.created_at),
   };
@@ -274,15 +278,6 @@ export async function listApps(db: D1Database): Promise<App[]> {
 export async function getApp(db: D1Database, id: string): Promise<App | null> {
   const r = await db.prepare("SELECT * FROM apps WHERE id = ?1").bind(id).first<Row>();
   return r ? rowToApp(r) : null;
-}
-
-export async function appsForUser(db: D1Database, userGroups: string[]): Promise<App[]> {
-  const [apps, clients] = await Promise.all([listApps(db), listClients(db)]);
-  const byId = new Map(clients.map((c) => [c.id, c]));
-  return apps.filter((a) => {
-    const groups = a.client_id ? (byId.get(a.client_id)?.allowed_groups ?? null) : a.allowed_groups;
-    return !groups?.length || groups.some((g) => userGroups.includes(g));
-  });
 }
 
 export async function audit(
