@@ -36,6 +36,7 @@ export function AppTile(props: { app: App; admin?: boolean }) {
       class="tile"
       href={a.url}
       data-hue={a.color ? String(Math.round(parseInt(a.color, 10) / 30) % 12) : hueOf(a.name)}
+      target="_blank"
       rel="noopener"
     >
       <span class={a.icon && isEmoji(a.icon) ? "glyph emoji" : "glyph"}>{glyph}</span>

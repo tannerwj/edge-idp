@@ -156,7 +156,7 @@ function AppList({
                     {cl ? <span class="badge">Client: {cl.name}</span> : null}
                   </div>
                   <div class="meta truncate">
-                    <a href={a.url} rel="noopener">
+                    <a href={a.url} target="_blank" rel="noopener">
                       {a.url}
                     </a>
                   </div>
