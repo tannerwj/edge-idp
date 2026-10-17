@@ -15,6 +15,7 @@ export interface Grant {
 export interface Subject {
   userId: string;
   groupIds: string[];
+  isPublic: boolean;
 }
 
 export interface AppGroup {
@@ -40,7 +41,7 @@ export function slugify(name: string): string {
 }
 
 function matchesSubject(g: Grant, s: Subject): boolean {
-  if (g.everyone === 1) return true;
+  if (g.everyone === 1) return !s.isPublic;
   if (g.user_id !== null) return g.user_id === s.userId;
   return g.group_id !== null && s.groupIds.includes(g.group_id);
 }
@@ -97,24 +98,27 @@ export async function listAppGroups(db: D1Database): Promise<AppGroup[]> {
   return results;
 }
 
-async function groupIdsOf(db: D1Database, userId: string): Promise<string[]> {
-  const { results } = await db
-    .prepare("SELECT group_id FROM group_members WHERE user_id = ?1")
-    .bind(userId)
-    .all<{ group_id: string }>();
-  return results.map((r) => r.group_id);
+export async function subjectOf(db: D1Database, userId: string): Promise<Subject> {
+  const [{ results }, user] = await Promise.all([
+    db
+      .prepare("SELECT group_id FROM group_members WHERE user_id = ?1")
+      .bind(userId)
+      .all<{ group_id: string }>(),
+    db.prepare("SELECT public FROM users WHERE id = ?1").bind(userId).first<{ public: number }>(),
+  ]);
+  return { userId, groupIds: results.map((r) => r.group_id), isPublic: user?.public === 1 };
 }
 
 export async function userAccess(
   db: D1Database,
   userId: string,
 ): Promise<{ apps: App[]; access: Map<string, string[]> }> {
-  const [apps, grants, groupIds] = await Promise.all([
+  const [apps, grants, subject] = await Promise.all([
     listApps(db),
     listGrants(db),
-    groupIdsOf(db, userId),
+    subjectOf(db, userId),
   ]);
-  return { apps, access: resolveAccess(apps, grants, { userId, groupIds }) };
+  return { apps, access: resolveAccess(apps, grants, subject) };
 }
 
 export async function clientAccessClaims(

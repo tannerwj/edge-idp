@@ -659,6 +659,118 @@ try {
     String(refused?.status()),
   );
 
+  step("public sign-up: open app, contained account");
+  const game = await tool("clients_create", {
+    name: "Game",
+    redirect_uris: ["https://game.example.test/cb"],
+  });
+  await tool("clients_update", { client_id: game?.id, public_signup: true });
+  const members = await tool("clients_create", {
+    name: "Members App",
+    redirect_uris: ["https://members.example.test/cb"],
+  });
+  const gctx = await browser.newContext();
+  const gpage = await gctx.newPage();
+  const gcdp = await gctx.newCDPSession(gpage);
+  await gcdp.send("WebAuthn.enable");
+  await gcdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  const p5 = pkce();
+  const gameAuth = {
+    client_id: game?.id,
+    redirect_uri: "https://game.example.test/cb",
+    response_type: "code",
+    scope: "openid profile email groups",
+    state: "pub1",
+    code_challenge: p5.challenge,
+    code_challenge_method: "S256",
+  };
+  const codeFor = (origin) => {
+    let code = null;
+    gpage.on("request", (r) => {
+      const u = new URL(r.url());
+      if (u.origin === origin && u.searchParams.get("code")) code = u.searchParams.get("code");
+    });
+    return () => code;
+  };
+  const gameCode = codeFor("https://game.example.test");
+  await gpage.goto(`${BASE}/authorize?${new URLSearchParams(gameAuth)}`);
+  check(
+    "sign-in for a public app offers Create an account",
+    await gpage.isVisible("a:has-text('Create an account')"),
+  );
+  await gpage.click("a:has-text('Create an account')");
+  await gpage.fill("#signup-name", "Pat Player");
+  await gpage.click("#signup-btn");
+  for (let i = 0; i < 80 && !gameCode(); i++) await gpage.waitForTimeout(100);
+  check("sign-up lands back in the app with a code", !!gameCode());
+  await gpage
+    .waitForURL((u) => u.href.startsWith("chrome-error:"), { timeout: 5000 })
+    .catch(() => {});
+  const pt = await (
+    await tokenReq(
+      {
+        grant_type: "authorization_code",
+        code: gameCode(),
+        redirect_uri: "https://game.example.test/cb",
+        code_verifier: p5.verifier,
+      },
+      "Basic " + Buffer.from(`${game?.id}:${game?.secret}`).toString("base64"),
+    )
+  ).json();
+  const pid = pt.id_token ? decodeJwt(pt.id_token) : {};
+  check(
+    "a public account's token has its name and the public group, and no email",
+    pid.name === "Pat Player" &&
+      Array.isArray(pid.groups) &&
+      pid.groups.includes("public") &&
+      pid.email === undefined &&
+      pid.email_verified === undefined &&
+      pid.preferred_username === undefined,
+    JSON.stringify(pid),
+  );
+  const membersAuth = new URLSearchParams({
+    client_id: members?.id,
+    redirect_uri: "https://members.example.test/cb",
+    response_type: "code",
+    scope: "openid",
+    code_challenge: p5.challenge,
+    code_challenge_method: "S256",
+  });
+  const refusedPub = await gpage.goto(`${BASE}/authorize?${membersAuth}`);
+  check(
+    "a public account is refused at a members-only app",
+    refusedPub?.status() === 403 && (await gpage.textContent("body")).includes("members only"),
+    String(refusedPub?.status()),
+  );
+  const closedSignup = await fetch(`${BASE}/webauthn/signup/options`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Mallory", next: `/authorize?${membersAuth}` }),
+  });
+  check("sign-up is refused for a members-only app", closedSignup.status === 403);
+  const pub = ((await tool("users_list", {})) ?? []).find((u) => u.name === "Pat Player");
+  check("users_list marks the account public", pub?.public === true, JSON.stringify(pub));
+  const promote = await mcpCall(mt.access_token, "tools/call", {
+    name: "users_set_admin",
+    arguments: { user_id: pub?.id, is_admin: true },
+  });
+  check("a public account can't be made admin", promote.body?.result?.isError === true);
+  await tool("users_make_member", { user_id: pub?.id });
+  const membersCode = codeFor("https://members.example.test");
+  await gpage.goto(`${BASE}/authorize?${membersAuth}`).catch(() => {});
+  for (let i = 0; i < 50 && !membersCode(); i++) await gpage.waitForTimeout(100);
+  check("after Make member the same account is admitted", !!membersCode());
+  await gctx.close();
+
   await sql(
     `INSERT INTO mcp_calls (tool_name, started_at, duration_ms, success) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1200) SELECT 'percentile_probe', ${Math.floor(Date.now() / 1000)}, i, 1 FROM n`,
   );

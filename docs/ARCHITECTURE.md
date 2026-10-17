@@ -150,6 +150,7 @@ src/
   ops-connect.ts        apps_connect: tile + linked client + app-side config
   app-templates.ts      per-app connection templates (Grafana, Open WebUI, LiteLLM, Immich, Paperless-ngx, generic)
   secret-pickup.ts      one-time encrypted client secret pickup (/client-secret/pickup)
+  signup.ts             public sign-up: /webauthn/signup/* for clients open to the public
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
   settings-cache.ts     per-isolate cache of instance settings (name, accent, Cloudflare connection)
@@ -391,6 +392,17 @@ Migration 0011 turned each unlinked app's `allowed_groups` into grants (NULL
 became an everyone grant) and 0012 did the same for linked apps from their
 client's groups, which is what `/authorize` had enforced. Both leave the old
 columns in place, unused, so a rolled-back Worker still runs.
+
+**Public sign-up** (`src/signup.ts`). A client open to the public
+(`public_signup`) adds "Create an account" to its sign-in page. `/signup`
+only renders when `next` is an authorization request for such a client. The
+browser asks for a display name, `/webauthn/signup/options` issues a
+`signup` challenge carrying the new user id, name and client (no user row yet,
+so the challenge's `user_id` is empty), and `/webauthn/signup/verify` creates
+the account, its passkey and its `public` group membership in one D1 batch,
+then signs it in and sends it back to the app. Public accounts show a Public
+badge in the admin UI; "Make member" (MCP `users_make_member`) clears it. The
+containment rules are in THREAT_MODEL › Public sign-up.
 
 **Connecting an app** (`src/ops-connect.ts`, MCP `apps_connect`). One call
 turns an app into a Johnson ID sign-in: it creates the launcher tile (or uses

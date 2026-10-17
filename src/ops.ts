@@ -112,7 +112,10 @@ export async function setAdmin(
   a: Actor,
 ): Promise<void> {
   if (id === a.adminId) throw new OpError("You can't change your own role.");
-  if (!(await getUser(db, id))) throw new OpError("User not found.");
+  const target = await getUser(db, id);
+  if (!target) throw new OpError("User not found.");
+  if (isAdmin && target.public)
+    throw new OpError("Make this public account a member before making it an admin.");
   const stmts = [
     db
       .prepare("UPDATE users SET is_admin = ?1, updated_at = ?2 WHERE id = ?3")
@@ -269,4 +272,15 @@ export async function setGroupMember(
     userId,
     detail: by(a, { group: groupId }),
   });
+}
+
+export async function makeMember(db: D1Database, id: string, a: Actor): Promise<void> {
+  const user = await getUser(db, id);
+  if (!user) throw new OpError("User not found.");
+  if (!user.public) return;
+  await db
+    .prepare("UPDATE users SET public = 0, updated_at = ?1 WHERE id = ?2")
+    .bind(nowSec(), id)
+    .run();
+  await audit(db, "USER_MADE_MEMBER", { userId: id, detail: by(a) });
 }

@@ -110,7 +110,8 @@ function PersonRow({ u, k, groups }: { u: User; k: number; groups: string[] }) {
               {u.name}
             </a>{" "}
             {u.is_admin ? <span class="badge accent">Admin</span> : null}
-            <div class="sub truncate">{u.email}</div>
+            {u.public ? <span class="badge">Public</span> : null}
+            <div class="sub truncate">{u.public ? "Signed up through a public app" : u.email}</div>
           </div>
         </div>
       </td>
@@ -336,6 +337,11 @@ usersAdmin.post("/:id/role", async (c) => {
   return act(c, `/admin/users/${id}`, makeAdmin ? "Now an admin" : "Admin removed", () =>
     ops.setAdmin(c.env.DB, id, makeAdmin, actor(c)),
   );
+});
+
+usersAdmin.post("/:id/member", async (c) => {
+  const id = c.req.param("id");
+  return act(c, `/admin/users/${id}`, "Now a member", () => ops.makeMember(c.env.DB, id, actor(c)));
 });
 
 usersAdmin.post("/:id/enrollment", async (c) => {

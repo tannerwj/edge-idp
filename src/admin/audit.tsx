@@ -165,6 +165,8 @@ const CATEGORIES: Record<string, string[]> = {
     "APP_GRANT_ADDED",
     "APP_GRANT_REMOVED",
     "APP_CONNECTED",
+    "USER_SIGNED_UP",
+    "USER_MADE_MEMBER",
     "CLIENT_SECRET_PICKED_UP",
     "SETTINGS_CHANGED",
     "CF_API_CONNECTED",

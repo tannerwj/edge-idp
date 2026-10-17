@@ -373,8 +373,11 @@ async function userinfo(c: Context<{ Bindings: Env }>): Promise<Response> {
   if (!claims) return unauthorized();
   return c.json({
     sub: claims.sub,
-    ...(scopes.includes("email") ? { email: claims.email, email_verified: true } : {}),
-    ...(scopes.includes("profile") ? { name: claims.name, preferred_username: claims.email } : {}),
+    ...(scopes.includes("email") && !claims.public
+      ? { email: claims.email, email_verified: true }
+      : {}),
+    ...(scopes.includes("profile") ? { name: claims.name } : {}),
+    ...(scopes.includes("profile") && !claims.public ? { preferred_username: claims.email } : {}),
     ...(scopes.includes("groups") ? { groups: claims.groups } : {}),
     ...(claims.apps ? { apps: claims.apps } : {}),
     ...(claims.roles ? { roles: claims.roles } : {}),
