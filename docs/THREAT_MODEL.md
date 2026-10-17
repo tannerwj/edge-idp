@@ -319,7 +319,17 @@ integration this server exists for. Verification pins `algorithms:
 ID tokens are RS256 JWTs (`typ: JWT`) with `aud` set to the client, a 1-hour
 TTL, and `auth_time` taken from the passkey ceremony (not the mint time).
 Everything Cloudflare Access needs (email, groups) is **in** the ID token
-because Access never calls userinfo. ID tokens are verified only as an
+because Access never calls userinfo.
+
+The `apps` and `roles` claims (which apps a user may open and their role in
+each, from access grants) go only to admin-registered clients that request the
+`groups` scope, in the ID token, the access token and `/userinfo`. Clients that
+introduce themselves (DCR, CIMD) still get `groups` but never the app
+inventory: a third-party tool the user signs in to has no business learning
+every service in the household or who administers which one
+(`src/oauth-shared.ts › wantsAccessClaims`). Like `groups`, these claims are
+read at sign-in, so Cloudflare Access sees a grant change only when its own
+session for that app ends. ID tokens are verified only as an
 `id_token_hint` at logout, with 30 days of clock skew allowed: logout hints
 are often expired, and there the signature, issuer and `typ` matter, not
 freshness (`src/crypto.ts › verifyIdToken`).

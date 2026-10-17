@@ -136,12 +136,15 @@ src/
   mcp/tools.ts          tool registry (TOOLS) and metrics_summary
   mcp/tools-people.ts   user and group tools
   mcp/tools-apps.ts     client, app, audit and settings tools
+  mcp/tools-access.ts   app group, grant, access-explain and Cloudflare Access listing tools
   mcp/sandbox.ts        execute code mode: Dynamic Worker sandbox and its host RPC entrypoint
   ops.ts                domain operations shared by the admin UI and MCP (users, groups)
   ops-core.ts           OpError, Actor, shared parsing helpers
   ops-apps.ts           OAuth client, launcher app and API token operations
   ops-settings.ts       instance name and Cloudflare Access connection
   db.ts                 D1 row types, validators, queries, audit writes
+  access.ts             access grants: resolution, app/role claims, launcher visibility
+  ops-access.ts         app group, grant and slug operations
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
   settings-cache.ts     per-isolate cache of instance settings (name, accent, Cloudflare connection)
@@ -360,11 +363,31 @@ policies, which this server can't see, so silently deleting a referenced group
 could change who has access in ways the admin didn't intend
 (`src/ops.ts › deleteGroup`).
 
+**Access grants.** A grant gives one subject (a user, a user group, or
+everyone) access to one target (an app, or an app group, which covers every app
+in it), optionally with a role. Roles are free text so each app can define its
+own; the UI offers `admin`, `writer` and `reader` because a role on an
+app-group grant applies to every app in the group under the same name. A user's
+access to an app is the union of every matching grant, and their roles there
+are the union of those grants' roles (`src/access.ts › resolveAccess`). Tokens
+for admin-registered clients carry the result as `apps` (app slugs) and
+`roles` (`<slug>:<role>`), which Access policies and OIDC apps match on; see
+THREAT_MODEL › Token design for who receives them. Slugs default from the app
+name, are unique, and are the stable name policies refer to, so renaming an app
+doesn't change its slug.
+
 Launcher visibility: an app linked to an OIDC client follows that client's
 `allowed_groups`, because that is what `/authorize` enforces; an unlinked app
-follows its own list. A NULL or empty list means everyone (`src/db.ts ›
-appsForUser`). Tiles open in a new tab so the launcher stays put as a
-home base (`src/home.tsx › AppTile`).
+is visible to whoever its grants cover (`src/access.ts › appsForUser`). Grants
+never change who an OIDC client admits: `clientAccessProblem` still reads only
+the client's groups. Migration 0011 turned each existing app's
+`allowed_groups` into grants (NULL became an everyone grant) and leaves the
+column in place, unused, so a rolled-back Worker still runs. Tiles open in a
+new tab so the launcher stays put as a home base (`src/home.tsx › AppTile`).
+
+Deleting a user group is refused while a grant names it, for the same reason
+as client and Access references. Deleting an app group removes its grants and
+ungroups its apps.
 
 Old admin URLs from the previous UI (`/admin/access`, `/admin/preferences`,
 `/admin/theme`, `/admin/mcp`) permanently redirect to their current pages so
@@ -372,7 +395,9 @@ bookmarks keep working.
 
 **Cloudflare Access integration** (`src/cf-access.ts`) is read-only. It lists
 Access applications, shows which ones sign in through this IdP and which
-groups their policies require, and imports them into the launcher. An import
+groups their policies require, and imports them into the launcher. The MCP
+tool `cloudflare_access_apps` returns the same listing; the token itself never
+leaves the server. An import
 records the Access app id on the tile (`cf_app_id`), which is how the list
 marks it "In launcher"; MCP `apps_create` accepts the same id so tiles made
 by an agent link up the same way (`src/mcp/tools-apps.ts`). Nothing

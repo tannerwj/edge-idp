@@ -421,6 +421,53 @@ try {
   );
   check("no ID token without openid scope", !mt.id_token);
 
+  await sql(
+    `INSERT INTO apps (id, name, url, sort_order, created_at, slug) VALUES ('app-wiki', 'Wiki', 'https://wiki.example.test', 1, ${now}, 'wiki');` +
+      `INSERT INTO app_grants (id, app_id, everyone, role, created_at) VALUES ('gr-wiki', 'app-wiki', 1, 'reader', ${now});`,
+  );
+  const oidcClient = await (
+    await fetch(`${BASE}/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_name: "E2E OIDC Agent",
+        redirect_uris: ["http://localhost/callback"],
+        token_endpoint_auth_method: "none",
+      }),
+    })
+  ).json();
+  const p3 = pkce();
+  const oidcAuth = {
+    client_id: oidcClient.client_id,
+    redirect_uri: redirect,
+    response_type: "code",
+    scope: "openid groups",
+    state: "o1",
+    code_challenge: p3.challenge,
+    code_challenge_method: "S256",
+  };
+  const oidcCode = (await authorizeInBrowser(oidcAuth, { approve: true }))?.searchParams.get(
+    "code",
+  );
+  const ot = await (
+    await tokenReq(
+      {
+        grant_type: "authorization_code",
+        code: oidcCode,
+        client_id: oidcClient.client_id,
+        code_verifier: p3.verifier,
+        redirect_uri: redirect,
+      },
+      null,
+    )
+  ).json();
+  const dcrId = ot.id_token ? decodeJwt(ot.id_token) : {};
+  check(
+    "third-party client gets groups but not the app inventory",
+    Array.isArray(dcrId.groups) && dcrId.apps === undefined && dcrId.roles === undefined,
+    JSON.stringify(dcrId),
+  );
+
   const init = await mcpCall(mt.access_token, "initialize", {
     protocolVersion: "2025-11-25",
     capabilities: {},

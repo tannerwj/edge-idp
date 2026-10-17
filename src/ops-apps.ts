@@ -1,7 +1,8 @@
 import { audit } from "./db";
-import type { OidcClient } from "./db";
+import type { App, OidcClient } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
 import { by, OpError, parseGroupList, parseRedirectUris } from "./ops-core";
+import { appGroupIdOf, checkSlug, seedAppGrants, uniqueSlug } from "./ops-access";
 import type { Actor } from "./ops-core";
 
 export const ENVIRONMENTS = ["production", "staging", "development"] as const;
@@ -127,6 +128,8 @@ export interface AppInput {
   allowedGroups?: string | string[];
   clientId?: string | null;
   cfAppId?: string | null;
+  slug?: string;
+  appGroup?: string;
 }
 
 function validAppUrl(raw: string): string {
@@ -151,13 +154,15 @@ export async function createApp(db: D1Database, input: AppInput, a: Actor): Prom
   const url = validAppUrl(input.url);
   const groups = input.clientId ? [] : await parseGroupList(db, input.allowedGroups ?? []);
   const id = newId();
+  const slug = input.slug ? await checkSlug(db, input.slug, id) : await uniqueSlug(db, name);
+  const appGroupId = input.appGroup ? await appGroupIdOf(db, input.appGroup) : null;
   const { n } = (await db
     .prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM apps")
     .first<{ n: number }>()) ?? { n: 0 };
   await db
     .prepare(
-      `INSERT INTO apps (id, name, url, description, icon, color, allowed_groups, client_id, cf_app_id, sort_order, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+      `INSERT INTO apps (id, name, url, description, icon, color, allowed_groups, client_id, cf_app_id, sort_order, created_at, slug, app_group_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
     )
     .bind(
       id,
@@ -171,36 +176,47 @@ export async function createApp(db: D1Database, input: AppInput, a: Actor): Prom
       input.cfAppId || null,
       n,
       nowSec(),
+      slug,
+      appGroupId,
     )
     .run();
+  if (!input.clientId) await seedAppGrants(db, id, groups, a);
   await audit(db, "APP_CREATED", { detail: by(a, { name }) });
   return id;
 }
 
+function pick(v: string | undefined, current: string | null, max: number): string | null {
+  return v === undefined ? current : v.trim().slice(0, max) || null;
+}
+
 export async function updateApp(
   db: D1Database,
-  id: string,
-  input: AppInput,
+  app: App,
+  input: Partial<AppInput>,
   a: Actor,
 ): Promise<void> {
-  const name = input.name.trim().slice(0, 80);
+  const name = input.name === undefined ? app.name : input.name.trim().slice(0, 80);
   if (!name) throw new OpError("Name is required.");
-  const url = validAppUrl(input.url);
-  const groups = input.clientId ? [] : await parseGroupList(db, input.allowedGroups ?? []);
+  const url = input.url === undefined ? app.url : validAppUrl(input.url);
+  const slug = input.slug ? await checkSlug(db, input.slug, app.id) : app.slug;
+  const appGroupId =
+    input.appGroup === undefined ? app.app_group_id : await appGroupIdOf(db, input.appGroup);
   await db
     .prepare(
-      `UPDATE apps SET name = ?1, url = ?2, description = ?3, icon = ?4, color = ?5, allowed_groups = ?6, client_id = ?7
-       WHERE id = ?8`,
+      `UPDATE apps SET name = ?1, url = ?2, description = ?3, icon = ?4, color = ?5, client_id = ?6,
+         cf_app_id = ?7, slug = ?8, app_group_id = ?9 WHERE id = ?10`,
     )
     .bind(
       name,
       url,
-      input.description?.trim().slice(0, 200) || null,
-      input.icon?.trim().slice(0, 8) || null,
-      normColor(input.color),
-      groups.length ? JSON.stringify(groups) : null,
-      input.clientId || null,
-      id,
+      pick(input.description, app.description, 200),
+      pick(input.icon, app.icon, 8),
+      input.color === undefined ? app.color : normColor(input.color),
+      input.clientId === undefined ? app.client_id : input.clientId || null,
+      input.cfAppId === undefined ? app.cf_app_id : input.cfAppId || null,
+      slug,
+      appGroupId,
+      app.id,
     )
     .run();
   await audit(db, "APP_UPDATED", { detail: by(a, { name }) });

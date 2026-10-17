@@ -51,7 +51,14 @@ Every script prints `ok` / `FAIL` lines and exits non-zero on any failure.
 
 Vitest with `environment: "node"`, including only `tests/unit.test.ts`. It
 covers base64url, `sha256Hex`, `timingSafeEqualHex`, `rpIdFromIssuer`,
-`emailKey` and the upstream `newerVersion` comparison (`vitest.config.ts`).
+`emailKey`, the upstream `newerVersion` comparison and access-grant resolution
+(`vitest.config.ts`).
+
+The access-grant cases start from the ways resolution could leak access: a
+grant for another user or a group the user isn't in, an app-group grant
+reaching an ungrouped app, and a grant with no target matching an ungrouped
+app (both sides `NULL`). Then roles: a role-less grant still grants access, and
+roles from user, group and app-group grants are unioned and de-duplicated.
 
 The `newerVersion` expected values were worked out by hand from MAJOR.MINOR.PATCH
 ordering, not by running the code: numeric (not lexical) comparison, major
@@ -74,6 +81,9 @@ virtual authenticator through:
 - the regression that app tokens can't drive the admin API;
 - MCP discovery, MCP via dynamic client registration (Cursor/Claude Code
   style), including code mode;
+- that a dynamically registered client asking for `openid groups` gets
+  `groups` but no `apps` or `roles` (it uses its own registration so the
+  remembered-consent checks that follow are unaffected);
 - refresh token rotation and reuse detection, and revoking consent;
 - API tokens;
 - CIMD, using Claude Code's real metadata document;
@@ -83,10 +93,14 @@ virtual authenticator through:
 
 Runs as the second half of `npm run test:e2e`. It needs no browser: it boots a
 local instance on fixed port 18877, seeds a user, a confidential client, a
-session and a `family` group straight into D1, then checks discovery, JWKS,
-`/authorize` validation, the full code flow (PKCE mismatch, wrong secret, code
-reuse), the ID token signature and claims, `/userinfo`, and a confidential
-client with `require_pkce = 0`. Because the port is fixed, don't run two
+session, `family` and `friends` groups, an app group, three apps and four
+grants straight into D1, then checks discovery, JWKS, `/authorize` validation,
+the full code flow (PKCE mismatch, wrong secret, code reuse), the ID token
+signature and claims, `/userinfo`, and a confidential client with
+`require_pkce = 0`. The grants are chosen so the expected `apps` and `roles`
+can be worked out by hand: a group grant with a role on the app group, a user
+grant with another role on one of its apps, an everyone grant without a role,
+and a grant to a group the user isn't in. Because the port is fixed, don't run two
 copies at once.
 
 ### One-click install (`npm run test:e2e:setup`)

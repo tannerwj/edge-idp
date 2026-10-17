@@ -1,5 +1,6 @@
 import type { Env } from "./config";
 import { getUser, getUserGroups } from "./db";
+import { userAccessClaims } from "./access";
 import type { OidcClient, User } from "./db";
 import type { TokenClaims } from "./crypto";
 
@@ -68,6 +69,8 @@ export function discovery(env: Env) {
       "name",
       "preferred_username",
       "groups",
+      "apps",
+      "roles",
     ],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
@@ -84,11 +87,15 @@ export function protectedResource(env: Env) {
     resource_documentation: `${env.ISSUER}/admin/tokens`,
   };
 }
+export function wantsAccessClaims(client: Pick<OidcClient, "source">, scope: string): boolean {
+  return client.source === "admin" && scope.split(" ").includes("groups");
+}
+
 export async function claimsFor(
   db: D1Database,
   userId: string,
   authTime: number,
-  nonce?: string | null,
+  opts: { nonce?: string | null; access?: boolean } = {},
 ): Promise<TokenClaims | null> {
   const user = await getUser(db, userId);
   if (!user || user.disabled) return null;
@@ -98,6 +105,7 @@ export async function claimsFor(
     name: user.name,
     groups: await getUserGroups(db, user.id),
     authTime,
-    ...(nonce ? { nonce } : {}),
+    ...(opts.nonce ? { nonce: opts.nonce } : {}),
+    ...(opts.access ? await userAccessClaims(db, user.id) : {}),
   };
 }

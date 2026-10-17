@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./config";
-import { appsForUser, getCredentialsForUser, getUserGroups } from "./db";
+import { getCredentialsForUser, getUserGroups } from "./db";
+import { appsForUser } from "./access";
 import type { App, WebAuthnCredential } from "./db";
 import { getSession } from "./session";
 import { AppShell, uiFor } from "./ui/layout";
@@ -195,7 +196,7 @@ home.get("/", async (c) => {
   const db = c.env.DB;
   const groups = await getUserGroups(db, s.user.id);
   const [apps, creds, recent] = await Promise.all([
-    appsForUser(db, groups),
+    appsForUser(db, s.user.id, groups),
     getCredentialsForUser(db, s.user.id),
     db
       .prepare(

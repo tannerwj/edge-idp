@@ -5,6 +5,7 @@ import type { Actor } from "./ops-core";
 
 export { OpError } from "./ops-core";
 export * from "./ops-apps";
+export * from "./ops-access";
 export * from "./ops-settings";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -225,13 +226,14 @@ export async function deleteGroup(db: D1Database, id: string, a: Actor): Promise
     .first<{ name: string }>();
   if (!g) throw new OpError("Group not found.");
   const clients = (await listClients(db)).filter((c) => c.allowed_groups?.includes(g.name));
-  const { results: apps } = await db
-    .prepare("SELECT name, allowed_groups FROM apps")
-    .all<{ name: string; allowed_groups: string | null }>();
-  const appRefs = apps.filter((x) => {
-    const list: unknown = x.allowed_groups ? JSON.parse(x.allowed_groups) : [];
-    return Array.isArray(list) && list.includes(g.name);
-  });
+  const { results: appRefs } = await db
+    .prepare(
+      `SELECT DISTINCT COALESCE(a.name, ag.name) AS name FROM app_grants x
+       LEFT JOIN apps a ON a.id = x.app_id LEFT JOIN app_groups ag ON ag.id = x.app_group_id
+       WHERE x.group_id = ?1`,
+    )
+    .bind(id)
+    .all<{ name: string }>();
   const refs = [...clients.map((c) => c.name), ...appRefs.map((x) => x.name)];
   if (refs.length)
     throw new OpError(`“${g.name}” is still used by: ${refs.join(", ")}. Remove it there first.`);

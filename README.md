@@ -29,6 +29,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   phone), groups, roles, recovery (reset passkeys), disable, delete
 - Groups in ID tokens and in access tokens granted the `groups` scope, so
   Access policies and authorized apps can match on them
+- Access grants: give a user, a group or everyone access to an app or an app
+  group, with an optional role; admin-registered clients receive `apps` and
+  `roles` claims (`<app>:<role>`) to enforce
 - Apps: the launcher, with per-group visibility; optional import of your
   Cloudflare Access apps and their policies (read-only)
 - Clients: OIDC/OAuth clients, both confidential and public, with exact
