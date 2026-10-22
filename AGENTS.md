@@ -16,9 +16,9 @@ Instructions for coding agents working in this repo. Human contributors: see
 
 ## Rules
 
-- **No comments in source code.** Rationale goes in the docs above, with a
-  code reference like `src/oauth-token.ts › refreshGrant`. Lint directives
-  (`eslint-disable-next-line`) are not comments and stay.
+- **No comments in source code or config files.** Rationale goes in the docs
+  above, with a code reference like `src/oauth-token.ts › refreshGrant`. Lint
+  directives (`eslint-disable-next-line`) are not comments and stay.
 - **Keep docs in sync with behavior.** A change that alters a documented
   decision, default, limit or flow updates the doc in the same commit.
 - Keep changes small and in the existing style. The project is deliberately
@@ -29,9 +29,16 @@ Instructions for coding agents working in this repo. Human contributors: see
 ## Before committing
 
 ```bash
-npm run typecheck && npm run gates && npm test && npm run test:e2e
+npm run typecheck && npm run gates && npm run db:check && npm test && npm run test:e2e
 ```
 
 Also run `npm run test:e2e:setup` and `npm run test:security` when you touch
 setup, instance resolution or security-relevant code. The e2e suites need
 Chromium (`npx playwright install chromium`).
+
+## Deploying
+
+Follow DEPLOY.md › Staging, then › Upgrading and rollback: staging migrate,
+deploy and `test:e2e:staging` first; then a D1 Time Travel bookmark, note the
+current version id, `npm run db:migrate`, `npm run deploy`, `npm run smoke`.
+Production is deployed from the `cf` CLI, not by pushing `master`.

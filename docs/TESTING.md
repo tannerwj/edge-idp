@@ -12,7 +12,7 @@ suites protect is explained in [THREAT_MODEL.md](THREAT_MODEL.md) and
 ## Before you commit
 
 ```bash
-npm run typecheck && npm run gates
+npm run typecheck && npm run gates && npm run db:check
 npm test
 npm run test:e2e
 ```
@@ -50,9 +50,13 @@ Every script prints `ok` / `FAIL` lines and exits non-zero on any failure.
 ### Unit (`npm test`)
 
 Vitest with `environment: "node"`, including only `tests/unit.test.ts`. It
-covers base64url, `sha256Hex`, `timingSafeEqualHex`, `rpIdFromIssuer`,
-`emailKey`, the upstream `newerVersion` comparison and access-grant resolution
-(`vitest.config.ts`).
+covers `timingSafeEqualHex`, `emailKey`, the upstream `newerVersion`
+comparison and access-grant resolution (`vitest.config.ts`). Each case names a
+failure the e2e suites can't see: unequal lengths in the constant-time
+compare, non-ASCII email case folding, version ordering, and grant leaks
+across users, groups, audiences and public accounts. Helpers that every e2e
+ceremony already exercises (base64url, `sha256Hex`, `rpIdFromIssuer`) have no
+unit tests.
 
 The access-grant cases start from the ways resolution could leak access: a
 grant for another user or a group the user isn't in, an app-group grant

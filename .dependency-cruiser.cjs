@@ -1,10 +1,3 @@
-/**
- * dependency-cruiser config for abacus's circular-dependency gate.
- *
- * Enforces only the `no-circular` rule: any import cycle is an error.
- * Uses the repo's tsconfig.json for module resolution when present.
- * Extend this file in your repo to add project-specific rules or exemptions.
- */
 const fs = require("node:fs");
 const path = require("node:path");
 

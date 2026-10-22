@@ -1,6 +1,7 @@
 # Remediation
 
-Fixes for [REVIEW.md](REVIEW.md), on branch `review-fixes`. `review-repro.mjs`
+Fixes for [REVIEW.md](REVIEW.md), shipped in `2049129` and deployed to
+production on 2026-10-21 (Worker version `5f4ff67d`). `review-repro.mjs`
 documents the original behavior and now prints `NOT REPRODUCED` (exit 1) for
 every line; the regression checks that replace it live in `tests/security/`.
 
