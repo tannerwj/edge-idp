@@ -183,7 +183,8 @@ src/
   pages-flow.tsx        pages for emailed-link flows (token form, done)
   notify.ts             audit-event fan-out: admin alert emails, webhooks, security notices
   ops-notify.ts         alert settings and webhook management
-  outbound.ts           guarded outbound POSTs (webhooks): URL rules, timeout, no redirects
+  outbound.ts           guarded outbound POSTs (webhooks, logout tokens): URL rules, timeout, no redirects
+  app-logout.ts         back-channel logout tokens and Cloudflare Access revocation on sign-out-everywhere
   request-context.ts    per-request scope (env + waitUntil) via AsyncLocalStorage
   cf-access.ts          optional read-only Cloudflare Access integration
   util.ts               small pure helpers (encoding, hashing, comparisons)
@@ -336,7 +337,8 @@ the client id (`src/oidc.tsx › normalizeResource`,
   (`src/access.ts › loadUserContext`). The client policy and the claims are
   then plain functions of that context (`src/oauth-shared.ts ›
   clientAccessProblem, claimsFor`), and the code grant writes its refresh
-  token and audit row in one batch.
+  token, the person's app sign-in (`client_signins`, for back-channel logout)
+  and its audit row in one batch.
 - A refresh request may narrow scope but never widen it. For clients that
   aren't admin-registered, refresh also checks that the user's consent grant
   still exists (`src/oauth-token.ts › refreshGrant`).

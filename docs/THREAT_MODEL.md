@@ -349,6 +349,35 @@ The cost is stated in the setting: email can be phished and inboxes get
 compromised, so a member's inbox becomes a way into every app they can use
 that doesn't require a passkey (`src/magic-link.ts`, `src/login-link.tsx`).
 
+## Signing out of apps
+
+Ending someone's sessions here doesn't end the sessions apps made from their
+tokens. Two optional mechanisms reach further when a person is disabled,
+deleted, has their passkeys reset, or is signed out everywhere (by an admin,
+over MCP, or from their own Account & security). A plain "Sign out" ends only
+the session here, by design: signing out of one browser shouldn't sign
+someone out of every app.
+
+- **OIDC Back-Channel Logout** for admin-registered clients that set a
+  back-channel logout URL (the client page, or MCP `clients_sign_in_policy`).
+  The token endpoint records which clients each person has signed in to
+  (`client_signins`), and each of those gets a signed logout token
+  (`typ: logout+jwt`, `iss`, `aud` = the client, `sub`, `jti`, the
+  back-channel `events` claim, two-minute expiry, never a `nonce`; no `sid`,
+  since logout is per person) posted as `logout_token`. The URL follows the
+  webhook rules (https, public host, no redirects, 5-second timeout), and
+  each delivery is audited with its status
+  (`src/app-logout.ts`, `src/crypto.ts › mintLogoutToken`).
+- **Cloudflare Access session revocation**, off by default (Settings ›
+  Cloudflare). Revoking needs a token permission that can also edit Access's
+  identity providers and groups, so it is refused unless the token is the
+  `CF_API_TOKEN` Worker secret: a token with that power must not sit in D1,
+  where anyone who can read the database could take it and repoint Access
+  (`src/ops-settings.ts › setAccessRevocation`).
+
+Both run after the response and never block or fail the action that
+triggered them.
+
 ## Account recovery (optional)
 
 "Lost your passkey?" is off by default; then the sign-in page doesn't offer
@@ -538,7 +567,8 @@ because the same link is always available to an admin as a fallback.
 ## Cloudflare API token (optional)
 
 The read-only Access integration needs a Cloudflare API token. Admins can
-connect it in Settings, which stores it in `instance_settings` in plaintext.
+connect a read-only one in Settings, which stores it in `instance_settings` in
+plaintext.
 That is acceptable because of what the token can do and what an attacker would
 already have: it should carry only Access read permissions (apps, policies,
 identity providers), so it can't change anything, and reading D1 already means

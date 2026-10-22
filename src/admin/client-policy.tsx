@@ -27,10 +27,10 @@ export function SignInPolicyCard({ client }: { client: OidcClient }) {
       <div class="card-head">
         <Icon name="shield" />
         <div class="grow">
-          <h2>Sign-in policy</h2>
+          <h2>Sign-in and sign-out</h2>
           <div class="sub">
-            Ask for a fresh sign-in before this app gets a code. Useful for apps that hold money,
-            files or admin rights.
+            Ask for a fresh sign-in before this app gets a code (useful for apps that hold money,
+            files or admin rights), and tell it when someone is signed out everywhere.
           </div>
         </div>
       </div>
@@ -54,6 +54,20 @@ export function SignInPolicyCard({ client }: { client: OidcClient }) {
             ))}
           </select>
         </label>
+        <label class="field">
+          <span class="label">Back-channel logout URL (optional)</span>
+          <input
+            name="backchannelUri"
+            type="url"
+            value={client.backchannel_logout_uri ?? ""}
+            placeholder="https://app.example.com/oidc/backchannel-logout"
+          />
+          <span class="hint">
+            If the app supports OpenID Connect Back-Channel Logout, it gets a signed logout token
+            here when a person is disabled, deleted, has their passkeys reset, or is signed out
+            everywhere. Must be reachable from the internet.
+          </span>
+        </label>
       </div>
       <div class="card-foot">
         <button class="btn primary right" type="submit">
@@ -76,6 +90,8 @@ clientPolicyAdmin.post("/:id/sign-in", async (c) => {
       {
         requirePasskey: field(form, "requirePasskey") === "1",
         maxAuthAge: Number(field(form, "maxAuthAge")) || 0,
+        backchannelUri: field(form, "backchannelUri"),
+        issuer: c.env.ISSUER,
       },
       actor(c),
     ),

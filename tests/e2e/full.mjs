@@ -1076,6 +1076,12 @@ try {
         !card.includes("seeded-token-value") &&
         !(await page.content()).includes("seeded-token-value"),
     );
+    await page.request.post(`${BASE}/admin/settings/cloudflare/revoke`, { form: { on: "1" } });
+    check(
+      "Access revocation is refused with a token saved in settings",
+      (await setting("cf_access_revoke")) === null,
+    );
+    await page.goto(`${BASE}/admin/settings/cloudflare`);
     await page.click("form[action='/admin/settings/cloudflare/remove'] button");
     await page.waitForSelector("#confirm-dialog[open]");
     await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
@@ -1450,6 +1456,60 @@ try {
       page.waitForNavigation(),
       page.click("form[action$='/email-links'] button[type=submit]"),
     ]);
+  }
+
+  step("back-channel logout");
+  if (!instance.remote) {
+    const posts = [];
+    const bc = createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d));
+      req.on("end", () => {
+        posts.push({ type: req.headers["content-type"], body });
+        res.end("ok");
+      });
+    });
+    await new Promise((r) => bc.listen(0, "127.0.0.1", r));
+    const disc = await (await fetch(`${BASE}/.well-known/openid-configuration`)).json();
+    check(
+      "discovery advertises back-channel logout",
+      disc.backchannel_logout_supported === true &&
+        disc.backchannel_logout_session_supported === false,
+    );
+    await tool("clients_sign_in_policy", {
+      client_id: CLIENT_ID,
+      backchannel_logout_uri: `http://localhost:${bc.address().port}/bc`,
+    });
+    const mailed = (await sql("SELECT id FROM users WHERE email = 'mailed@example.test'"))[0]?.id;
+    const signedIn = (
+      await sql(`SELECT COUNT(*) AS n FROM client_signins WHERE user_id = '${mailed}'`)
+    )[0]?.n;
+    check("a code redemption records the app sign-in", signedIn >= 1, signedIn);
+    await tool("users_sign_out", { user_id: mailed });
+    for (let i = 0; i < 40 && !posts.length; i++) await new Promise((r) => setTimeout(r, 100));
+    const lt = new URLSearchParams(posts[0]?.body ?? "").get("logout_token");
+    let claims = null;
+    let header = null;
+    if (lt) {
+      const v = await jwtVerify(lt, JWKS, { issuer: BASE, audience: CLIENT_ID });
+      claims = v.payload;
+      header = v.protectedHeader;
+    }
+    check(
+      "signing someone out everywhere posts a verified logout token to the app",
+      posts[0]?.type?.startsWith("application/x-www-form-urlencoded") &&
+        header?.typ === "logout+jwt" &&
+        claims?.sub === mailed &&
+        !!claims?.events?.["http://schemas.openid.net/event/backchannel-logout"] &&
+        claims?.nonce === undefined,
+      { header, claims },
+    );
+    const left = (
+      await sql(`SELECT COUNT(*) AS n FROM client_signins WHERE user_id = '${mailed}'`)
+    )[0]?.n;
+    check("…and forgets the app sign-ins", left === 0, left);
+    await tool("clients_sign_in_policy", { client_id: CLIENT_ID, backchannel_logout_uri: "" });
+    bc.close();
   }
 
   step("feedback + update notice");

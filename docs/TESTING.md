@@ -135,7 +135,13 @@ virtual authenticator through:
   but never an admin, the confirmation page naming the account, an `email`
   session, the notice to the person, `amr: ["otp"]` in an app's ID token, an
   app requiring a passkey sending that session back to sign in, and the link
-  working once.
+  working once;
+- back-channel logout: discovery advertising it, the code redemption
+  recording the app sign-in, signing someone out everywhere posting a logout
+  token that verifies against JWKS (`typ: logout+jwt`, `aud`, `sub`, the
+  `events` claim, no `nonce`) to a local receiver, and the record being
+  cleared; and Access revocation refused while the Cloudflare token is the
+  one saved in settings.
 
 ### OIDC API (`tests/e2e/api.mjs`)
 

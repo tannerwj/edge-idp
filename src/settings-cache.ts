@@ -57,6 +57,7 @@ export interface InstanceSettings {
   userNotices: boolean;
   magicLinks: boolean;
   adminsAlwaysVerify: boolean;
+  cfAccessRevoke: boolean;
 }
 
 export const SETTING_KEYS = {
@@ -78,6 +79,7 @@ export const SETTING_KEYS = {
   userNotices: "user_notices",
   magicLinks: "magic_links",
   adminsAlwaysVerify: "admins_always_verify",
+  cfAccessRevoke: "cf_access_revoke",
 } as const;
 
 export function oneOf<T extends string>(list: readonly T[], v: string | null, fallback: T): T {
@@ -111,6 +113,7 @@ function parseSettings(rows: { key: string; value: string }[]): InstanceSettings
     userNotices: flag(K.userNotices, true),
     magicLinks: flag(K.magicLinks, false),
     adminsAlwaysVerify: flag(K.adminsAlwaysVerify, true),
+    cfAccessRevoke: flag(K.cfAccessRevoke, false),
   };
 }
 

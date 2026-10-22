@@ -2,6 +2,7 @@ import { audit } from "./db";
 import type { App, OidcClient } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
 import { by, OpError, parseGroupList, parseRedirectUris } from "./ops-core";
+import { outboundUrlProblem } from "./outbound";
 import { appGroupIdOf, checkSlug, seedAppGrants, uniqueSlug } from "./ops-access";
 import type { Actor } from "./ops-core";
 
@@ -107,19 +108,28 @@ export const MAX_AUTH_AGES = [0, 3600, 43200, 86400, 604800];
 export async function setClientSignInPolicy(
   db: D1Database,
   client: OidcClient,
-  input: { requirePasskey: boolean; maxAuthAge: number },
+  input: { requirePasskey: boolean; maxAuthAge: number; backchannelUri: string; issuer: string },
   a: Actor,
 ): Promise<void> {
   if (client.source !== "admin")
     throw new OpError("Sign-in policy is for admin-registered clients.");
   if (!MAX_AUTH_AGES.includes(input.maxAuthAge)) throw new OpError("Pick one of the offered ages.");
+  const uri = input.backchannelUri.trim();
+  const problem = uri ? outboundUrlProblem(uri, input.issuer) : null;
+  if (problem) throw new OpError(`Back-channel logout URL: ${problem}`);
   await db
-    .prepare("UPDATE oidc_clients SET require_passkey = ?1, max_auth_age = ?2 WHERE id = ?3")
-    .bind(input.requirePasskey ? 1 : 0, input.maxAuthAge || null, client.id)
+    .prepare(
+      "UPDATE oidc_clients SET require_passkey = ?1, max_auth_age = ?2, backchannel_logout_uri = ?3 WHERE id = ?4",
+    )
+    .bind(input.requirePasskey ? 1 : 0, input.maxAuthAge || null, uri || null, client.id)
     .run();
   await audit(db, "CLIENT_UPDATED", {
     clientId: client.id,
-    detail: by(a, { requirePasskey: input.requirePasskey, maxAuthAge: input.maxAuthAge }),
+    detail: by(a, {
+      requirePasskey: input.requirePasskey,
+      maxAuthAge: input.maxAuthAge,
+      backchannel: !!uri,
+    }),
   });
 }
 

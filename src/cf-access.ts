@@ -207,3 +207,26 @@ export async function listAccessApps(
       }),
   };
 }
+
+export async function revokeAccessSessions(env: Env, email: string): Promise<void> {
+  const { token, accountId } = credsOf(env);
+  const res = await fetch(`${API}/accounts/${accountId}/access/organizations/revoke_user`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "user-agent": "edge-idp",
+    },
+    body: JSON.stringify({ email }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body: unknown = await res.json().catch(() => null);
+  const envelope = isRecord(body) ? body : {};
+  if (!res.ok || envelope.success !== true) {
+    const msg = records(envelope.errors)
+      .map((e) => optStr(e.message) ?? "")
+      .filter(Boolean)
+      .join("; ");
+    throw new Error(msg || `Cloudflare API ${res.status}`);
+  }
+}
