@@ -11,8 +11,9 @@ database from `wrangler.jsonc`, and asks for one secret:
   `node scripts/gen-setup-token.mjs`. Back it up in a password manager. The
   Worker retains it to encrypt its D1-held signing key after setup. It must
   match `^[A-Za-z0-9_-]{43,}$` (43 characters is what 32 random bytes
-  encode to). Length is only a minimum: always generate it, never pick one by
-  hand. `/setup` stays closed until a token of that length is set.
+  encode to) and use at least 16 distinct characters, which a generated token
+  always does. Always generate it, never pick one by hand: `/setup` stays
+  closed until a token like that is set.
 
 Every deploy (including later pushes to your copy) runs `npm run deploy`.
 Under Workers Builds (`WORKERS_CI=1`) that builds the browser bundle, applies
@@ -22,7 +23,8 @@ binding name `DB`, so they work whatever you named the database. When it's
 live:
 
 1. Choose the permanent hostname first. For a custom domain, configure it and
-   set `ISSUER` in `wrangler.jsonc` before enrollment. Otherwise open
+   set `ISSUER` under `vars` in `wrangler.jsonc` before enrollment
+   (`"ISSUER": "https://auth.example.com"`). Otherwise open
    `https://edge-idp.<your-subdomain>.workers.dev`; a fresh install sends you
    to **/setup**.
 2. Enter the setup token, your name and email, then create your passkey.
@@ -33,8 +35,8 @@ live:
    - A later hostname or issuer change needs a planned migration: existing
      passkeys are bound to the old RP ID and clients use the old issuer.
    - Rename the instance in Admin → Settings → Name.
-   - Turn on MCP code mode by adding the `worker_loaders` binding (commented
-     out in `wrangler.jsonc`).
+   - Turn on MCP code mode, if your account has Dynamic Workers, by adding
+     `"worker_loaders": [{ "binding": "LOADER" }]` to `wrangler.jsonc`.
    - Do the edge hardening in section 9 below.
 
 Your copy also contains `cloudflare.config.ts`, which belongs to the
@@ -328,7 +330,7 @@ and are never committed.
 | `UPSTREAM_REPO`               | var                   | no                                              | `owner/repo` for feedback links and the update check, or `off`. Defaults to the upstream project.                                                |
 | `DB`                          | D1 binding            | yes                                             | The database.                                                                                                                                    |
 | `AUTH_LIMITER`, `API_LIMITER` | rate-limit bindings   | recommended                                     | See section 9. `/setup` and `/register` return 503 without `AUTH_LIMITER`.                                                                       |
-| `LOADER`                      | Worker Loader binding | no                                              | MCP code mode (`execute`). The reference config always binds it; `wrangler.jsonc` leaves it commented out. Without it, `execute` is not offered. |
+| `LOADER`                      | Worker Loader binding | no                                              | MCP code mode (`execute`). The reference config always binds it; `wrangler.jsonc` doesn't (see One click). Without it, `execute` is not offered. |
 
 The Worker refuses to serve if `ISSUER`, `RP_NAME` or the signing key is still
 missing after it fills in defaults, or still contains the placeholder

@@ -27,8 +27,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 
 - People: invite with a one-time link (copy, email, share sheet, or QR for a
   phone), groups, roles, recovery (reset passkeys), disable, delete
-- Groups in ID tokens and in access tokens granted the `groups` scope, so
-  Access policies and authorized apps can match on them
+- Groups in ID tokens (third-party clients only when they ask for the
+  `groups` scope) and in access tokens granted that scope, so Access policies
+  and authorized apps can match on them
 - Access grants: give a user, a group or everyone access to an app or an app
   group, with an optional role; Cloudflare Access receives an `apps` claim to
   match its policies on, and each app that signs in here receives only its own
@@ -134,10 +135,10 @@ cloudflare.config.ts Worker config for the cf CLI (bindings, route, cron, accoun
 wrangler.jsonc       portable template for the Deploy to Cloudflare button and forks
 tests/
   e2e/               full, api and one-click suites + instances.mjs (throwaway servers)
-  security/          regression scripts from the October 2026 security review
+  security/          regression scripts from the October 2026 security reviews
   smoke/             read-only post-deploy checks (tester-army/e2e)
   unit.test.ts       unit tests
-scripts/             build, deploy, migrations, keys, seeding, smoke runner
+scripts/             build, deploy, migrations (+ additive check), keys, seeding, smoke runner
 docs/                threat model, architecture, testing; archive/ holds superseded research and reviews
 ```
 

@@ -597,10 +597,25 @@ and `deploy` (`scripts/build-client.mjs`).
   gates` (abacus, configured in `abacus.config.json`: lint, ABC complexity,
   tsc, dead code, secrets, import cycles, duplicates, TODOs, and a ratchet
   that keeps size and complexity from growing), and oxfmt for formatting. CI runs typecheck, `typecheck:e2e`,
-  `fmt:check`, unit tests, gates and `npm audit --omit=dev --audit-level=high`
-  on push and PRs; the e2e suites run locally (see TESTING.md). Actions are
-  pinned to commit SHAs, and `@tjohnson/abacus` and `cf` to exact versions,
-  so a moved tag or a new prerelease can't change what CI runs.
+  `fmt:check`, unit tests, gates, `npm run db:check` and
+  `npm audit --omit=dev --audit-level=high` on push and PRs; the e2e suites
+  run locally (see TESTING.md). Actions are pinned to commit SHAs
+  (`actions/checkout` v5.1.0, `actions/setup-node` v5.0.0), and
+  `@tjohnson/abacus` and `cf` to exact versions, so a moved tag or a new
+  prerelease can't change what CI runs. Update a pin by resolving the new tag
+  with `git ls-remote --tags https://github.com/actions/<name>`.
+- **Gate configs.** The import-cycle gate uses `.dependency-cruiser.cjs` with
+  one rule, `no-circular`, resolving modules through `tsconfig.json`. The
+  secrets gate reads `.gitleaks.toml`, which extends gitleaks' default rules
+  with allowlists for `<redacted>` placeholders, the gitignored `.wrangler/`
+  and `.cloudflare/` build output, and AAGUID-shaped UUIDs in
+  `src/aaguid.ts` (public authenticator model ids). For a new false positive,
+  get its fingerprint with
+  `gitleaks detect --source . --report-format json | jq '.[].Fingerprint'`
+  and allowlist that rather than a whole path.
+- **Config files carry no comments.** `wrangler.jsonc` is the one-click
+  template; what to change in it (a custom `ISSUER`, `UPSTREAM_REPO`, the
+  optional `worker_loaders` binding for code mode) is in DEPLOY.md.
 - **Stage config is parsed as text.** `STAGES` in `cloudflare.config.ts` is
   the single source of truth for each stage's Worker name, issuer and D1 id.
   Scripts and the e2e harness read it with `stageConfig`, which uses regexes
