@@ -199,14 +199,22 @@ export function SessionsSection({
             Browser sessions on {rpName}. Apps keep their own sessions on top of these.
           </div>
         </div>
-        {others > 0 ? (
+        <div class="row-sm">
+          {others > 0 ? (
+            <PostButton
+              action="/account/sessions/revoke-others"
+              label="Sign out other sessions"
+              class="btn sm"
+              confirm="Sign out of every other browser?"
+            />
+          ) : null}
           <PostButton
-            action="/account/sessions/revoke-others"
-            label="Sign out other sessions"
-            class="btn sm"
-            confirm="Sign out of every other browser?"
+            action="/account/sessions/everywhere"
+            label="Sign out everywhere"
+            class="btn sm danger"
+            confirm="Sign out of every browser, including this one, and tell connected apps that support it to sign you out too?"
           />
-        ) : null}
+        </div>
       </div>
       <ul class="list">
         {sessions.map((x) => {

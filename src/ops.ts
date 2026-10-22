@@ -1,6 +1,7 @@
 import { audit, getUser, getUserByEmail, listClients } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
 import { by, EMAIL_RE, OpError } from "./ops-core";
+import { signOutOfApps } from "./app-logout";
 import type { Actor } from "./ops-core";
 
 export { OpError } from "./ops-core";
@@ -112,6 +113,7 @@ export async function setDisabled(
     stmts.push(db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1").bind(id));
   }
   await db.batch(stmts);
+  if (disabled) await signOutOfApps(db, id, "disabled");
   await audit(db, disabled ? "USER_DISABLED" : "USER_ENABLED", { userId: id, detail: by(a) });
 }
 
@@ -145,6 +147,7 @@ export async function deleteUser(db: D1Database, id: string, a: Actor): Promise<
   if (id === a.adminId) throw new OpError("You can't delete your own account.");
   const user = await getUser(db, id);
   if (!user) throw new OpError("User not found.");
+  await signOutOfApps(db, id, "deleted");
   await db.prepare("DELETE FROM users WHERE id = ?1").bind(id).run();
   await audit(db, "USER_DELETED", { detail: by(a, { email: user.email }) });
 }
@@ -156,6 +159,7 @@ export async function revokePasskeys(db: D1Database, id: string, a: Actor): Prom
     db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(id),
     db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1").bind(id),
   ]);
+  await signOutOfApps(db, id, "passkeys_reset");
   await audit(db, "PASSKEYS_REVOKED", { userId: id, detail: by(a) });
 }
 
@@ -172,6 +176,7 @@ export async function revokeSessions(
       .run();
   } else {
     await db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId).run();
+    await signOutOfApps(db, userId, "signed_out_everywhere");
   }
   await audit(db, "SESSION_REVOKED", { userId, detail: by(a, { all: !sessionHash }) });
 }

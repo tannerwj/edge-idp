@@ -52,6 +52,7 @@ export interface OidcClient {
   public_signup: boolean;
   require_passkey: boolean;
   max_auth_age: number | null;
+  backchannel_logout_uri: string | null;
 }
 
 interface Row {
@@ -198,6 +199,8 @@ function rowToClient(r: Row): OidcClient {
     public_signup: r.public_signup === undefined ? false : num(r.public_signup) === 1,
     require_passkey: r.require_passkey === undefined ? false : num(r.require_passkey) === 1,
     max_auth_age: r.max_auth_age === undefined ? null : numOrNull(r.max_auth_age),
+    backchannel_logout_uri:
+      r.backchannel_logout_uri === undefined ? null : strOrNull(r.backchannel_logout_uri),
   };
 }
 

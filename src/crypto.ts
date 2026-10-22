@@ -129,6 +129,22 @@ export async function mintAccessToken(
     .sign(key);
 }
 
+export async function mintLogoutToken(env: Env, sub: string, audience: string): Promise<string> {
+  const { key, kid } = await getSigningKey(env);
+  const now = nowSec();
+  return await new jose.SignJWT({
+    events: { "http://schemas.openid.net/event/backchannel-logout": {} },
+  })
+    .setProtectedHeader({ alg: "RS256", kid, typ: "logout+jwt" })
+    .setSubject(sub)
+    .setIssuer(env.ISSUER)
+    .setAudience(audience)
+    .setJti(newId())
+    .setIssuedAt(now)
+    .setExpirationTime(now + 120)
+    .sign(key);
+}
+
 export async function verifyAccessToken(
   env: Env,
   token: string,

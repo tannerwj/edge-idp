@@ -116,7 +116,16 @@ export const auditAdmin = new Hono<AdminVars>();
 const catLink = (cat: string) => (cat ? `/admin/audit?category=${cat}` : "/admin/audit");
 
 const CATEGORIES: Record<string, string[]> = {
-  signins: ["SIGN_IN", "SIGN_OUT", "ACCESS_DENIED", "MAGIC_LINK_SENT", "MAGIC_LINK_SIGN_IN"],
+  signins: [
+    "SIGN_IN",
+    "SIGN_OUT",
+    "ACCESS_DENIED",
+    "MAGIC_LINK_SENT",
+    "MAGIC_LINK_SIGN_IN",
+    "SESSION_REVOKED",
+    "BACKCHANNEL_LOGOUT",
+    "ACCESS_SESSIONS_REVOKED",
+  ],
   security: [
     "ACCESS_DENIED",
     "REFRESH_REUSE_DETECTED",

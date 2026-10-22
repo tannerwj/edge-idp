@@ -279,7 +279,7 @@ sign-ups immediately.
 
 To list your Access applications (and which groups their policies require) and
 add them to the launcher in one click, connect a read-only Cloudflare API token
-in **Admin → Settings → Cloudflare Access**. The page explains how to create
+in **Admin → Settings › Cloudflare**. The page explains how to create
 the token; it needs only two account permissions: **Access: Apps and Policies
 → Read** and **Access: Organizations, Identity Providers, and Groups → Read**.
 The account ID is detected from the token (enter it if the token can see more
@@ -295,8 +295,17 @@ npx cf workers secrets update CF_API_TOKEN --worker identity --type secret_text 
 ```
 
 plus `CF_ACCOUNT_ID: bindings.text("<your account id>")` in the worker's `env`
-(or under `vars` in `wrangler.jsonc`). Either way the integration is
-read-only: Access stays the source of truth for its policies.
+(or under `vars` in `wrangler.jsonc`). Either way the import is read-only:
+Access stays the source of truth for its policies.
+
+**Signing people out of Access.** Settings › Cloudflare can also end a
+person's Access sessions when they're disabled, deleted, have their passkeys
+reset or are signed out everywhere, so every app behind Access asks them to
+sign in again. That call needs **Access: Organizations, Identity Providers,
+and Groups → Edit**, a permission that can also change Access's identity
+providers, so it only works with the token set as the `CF_API_TOKEN` Worker
+secret above, never one saved in Settings. Turning it on checks the
+permission.
 
 ## 12. Optional: error tracking with Sentry
 

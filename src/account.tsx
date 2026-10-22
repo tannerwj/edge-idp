@@ -189,6 +189,13 @@ account.post("/account/sessions/revoke-others", async (c) => {
   return c.redirect("/account?ok=signed_out_others#sessions", 303);
 });
 
+account.post("/account/sessions/everywhere", async (c) => {
+  const s = await requireSession(c);
+  if (s instanceof Response) return s;
+  await ops.revokeSessions(c.env.DB, s.user.id, { adminId: s.user.id, via: "ui" });
+  return c.redirect("/login?signed_out=1", 303);
+});
+
 account.post("/account/grants/revoke", async (c) => {
   const s = await requireSession(c);
   if (s instanceof Response) return s;

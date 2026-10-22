@@ -213,6 +213,10 @@ async function codeGrant(
     : null;
   await c.env.DB.batch([
     ...(refresh ? [refresh.stmt] : []),
+    c.env.DB.prepare(
+      `INSERT INTO client_signins (user_id, client_id, last_at) VALUES (?1, ?2, ?3)
+       ON CONFLICT(user_id, client_id) DO UPDATE SET last_at = ?3`,
+    ).bind(row.user_id, client.id, nowSec()),
     auditStmt(c.env.DB, "TOKEN_ISSUED", {
       userId: row.user_id,
       clientId: client.id,

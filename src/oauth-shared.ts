@@ -77,6 +77,8 @@ export function discovery(env: Env) {
       "apps",
       "roles",
     ],
+    backchannel_logout_supported: true,
+    backchannel_logout_session_supported: false,
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
   };

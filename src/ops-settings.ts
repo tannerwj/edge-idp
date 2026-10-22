@@ -1,8 +1,10 @@
 import { audit, deleteSettings, setSetting } from "./db";
-import { detectAccountId, verifyAccessRead } from "./cf-access";
+import { cfConfigured, detectAccountId, revokeAccessSessions, verifyAccessRead } from "./cf-access";
+import type { Env } from "./config";
 import { by, EMAIL_RE, OpError } from "./ops-core";
 import type { Actor } from "./ops-core";
 import {
+  getInstanceSettings,
   invalidateSettingsCache,
   SETTING_KEYS,
   SIGN_IN_UV,
@@ -126,4 +128,28 @@ export async function setFlagSetting(
   await setSetting(db, key, on ? "1" : "0");
   invalidateSettingsCache();
   await audit(db, event, { userId: a.adminId, detail: by(a, { [key]: on }) });
+}
+
+export async function setAccessRevocation(env: Env, on: boolean, a: Actor): Promise<void> {
+  if (on) {
+    const s = await getInstanceSettings(env.DB);
+    if (!cfConfigured(env) || s.cfApiToken)
+      throw new OpError(
+        "Signing people out of Access needs the Cloudflare token as the CF_API_TOKEN Worker secret, not one saved here.",
+      );
+    try {
+      await revokeAccessSessions(env, "permission-check@edge-idp.invalid");
+    } catch (e) {
+      throw new OpError(
+        `Cloudflare refused: ${e instanceof Error ? e.message : "unknown error"}. The token needs Access: Organizations, Identity Providers, and Groups → Edit.`,
+        { cause: e },
+      );
+    }
+  }
+  await setSetting(env.DB, SETTING_KEYS.cfAccessRevoke, on ? "1" : "0");
+  invalidateSettingsCache();
+  await audit(env.DB, "SECURITY_SETTINGS_CHANGED", {
+    userId: a.adminId,
+    detail: by(a, { accessRevocation: on }),
+  });
 }

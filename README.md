@@ -47,6 +47,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   optional import of your Cloudflare Access apps and their policies (read-only)
 - Lost passkeys: off (you send a new link), or a "Lost your passkey?" request
   you approve, or an emailed one-hour link straight away
+- Sign-out that reaches apps: OIDC back-channel logout, and optionally
+  ending Cloudflare Access sessions, when someone is disabled or signed out
+  everywhere
 - Alerts for chosen events by email and webhooks (Discord, Slack, ntfy or
   signed JSON), and security notices to the people affected
 - Clients: OIDC/OAuth clients, both confidential and public, with exact
