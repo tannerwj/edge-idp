@@ -3,6 +3,7 @@ import { audit } from "./db";
 import { by, OpError } from "./ops-core";
 import type { Actor } from "./ops-core";
 import { invalidateSettingsCache, SETTING_KEYS } from "./settings-cache";
+import { outboundUrlProblem } from "./outbound";
 import { base64url, rpIdFromIssuer } from "./util";
 import { b64urlToBytes } from "./webauthn-challenges";
 
@@ -177,6 +178,13 @@ async function applyChunk(db: D1Database, stmts: D1PreparedStatement[]) {
   }
 }
 
+function safeOutbound(table: string, row: Row, issuer: string): Row | null {
+  const url =
+    table === "webhooks" ? row.url : table === "oidc_clients" ? row.backchannel_logout_uri : null;
+  if (typeof url !== "string" || !outboundUrlProblem(url, issuer)) return row;
+  return table === "webhooks" ? null : { ...row, backchannel_logout_uri: null };
+}
+
 export async function importBackup(
   env: Env,
   backup: Backup,
@@ -188,7 +196,11 @@ export async function importBackup(
   for (const t of TABLES) {
     if (t.name === "webauthn_credentials" && !passkeys) continue;
     const cols = await columnsOf(env.DB, t.name);
-    const rows = (backup.tables[t.name] ?? []).filter((r) => settingRow(t.name, r));
+    const rows: Row[] = [];
+    for (const r of backup.tables[t.name] ?? []) {
+      const safe = settingRow(t.name, r) ? safeOutbound(t.name, r, env.ISSUER) : null;
+      if (safe) rows.push(safe);
+    }
     const stmts = rows.flatMap((r) => rowStatement(env.DB, t, cols, r) ?? []);
     for (let i = 0; i < stmts.length; i += 50) {
       const r = await applyChunk(env.DB, stmts.slice(i, i + 50));
