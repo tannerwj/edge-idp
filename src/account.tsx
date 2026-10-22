@@ -5,6 +5,7 @@ import { audit, getCredentialsForUser } from "./db";
 import { getSession, hasRecentStepUp, SESSION_COOKIE } from "./session";
 import type { Session } from "./session";
 import * as ops from "./ops";
+import { selfEmailChangeOpen } from "./email-change";
 import { nowSec, sha256Hex } from "./util";
 import { AppShell, setFlash, uiFor } from "./ui/layout";
 import { Avatar, PageHead } from "./ui/components";
@@ -85,7 +86,7 @@ account.get("/account", async (c) => {
         lede={<AccountLede user={s.user} />}
       />
       <div class="stack-lg">
-        <ProfileSection user={s.user} />
+        <ProfileSection user={s.user} canChangeEmail={await selfEmailChangeOpen(c.env)} />
 
         <PasskeysSection creds={creds} />
 

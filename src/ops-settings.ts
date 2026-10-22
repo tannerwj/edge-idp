@@ -98,3 +98,14 @@ export async function setEmailSettings(
     detail: by(a, { enabled: input.enabled, from }),
   });
 }
+
+export async function setFlagSetting(
+  db: D1Database,
+  key: string,
+  on: boolean,
+  a: Actor,
+): Promise<void> {
+  await setSetting(db, key, on ? "1" : "0");
+  invalidateSettingsCache();
+  await audit(db, "SETTINGS_CHANGED", { userId: a.adminId, detail: by(a, { [key]: on }) });
+}

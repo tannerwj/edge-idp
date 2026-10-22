@@ -297,6 +297,16 @@ ceremonies race on one link, only one enrolls; the other gets
 `invalid_enrollment_token` (`src/webauthn.ts › burnEnrollmentToken`). Admins
 generate tokens: becoming a member is always the admin's explicit intent. A
 fresh link is revealed once in the admin UI and never stored in plaintext.
+Minting a link deletes the person's older unused ones in the same batch, so
+at most one live link per person exists at any time; "Resend" and "Revoke"
+on Admin › People › Pending invites act on that one
+(`src/ops.ts › mintEnrollmentLink`, `src/invites.ts › revokeInvites`).
+
+With email set up, the admin can have the link emailed instead of copying
+it. The email carries the same bearer link, so whoever reads that inbox can
+enroll a passkey, exactly as if the admin had pasted the link into a chat;
+the admin still sees the link on screen as a fallback. Invites never go to a
+public account (it has no address) (`src/invites.ts › deliverLink`).
 
 ## Public sign-up
 
@@ -401,13 +411,23 @@ Disabling a user deletes their sessions and refresh tokens immediately;
 revoking keys kills sessions too, so recovery starts from a clean slate.
 Admins can't disable themselves (avoids the one-admin lockout).
 
-Emails are set only by admins. ID tokens assert `email_verified: true`, and
-Cloudflare Access policies and many apps trust that claim to match or link
-accounts, so a self-service change would let any member claim someone else's
-address. Account & security shows the email read-only and saves only the name
-(`src/account.tsx › /account/profile`). There is no mail-sending in this
-server, so there is no way to prove control of a new address; an admin edit
-behind the recheck is the proof.
+Emails are set by admins unless an admin turns on self-service changes. ID
+tokens assert `email_verified: true`, and Cloudflare Access policies and many
+apps trust that claim to match or link accounts, so a change must prove
+control of the new address, or any member could claim someone else's.
+Account & security's profile form saves only the name
+(`src/account.tsx › /account/profile`); an admin edit behind the recheck is
+the proof by default.
+
+Self-service change (Settings › Email, off by default, only while email is
+sending) needs three things: a passkey recheck in the last 5 minutes, so a
+stolen session alone can't start one; a 256-bit single-use link (hashed,
+1-hour TTL, `DELETE … RETURNING`) sent to the new address, so nothing changes
+until its owner opens it; and a notice to the old address afterwards, so the
+owner learns about a change they didn't make. Starting a change is on the
+authentication rate limit, so it can't be used to spam an inbox. The address
+must still be free when the link is opened. Public accounts can't use it
+(`src/email-change.ts › startEmailChange, confirmEmailChange`).
 
 Emails are stored as entered but looked up by a lowercased key, so an admin
 who retypes an existing email in different case cannot create a duplicate

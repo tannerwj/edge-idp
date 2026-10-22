@@ -127,6 +127,7 @@ const CATEGORIES: Record<string, string[]> = {
     "API_TOKEN_CREATED",
     "SETUP_REJECTED",
     "SECURITY_SETTINGS_CHANGED",
+    "EMAIL_CHANGED",
   ],
   passkeys: [
     "PASSKEY_REGISTERED",
@@ -134,6 +135,7 @@ const CATEGORIES: Record<string, string[]> = {
     "PASSKEY_RENAMED",
     "PASSKEYS_REVOKED",
     "ENROLLMENT_STARTED",
+    "ENROLLMENT_REVOKED",
   ],
   admin: [
     "SETUP_COMPLETED",
@@ -167,6 +169,9 @@ const CATEGORIES: Record<string, string[]> = {
     "CLIENT_SECRET_PICKED_UP",
     "SETTINGS_CHANGED",
     "SECURITY_SETTINGS_CHANGED",
+    "EMAIL_SETTINGS_CHANGED",
+    "ENROLLMENT_REVOKED",
+    "EMAIL_CHANGED",
     "CF_API_CONNECTED",
     "CF_API_DISCONNECTED",
     "API_TOKEN_CREATED",

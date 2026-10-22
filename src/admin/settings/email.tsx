@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getInstanceSettings } from "../../settings-cache";
+import { getInstanceSettings, SETTING_KEYS } from "../../settings-cache";
 import { emailStatus, sendMail } from "../../email";
 import type { EmailStatus } from "../../email";
 import type { AdminVars } from "../shell";
@@ -100,6 +100,36 @@ emailSettings.get("/email", async (c) => {
           </form>
         )}
       </SettingsCard>
+      {status === "no-binding" ? null : (
+        <SettingsCard
+          icon="user"
+          title="What people can do by email"
+          sub="These only take effect while sending is on."
+        >
+          <form method="post" action="/admin/settings/email/people">
+            <div class="card-body stack">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  name="selfEmailChange"
+                  value="1"
+                  checked={s.selfEmailChange}
+                />
+                <span class="track"></span>
+                <span>
+                  People can change their own email
+                  <span class="sub">
+                    From Account & security, after a passkey recheck, by opening a link sent to the
+                    new address. The old address gets a notice. Apps receive the new address as
+                    verified, so leave this off if you'd rather approve changes yourself.
+                  </span>
+                </span>
+              </label>
+            </div>
+            <SaveFoot />
+          </form>
+        </SettingsCard>
+      )}
       {status === "ready" ? (
         <SettingsCard
           icon="send"
@@ -128,6 +158,18 @@ emailSettings.post("/email", async (c) => {
         from: field(form, "from"),
         fromName: field(form, "fromName"),
       },
+      actor(c),
+    ),
+  );
+});
+
+emailSettings.post("/email/people", async (c) => {
+  const form = await c.req.parseBody();
+  return act(c, "/admin/settings/email", "Saved", () =>
+    ops.setFlagSetting(
+      c.env.DB,
+      SETTING_KEYS.selfEmailChange,
+      field(form, "selfEmailChange") === "1",
       actor(c),
     ),
   );

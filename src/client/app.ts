@@ -1,6 +1,6 @@
 import { toast } from "./dom";
 import { initAccount, initEnroll, initLogin, initSignup } from "./passkeys";
-import { initCopy, initDialogs, initMode, initTables, initTimes } from "./ui";
+import { initCopy, initDialogs, initFragmentToken, initMode, initTables, initTimes } from "./ui";
 import { initPalette } from "./palette";
 
 const page = document.body.getAttribute("data-page");
@@ -14,6 +14,7 @@ initTimes();
 initMode();
 initTables();
 initPalette();
+initFragmentToken();
 const flash = document.body.getAttribute("data-flash");
 if (flash) toast(flash, document.body.getAttribute("data-flash-tone") === "bad" ? "bad" : "ok");
 if (new URLSearchParams(location.search).has("ok")) {

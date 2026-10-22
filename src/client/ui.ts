@@ -212,3 +212,16 @@ export function initTables(): void {
     });
   });
 }
+
+export function initFragmentToken(): void {
+  for (const form of document.querySelectorAll<HTMLFormElement>("form[data-fragment-token]")) {
+    const token = location.hash.slice(1);
+    const input = form.querySelector<HTMLInputElement>("input[name=token]");
+    if (input) input.value = token;
+    if (token) history.replaceState(null, "", location.pathname + location.search);
+    else {
+      form.querySelector("[data-fragment-missing]")?.removeAttribute("hidden");
+      form.querySelector("button")?.setAttribute("disabled", "");
+    }
+  }
+}

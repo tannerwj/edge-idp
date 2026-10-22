@@ -10,6 +10,7 @@ import { tokens } from "./oauth-token";
 import { registration } from "./oauth-clients";
 import { admin } from "./admin";
 import { account } from "./account";
+import { accountEmail } from "./account-email";
 import { home } from "./home";
 import { pickup } from "./secret-pickup";
 import { mcp } from "./mcp";
@@ -44,7 +45,8 @@ function limiterFor(env: Env, path: string): RateLimit | undefined {
     path === "/register" ||
     path === "/authorize/decision" ||
     path === "/setup" ||
-    path === "/client-secret/pickup"
+    path === "/client-secret/pickup" ||
+    path.startsWith("/account/email")
   )
     return env.AUTH_LIMITER;
   if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp"))
@@ -221,6 +223,7 @@ app.route("/", registration);
 app.route("/", oidc);
 app.route("/", tokens);
 app.route("/", account);
+app.route("/", accountEmail);
 app.route("/", home);
 app.route("/", pickup);
 
