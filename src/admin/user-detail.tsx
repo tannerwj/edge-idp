@@ -4,6 +4,7 @@ import type { User } from "../db";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
 import { page } from "./shell";
+import { emailOn } from "./invites";
 import { Avatar, Dialog, PageHead, PostButton } from "../ui/components";
 import { Icon } from "../ui/icons";
 import { loadUserContext } from "../access";
@@ -108,12 +109,15 @@ function UserActions({
   user,
   self,
   hasPasskey,
+  emailReady,
 }: {
   user: User;
   self: boolean;
   hasPasskey: boolean;
+  emailReady: boolean;
 }) {
   const id = user.id;
+  const send = emailReady && !user.public;
   return (
     <>
       {user.public ? (
@@ -139,9 +143,10 @@ function UserActions({
       {self ? null : (
         <PostButton
           action={`/admin/users/${id}/enrollment`}
-          label={hasPasskey ? "New enrollment link" : "Get invite link"}
-          icon="link"
+          label={send ? "Email a new link" : hasPasskey ? "New enrollment link" : "Get invite link"}
+          icon={send ? "send" : "link"}
           class="btn"
+          fields={send ? { sendEmail: "1" } : {}}
         />
       )}
       {self ? null : user.disabled ? (
@@ -186,7 +191,14 @@ userDetailAdmin.get("/", async (c) => {
         leading={<Avatar name={user.name} seed={user.id} size="lg" />}
         title={user.name}
         lede={<UserLede user={user} hasPasskey={creds.length > 0} />}
-        actions={<UserActions user={user} self={self} hasPasskey={creds.length > 0} />}
+        actions={
+          <UserActions
+            user={user}
+            self={self}
+            hasPasskey={creds.length > 0}
+            emailReady={await emailOn(c)}
+          />
+        }
       />
       <nav class="tabs">
         {TABS.map((t) => (

@@ -51,10 +51,12 @@ Every script prints `ok` / `FAIL` lines and exits non-zero on any failure.
 
 Vitest with `environment: "node"`, including only `tests/unit.test.ts`. It
 covers `timingSafeEqualHex`, `emailKey`, the upstream `newerVersion`
-comparison and access-grant resolution (`vitest.config.ts`). Each case names a
+comparison, access-grant resolution and the bulk-invite parser
+(`vitest.config.ts`). Each case names a
 failure the e2e suites can't see: unequal lengths in the constant-time
-compare, non-ASCII email case folding, version ordering, and grant leaks
-across users, groups, audiences and public accounts. Helpers that every e2e
+compare, non-ASCII email case folding, version ordering, grant leaks across
+users, groups, audiences and public accounts, and bulk-invite lines that
+would invite the wrong address or a name with no address. Helpers that every e2e
 ceremony already exercises (base64url, `sha256Hex`, `rpIdFromIssuer`) have no
 unit tests.
 
@@ -114,7 +116,14 @@ virtual authenticator through:
 - CIMD, using Claude Code's real metadata document;
 - the audit trail, the maintenance cron, every settings tab rendering, email
   settings (a sender, the on switch, and a test message read back from the
-  outbox), and the feedback and update notice.
+  outbox), and the feedback and update notice;
+- emailed invites: the dialog's email option, the link in the message
+  working, Pending invites listing the person, Resend mailing a new link that
+  retires the old one, Revoke killing it, and a bulk invite with one bad line;
+- self-service email change: the switch in Settings › Email, the
+  confirmation link to the new address, nothing changing until it's opened,
+  the switch happening on confirm, the notice to the old address, and the
+  link working once.
 
 ### OIDC API (`tests/e2e/api.mjs`)
 

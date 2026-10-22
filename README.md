@@ -25,8 +25,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 
 **For you (admin)**
 
-- People: invite with a one-time link (copy, email, share sheet, or QR for a
-  phone), groups, roles, recovery (reset passkeys), disable, delete
+- People: invite with a one-time link (emailed for you, or copy, share sheet,
+  or QR for a phone), invite several at once, see and resend or revoke
+  pending invites, groups, roles, recovery (reset passkeys), disable, delete
 - Groups in ID tokens (third-party clients only when they ask for the
   `groups` scope) and in access tokens granted that scope, so Access policies
   and authorized apps can match on them

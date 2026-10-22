@@ -173,13 +173,16 @@ src/
   upstream.ts           daily upstream version check and feedback links
   settings-cache.ts     per-isolate cache of every instance setting, parsed with defaults
   email.ts              optional outgoing email: status, rendering, sending through the EMAIL binding
+  invites.ts            invite and enrollment-link emails, pending invites, bulk-invite parsing
+  email-change.ts       self-service email change: confirmation link and notice
+  account-email.tsx     /account/email routes (start, confirm)
   cf-access.ts          optional read-only Cloudflare Access integration
   util.ts               small pure helpers (encoding, hashing, comparisons)
   account.tsx           Account & security routes
   account-sections.tsx  Account & security views
   home.tsx              home launcher: app-group sections, favorites, search
   pages.tsx             sign-in, enrollment, consent, sign-out, error pages
-  admin/                admin UI: index (router, middleware), shell, dashboard, users, user-detail,
+  admin/                admin UI: index (router, middleware), shell, dashboard, users, invites, user-detail,
                         user-tabs, groups, apps (+ apps-form, apps-access grants and app groups,
                         apps-cloudflare import view), clients,
                         client-detail, audit, connect, tokens, metrics, settings/ (one module per tab
@@ -525,7 +528,8 @@ no user-facing request pays for a table scan. One D1 batch
   50,000 rows. Ids only ever leave from the bottom, so gaps can only make it
   keep more than 50,000, never fewer;
 - `mcp_calls` older than 30 days;
-- secret pickups past their 10-minute expiry;
+- secret pickups past their 10-minute expiry, and pending email changes past
+  their 1-hour expiry;
 - dynamically registered (DCR) clients older than 30 days that never received
   a consent.
 
@@ -569,7 +573,13 @@ Components render no behavior of their own (`src/ui/layout.tsx`,
   real `<a>` so keyboard and assistive-technology users get a normal link;
   clicks on interactive elements inside the row are ignored;
 - timestamps are rendered relative, in the viewer's locale, by `app.js`;
-- `data-copy` copies a value.
+- `data-copy` copies a value;
+- `form[data-fragment-token]` is how emailed links reach the server without
+  putting a bearer token in a URL path: the link carries the token in the
+  `#fragment`, the page's script copies it into the form's hidden `token`
+  input and strips it from the address bar, and the person submits the form
+  (`src/client/ui.ts › initFragmentToken`, `src/pages.tsx › TokenFormPage`).
+  Enrollment links predate this and do the same thing in `passkeys.ts`.
 
 **Styling without inline styles.** Every visual variant is a CSS class or data
 attribute. Dashboard sparkline bars are bucketed 0 to 19 (5% steps) on the

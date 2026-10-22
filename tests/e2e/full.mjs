@@ -94,13 +94,16 @@ async function authorizeInBrowser(params, { approve } = {}) {
   return captured;
 }
 
-async function waitForMail(match) {
+async function waitForMail(match, skip = 0) {
   for (let i = 0; i < 40; i++) {
-    const mail = instance.outbox?.().find((m) => match(m) && m.text);
+    const mail = instance
+      .outbox?.()
+      .slice(skip)
+      .find((m) => match(m) && m.text);
     if (mail) return mail;
     await new Promise((r) => setTimeout(r, 100));
   }
-  return instance.outbox?.().find(match) ?? null;
+  return instance.outbox?.().slice(skip).find(match) ?? null;
 }
 
 async function stepUp(next) {
@@ -1089,6 +1092,99 @@ try {
         test?.text.includes("Email works"),
       { test, flash },
     );
+  }
+
+  step("invites by email");
+  if (!instance.remote) {
+    const tokenIn = (mail) => mail?.text.match(/\/enroll#([A-Za-z0-9_-]{43})/)?.[1] ?? null;
+    const linkWorks = async (t) =>
+      (
+        await fetch(`${BASE}/webauthn/register/options`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enrollmentToken: t }),
+        })
+      ).status === 200;
+    await stepUp("/admin/users");
+    await page.click("[data-open='invite']");
+    await page.fill("#invite input[name=name]", "Mailed Person");
+    await page.fill("#invite input[name=email]", "mailed@example.test");
+    check(
+      "the invite dialog offers to email it",
+      await page.isChecked("#invite input[name=sendEmail]"),
+    );
+    await Promise.all([page.waitForNavigation(), page.click("#invite button[type=submit]")]);
+    check(
+      "the reveal page says it was emailed",
+      (await page.textContent("body")).includes("Emailed to"),
+    );
+    const first = tokenIn(await waitForMail((m) => m.to.includes("mailed@example.test")));
+    check("the invite email carries a working link", !!first && (await linkWorks(first)));
+    await page.goto(`${BASE}/admin/users/invites`);
+    check(
+      "pending invites lists the person",
+      (await page.textContent("body")).includes("mailed@example.test"),
+    );
+    const before = instance.outbox().length;
+    await Promise.all([page.waitForNavigation(), page.click("form[action$='/resend'] button")]);
+    const resent = await waitForMail((m) => m.to.includes("mailed@example.test"), before);
+    const second = tokenIn(resent);
+    check(
+      "resending emails a new link and retires the old one",
+      !!second && second !== first && (await linkWorks(second)) && !(await linkWorks(first)),
+    );
+    await page.goto(`${BASE}/admin/users/invites`);
+    await page.click("form[action$='/revoke'] button");
+    await page.waitForSelector("#confirm-dialog[open]");
+    await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
+    check("revoking kills the link", !(await linkWorks(second)));
+    await page.click("[data-open='bulk-invite']");
+    await page.fill(
+      "#bulk-invite textarea[name=people]",
+      "Bulk One <bulk1@example.test>\nbulk2@example.test, Bulk Two\nno address here",
+    );
+    await Promise.all([page.waitForNavigation(), page.click("#bulk-invite button[type=submit]")]);
+    const bulkPage = (await page.textContent("body")) ?? "";
+    check(
+      "bulk invite creates and emails each person and reports the bad line",
+      bulkPage.includes("2 invited") &&
+        bulkPage.includes("No email address") &&
+        !!(await waitForMail((m) => m.to.includes("bulk2@example.test"))),
+      bulkPage.slice(0, 300),
+    );
+  }
+
+  step("self-service email change");
+  if (!instance.remote) {
+    await page.goto(`${BASE}/admin/settings/email`);
+    await page.check("input[name=selfEmailChange]", { force: true });
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action='/admin/settings/email/people'] button[type=submit]"),
+    ]);
+    await stepUp("/account");
+    await page.fill(".email-change input[name=email]", "ada.new@example.test");
+    await Promise.all([page.waitForNavigation(), page.click(".email-change button[type=submit]")]);
+    const confirm = await waitForMail((m) => m.to.includes("ada.new@example.test"));
+    const link = confirm?.text.match(/(http\S+\/account\/email\/confirm#[A-Za-z0-9_-]{43})/)?.[1];
+    check("the new address gets a confirmation link", !!link, confirm);
+    const stillOld = (await sql("SELECT email FROM users WHERE id = 'admin-1'"))[0]?.email;
+    check("nothing changes until it's opened", stillOld === "ada@example.test", stillOld);
+    await page.goto(link ?? `${BASE}/`);
+    await Promise.all([page.waitForNavigation(), page.click("form[data-fragment-token] button")]);
+    const now = (await sql("SELECT email FROM users WHERE id = 'admin-1'"))[0]?.email;
+    check("confirming switches the email", now === "ada.new@example.test", now);
+    check(
+      "the old address is told",
+      !!(await waitForMail(
+        (m) => m.to.includes("ada@example.test") && m.subject.includes("email was changed"),
+      )),
+    );
+    await page.goto("about:blank");
+    await page.goto(link ?? `${BASE}/`);
+    await Promise.all([page.waitForNavigation(), page.click("form[data-fragment-token] button")]);
+    check("the link works once", (await page.textContent("h1"))?.includes("Couldn't"));
+    await sql("UPDATE users SET email = 'ada@example.test' WHERE id = 'admin-1'");
   }
 
   step("feedback + update notice");

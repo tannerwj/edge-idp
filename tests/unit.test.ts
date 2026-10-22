@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emailKey, timingSafeEqualHex } from "../src/util";
 import { newerVersion } from "../src/upstream";
+import { parseBulk } from "../src/invites";
 import { claimsForClient, resolveAccess } from "../src/access";
 import type { Grant } from "../src/access";
 
@@ -149,5 +150,37 @@ describe("claimsForClient", () => {
 
   it("gives an unlinked client the sorted app list without roles, skipping slugless apps", () => {
     expect(claimsForClient(apps, access, "c-access")).toEqual({ apps: ["grafana", "nas"] });
+  });
+});
+
+describe("parseBulk", () => {
+  it("reads Name <email>, email-then-name and name-then-email lines", () => {
+    const { people, errors } = parseBulk(
+      "Ada Lovelace <ada@example.com>\ngrace@example.com, Grace Hopper\nAlan Turing; alan@example.com",
+    );
+    expect(errors).toEqual([]);
+    expect(people).toEqual([
+      { name: "Ada Lovelace", email: "ada@example.com" },
+      { name: "Grace Hopper", email: "grace@example.com" },
+      { name: "Alan Turing", email: "alan@example.com" },
+    ]);
+  });
+
+  it("derives a name from a bare address and strips quotes", () => {
+    expect(parseBulk('mary.ann_smith@example.com\n"Bob" <bob@example.com>').people).toEqual([
+      { name: "mary ann smith", email: "mary.ann_smith@example.com" },
+      { name: "Bob", email: "bob@example.com" },
+    ]);
+  });
+
+  it("reports a line with no address instead of inviting a name", () => {
+    const { people, errors } = parseBulk("\n  \nJust A Name\n");
+    expect(people).toEqual([]);
+    expect(errors).toEqual(['No email address in "Just A Name"']);
+  });
+
+  it("refuses more than 50 people at once", () => {
+    const lines = Array.from({ length: 51 }, (_, i) => `p${i}@example.com`).join("\n");
+    expect(() => parseBulk(lines)).toThrow("at most 50");
   });
 });

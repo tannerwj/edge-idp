@@ -17,16 +17,19 @@ export async function mintEnrollmentLink(
   issuer: string,
   userId: string,
   a: Actor,
+  ttl = ENROLL_TTL,
 ): Promise<string> {
   if (userId === a.adminId)
     throw new OpError("Add your own passkeys from Account & security, not with a link.");
   const token = randomToken(32);
-  await db
-    .prepare(
-      "INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind(await sha256Hex(token), userId, nowSec(), nowSec() + ENROLL_TTL)
-    .run();
+  await db.batch([
+    db.prepare("DELETE FROM enrollment_tokens WHERE user_id = ?1 AND used = 0").bind(userId),
+    db
+      .prepare(
+        "INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)",
+      )
+      .bind(await sha256Hex(token), userId, nowSec(), nowSec() + ttl),
+  ]);
   await audit(db, "ENROLLMENT_STARTED", { userId, detail: by(a) });
   return `${issuer}/enroll#${token}`;
 }

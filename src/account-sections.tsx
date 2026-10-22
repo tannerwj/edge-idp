@@ -35,7 +35,27 @@ export function AccountLede({ user }: { user: User }) {
   );
 }
 
-export function ProfileSection({ user }: { user: User }) {
+function EmailChangeForm() {
+  return (
+    <form method="post" action="/account/email" class="card-body stack-sm email-change">
+      <label class="field">
+        <span class="label">New email</span>
+        <div class="row-sm">
+          <input name="email" type="email" required maxLength={254} autocomplete="email" />
+          <button class="btn" type="submit">
+            Send confirmation link
+          </button>
+        </div>
+        <span class="hint">
+          You'll confirm with your passkey, then open the link we send to the new address. Your
+          current address gets a notice.
+        </span>
+      </label>
+    </form>
+  );
+}
+
+export function ProfileSection({ user, canChangeEmail }: { user: User; canChangeEmail: boolean }) {
   return (
     <section class="card" id="profile">
       <div class="card-head">
@@ -54,7 +74,9 @@ export function ProfileSection({ user }: { user: User }) {
             <span class="hint">
               {user.public
                 ? "Accounts made through a public app have no email."
-                : "Apps see this as your email. Ask an admin to change it."}
+                : canChangeEmail
+                  ? "Apps see this as your email."
+                  : "Apps see this as your email. Ask an admin to change it."}
             </span>
           </div>
         </div>
@@ -64,6 +86,7 @@ export function ProfileSection({ user }: { user: User }) {
           </button>
         </div>
       </form>
+      {canChangeEmail && !user.public ? <EmailChangeForm /> : null}
     </section>
   );
 }

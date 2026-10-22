@@ -2,21 +2,14 @@ import { Hono } from "hono";
 import { getUser, listGroups, listUsers } from "../db";
 import type { Group, User } from "../db";
 import * as ops from "../ops";
-import type { AdminVars, ACtx } from "./shell";
+import type { AdminVars } from "./shell";
 import { act, actor, failBack, field, fields, page } from "./shell";
-import {
-  Avatar,
-  CopyField,
-  Dialog,
-  Empty,
-  GroupChips,
-  GroupPicker,
-  PageHead,
-  Time,
-} from "../ui/components";
+import { emailOn, revealLink } from "./invites";
+import { deliverLink } from "../invites";
+import { Avatar, Dialog, Empty, GroupChips, GroupPicker, PageHead, Time } from "../ui/components";
 import { Icon } from "../ui/icons";
 
-function InviteDialog({ groups }: { groups: Group[] }) {
+function InviteDialog({ groups, emailReady }: { groups: Group[]; emailReady: boolean }) {
   return (
     <Dialog
       id="invite"
@@ -53,6 +46,15 @@ function InviteDialog({ groups }: { groups: Group[] }) {
           <span class="sub">Can manage people, apps and settings, and use the admin API.</span>
         </span>
       </label>
+      {emailReady ? (
+        <label class="check">
+          <input type="checkbox" name="sendEmail" value="1" checked />
+          <span>
+            Email the invite
+            <span class="sub">You'll still see the link, in case it doesn't arrive.</span>
+          </span>
+        </label>
+      ) : null}
     </Dialog>
   );
 }
@@ -145,7 +147,7 @@ function PersonRow({ u, k, groups }: { u: User; k: number; groups: string[] }) {
 usersAdmin.get("/", async (c) => {
   const db = c.env.DB;
   const filter: Filter = FILTERS.find((f) => f === c.req.query("filter")) ?? "all";
-  const [users, groups, { results: keys }, { results: members }] = await Promise.all([
+  const [users, groups, { results: keys }, { results: members }, ready] = await Promise.all([
     listUsers(db),
     listGroups(db),
     db
@@ -156,6 +158,7 @@ usersAdmin.get("/", async (c) => {
         "SELECT m.user_id, g.name FROM group_members m JOIN groups g ON g.id = m.group_id ORDER BY g.name",
       )
       .all<{ user_id: string; name: string }>(),
+    emailOn(c),
   ]);
   const keyCount = new Map(keys.map((k) => [k.user_id, k.n]));
   const memberGroups = new Map<string, string[]>();
@@ -182,15 +185,21 @@ usersAdmin.get("/", async (c) => {
         title="People"
         lede="Everyone who can sign in. Invite someone and they'll set up a passkey from a one-time link."
         actions={
-          <button
-            class="btn primary"
-            type="button"
-            data-open="invite"
-            {...(c.req.query("invite") ? { "data-autoopen": "" } : {})}
-          >
-            <Icon name="userPlus" size="sm" />
-            Invite person
-          </button>
+          <div class="row-sm">
+            <a class="btn" href="/admin/users/invites">
+              <Icon name="mail" size="sm" />
+              Pending invites
+            </a>
+            <button
+              class="btn primary"
+              type="button"
+              data-open="invite"
+              {...(c.req.query("invite") ? { "data-autoopen": "" } : {})}
+            >
+              <Icon name="userPlus" size="sm" />
+              Invite person
+            </button>
+          </div>
         }
       />
       <FilterBar filter={filter} n={n} />
@@ -223,70 +232,10 @@ usersAdmin.get("/", async (c) => {
         )}
       </div>
 
-      <InviteDialog groups={groups} />
+      <InviteDialog groups={groups} emailReady={ready} />
     </>,
   );
 });
-
-export async function revealEnrollment(c: ACtx, userId: string, link: string, fresh: boolean) {
-  const u = await getUser(c.env.DB, userId);
-  const name = u?.name ?? "them";
-  const first = name.split(" ")[0];
-  const mail = `mailto:${encodeURIComponent(u?.email ?? "")}?subject=${encodeURIComponent(`Your ${c.env.RP_NAME} invite`)}&body=${encodeURIComponent(
-    `Hi ${first},\n\nSet up your passkey for ${c.env.RP_NAME} here (valid for 7 days, works once):\n\n${link}\n`,
-  )}`;
-  return await page(
-    c,
-    {
-      active: "users",
-      title: fresh ? "Invite ready" : "Enrollment link",
-      crumbs: [
-        { label: "People", href: "/admin/users" },
-        { label: name, href: `/admin/users/${userId}` },
-        { label: "Link" },
-      ],
-      narrow: true,
-    },
-    <div class="card">
-      <div class="card-body stack">
-        <div class="hero-icon ok">
-          <Icon name="check" />
-        </div>
-        <div>
-          <h1>{fresh ? `${first} is invited` : "New enrollment link"}</h1>
-          <p class="muted">
-            Send this link to {first}. It works once, for 7 days, and is shown only now — we store
-            just a hash.
-          </p>
-        </div>
-        <CopyField value={link} big label="enrollment link" />
-        <div class="row wrap">
-          <a class="btn" href={mail}>
-            <Icon name="mail" size="sm" />
-            Email it
-          </a>
-          <button
-            class="btn"
-            type="button"
-            data-share={link}
-            data-share-title={`${c.env.RP_NAME} invite`}
-          >
-            <Icon name="arrowUpRight" size="sm" />
-            Share…
-          </button>
-          <button class="btn" type="button" data-qr={link}>
-            <Icon name="qr" size="sm" />
-            Show QR
-          </button>
-          <a class="btn ghost right" href={`/admin/users/${userId}`}>
-            Done
-          </a>
-        </div>
-        <div class="qr" data-qr-target hidden></div>
-      </div>
-    </div>,
-  );
-}
 
 usersAdmin.post("/", async (c) => {
   const form = await c.req.parseBody({ all: true });
@@ -302,7 +251,16 @@ usersAdmin.post("/", async (c) => {
       },
       actor(c),
     );
-    return revealEnrollment(c, r.id, r.enrollmentLink, true);
+    const delivery =
+      field(form, "sendEmail") === "1"
+        ? await deliverLink(
+            c.env,
+            { name: field(form, "name"), email: field(form, "email"), public: 0 },
+            r.enrollmentLink,
+            "invite",
+          )
+        : null;
+    return revealLink(c, r.id, r.enrollmentLink, { fresh: true, delivery });
   } catch (e) {
     return failBack(c, "/admin/users?invite=1", e);
   }
@@ -348,13 +306,19 @@ usersAdmin.post("/:id/member", async (c) => {
 
 usersAdmin.post("/:id/enrollment", async (c) => {
   const id = c.req.param("id");
+  const form = await c.req.parseBody();
   let link: string;
   try {
     link = await ops.mintEnrollmentLink(c.env.DB, c.env.ISSUER, id, actor(c));
   } catch (e) {
     return failBack(c, `/admin/users/${id}`, e);
   }
-  return revealEnrollment(c, id, link, false);
+  const user = await getUser(c.env.DB, id);
+  const delivery =
+    user && field(form, "sendEmail") === "1"
+      ? await deliverLink(c.env, user, link, "relink")
+      : null;
+  return revealLink(c, id, link, { fresh: false, delivery });
 });
 
 usersAdmin.post("/:id/sessions/:sid/revoke", async (c) => {

@@ -27,6 +27,7 @@ export interface InstanceSettings {
   emailEnabled: boolean;
   emailFrom: string | null;
   emailFromName: string | null;
+  selfEmailChange: boolean;
 }
 
 export const SETTING_KEYS = {
@@ -41,6 +42,7 @@ export const SETTING_KEYS = {
   emailEnabled: "email_enabled",
   emailFrom: "email_from",
   emailFromName: "email_from_name",
+  selfEmailChange: "self_email_change",
 } as const;
 
 export function oneOf<T extends string>(list: readonly T[], v: string | null, fallback: T): T {
@@ -67,6 +69,7 @@ function parseSettings(rows: { key: string; value: string }[]): InstanceSettings
     emailEnabled: flag(K.emailEnabled, false),
     emailFrom: get(K.emailFrom),
     emailFromName: get(K.emailFromName),
+    selfEmailChange: flag(K.selfEmailChange, false),
   };
 }
 
