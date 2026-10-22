@@ -10,7 +10,8 @@ Code references use the form `src/file.ts › symbol`.
 ## Overview
 
 edge-idp is one Cloudflare Worker (Hono, server-rendered JSX) backed by one D1
-database. It is a passkey-only OpenID Connect provider, an OAuth 2.1
+database. It is a passkey-first OpenID Connect provider (no passwords; email
+sign-in links are an opt-in for members), an OAuth 2.1
 authorization server for MCP clients, an admin UI, and an admin MCP server.
 There is no separate frontend build or SPA: the browser gets server-rendered
 HTML plus one small script and one stylesheet, both served by the Worker
@@ -604,7 +605,7 @@ Components render no behavior of their own (`src/ui/layout.tsx`,
   putting a bearer token in a URL path: the link carries the token in the
   `#fragment`, the page's script copies it into the form's hidden `token`
   input and strips it from the address bar, and the person submits the form
-  (`src/client/ui.ts › initFragmentToken`, `src/pages.tsx › TokenFormPage`).
+  (`src/client/ui.ts › initFragmentToken`, `src/pages-flow.tsx › TokenFormPage`).
   Enrollment links predate this and do the same thing in `passkeys.ts`.
 
 **Styling without inline styles.** Every visual variant is a CSS class or data

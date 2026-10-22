@@ -48,7 +48,7 @@ backupSettings.get("/backup", async (c) =>
         >
           <ul class="small stack-sm">
             <li>
-              Groups, app groups, apps, grants, clients, webhooks and settings in the file
+              Groups, app groups, apps, grants, clients, webhooks and settings in the file{" "}
               <b>replace</b> the ones here with the same id.
             </li>
             <li>

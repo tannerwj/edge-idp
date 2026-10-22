@@ -21,7 +21,7 @@ export function upstreamLinks(repo: string) {
     bug: `${base}/issues/new?${new URLSearchParams({ template: "bug.yml", version: VERSION }).toString()}`,
     feature: `${base}/issues/new?${new URLSearchParams({ template: "feature.yml" }).toString()}`,
     updating: `${base}/blob/master/DEPLOY.md#staying-up-to-date`,
-    changes: `${base}/commits/master`,
+    changes: `${base}/blob/master/CHANGELOG.md`,
   };
 }
 

@@ -22,9 +22,12 @@ Instructions for coding agents working in this repo. Human contributors: see
 - **Keep docs in sync with behavior.** A change that alters a documented
   decision, default, limit or flow updates the doc in the same commit.
 - Keep changes small and in the existing style. The project is deliberately
-  passkey-only.
+  passkey-first: no passwords, admins sign in only with passkeys, and email
+  sign-in links stay an opt-in for members (THREAT_MODEL › Credentials).
 - Default branch is `master`.
 - No AI attribution in commits (no `Co-Authored-By` lines or similar).
+- User-visible changes go in `CHANGELOG.md` under the next version, with
+  upgrade notes for anything an operator has to do.
 
 ## Before committing
 

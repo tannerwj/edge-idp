@@ -12,13 +12,12 @@ const KNOWN = new Set(ALERT_GROUPS.flatMap((g) => g.events));
 
 export async function setAlerts(
   db: D1Database,
-  input: { events: string[]; emailAdmins: boolean; userNotices: boolean },
+  input: { events: string[]; emailAdmins: boolean },
   a: Actor,
 ): Promise<void> {
   const events = [...new Set(input.events.filter((e) => KNOWN.has(e)))];
   await setSetting(db, SETTING_KEYS.alertEvents, JSON.stringify(events));
   await setSetting(db, SETTING_KEYS.alertEmailAdmins, input.emailAdmins ? "1" : "0");
-  await setSetting(db, SETTING_KEYS.userNotices, input.userNotices ? "1" : "0");
   invalidateSettingsCache();
   await audit(db, "SETTINGS_CHANGED", {
     userId: a.adminId,
