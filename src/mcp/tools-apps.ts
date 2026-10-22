@@ -110,6 +110,35 @@ export const APP_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "clients_sign_in_policy",
+    write: true,
+    description:
+      "Ask for a fresh sign-in before an admin-registered client gets a code: require a passkey sign-in (not an email link), and/or a sign-in no older than max_auth_age seconds (0, 3600, 43200, 86400 or 604800; 0 means any).",
+    inputSchema: obj(
+      {
+        client_id: { type: "string" },
+        require_passkey: { type: "boolean" },
+        max_auth_age: { type: "integer", enum: [0, 3600, 43200, 86400, 604800] },
+      },
+      ["client_id"],
+    ),
+    handler: async ({ db, actor }, args) => {
+      const c = await clientByRef(db, str(args.client_id));
+      await ops.setClientSignInPolicy(
+        db,
+        c,
+        {
+          requirePasskey:
+            typeof args.require_passkey === "boolean" ? args.require_passkey : c.require_passkey,
+          maxAuthAge:
+            typeof args.max_auth_age === "number" ? args.max_auth_age : (c.max_auth_age ?? 0),
+        },
+        actor,
+      );
+      return { ok: true };
+    },
+  },
+  {
     name: "clients_rotate_secret",
     write: true,
     description:

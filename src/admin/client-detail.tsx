@@ -1,6 +1,7 @@
 import type { Group, OidcClient } from "../db";
 import * as ops from "../ops";
 import { Callout, CopyField, GroupPicker, PageHead, PostButton, Time } from "../ui/components";
+import { SignInPolicyCard } from "./client-policy";
 import { Icon } from "../ui/icons";
 
 export function host(u: string): string {
@@ -276,6 +277,7 @@ export function ClientDetail(props: {
           ) : null}
 
           <ClientSettingsForm client={client} groups={groups} linkedApp={props.linkedApp} />
+          {client.source === "admin" ? <SignInPolicyCard client={client} /> : null}
         </div>
 
         <ClientSidebar

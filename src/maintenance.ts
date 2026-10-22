@@ -26,6 +26,7 @@ export async function runMaintenance(db: D1Database): Promise<Record<string, num
     ),
     secret_pickups: db.prepare("DELETE FROM secret_pickups WHERE expires_at < ?1").bind(now),
     email_changes: db.prepare("DELETE FROM email_changes WHERE expires_at < ?1").bind(now),
+    magic_links: db.prepare("DELETE FROM magic_links WHERE expires_at < ?1").bind(now),
     mcp_calls: db
       .prepare("DELETE FROM mcp_calls WHERE started_at < ?1")
       .bind(now - MCP_CALLS_MAX_AGE),

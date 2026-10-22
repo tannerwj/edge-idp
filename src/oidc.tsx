@@ -186,8 +186,8 @@ async function issueCode(
   await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO auth_codes
-         (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, nonce, expires_at, resource, auth_time)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+         (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, nonce, expires_at, resource, auth_time, method)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
     ).bind(
       await sha256Hex(code),
       req.client.id,
@@ -199,6 +199,7 @@ async function issueCode(
       now + CODE_TTL,
       req.resource,
       session.authTime,
+      session.method,
     ),
     c.env.DB.prepare("UPDATE oidc_clients SET last_used_at = ?1 WHERE id = ?2").bind(
       now,
@@ -228,13 +229,22 @@ function resumeUrl(c: Context): string {
   return u.pathname + u.search;
 }
 
+function needsFreshSignIn(session: Session, req: AuthzRequest): boolean {
+  const age = nowSec() - session.authTime;
+  return (
+    req.prompt.includes("login") ||
+    (req.maxAge !== null && age > req.maxAge) ||
+    (req.client.max_auth_age !== null && age > req.client.max_auth_age) ||
+    (req.client.require_passkey && session.method !== "passkey")
+  );
+}
+
 oidc.get("/authorize", async (c) => {
   const v = await validateAuthorize(c, c.req.query());
   if (!v.ok) return v.response;
   const req = v.req;
   const session = await getSession(c);
-  const stale = session && req.maxAge !== null && nowSec() - session.authTime > req.maxAge;
-  if (!session || stale || req.prompt.includes("login")) {
+  if (!session || needsFreshSignIn(session, req)) {
     if (req.prompt.includes("none")) return redirectWith(c, req, { error: "login_required" });
     const params = new URLSearchParams({ next: resumeUrl(c) });
     if (session) params.set("reauth", "1");
@@ -281,6 +291,8 @@ oidc.post("/authorize/decision", async (c) => {
   const req = v.req;
   const session = await getSession(c);
   if (!session) return c.redirect(`/login`, 303);
+  if (needsFreshSignIn(session, req))
+    return errorPage(c, "Sign in again", "Start the sign-in again from the app.", 403);
   if (decision !== "allow") {
     await audit(c.env.DB, "CONSENT_DENIED", { userId: session.user.id, clientId: req.client.id });
     return redirectWith(c, req, { error: "access_denied" });

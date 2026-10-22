@@ -30,11 +30,14 @@ const ERROR_CODES: Record<string, string> = {
   invalid_name: "Pick a name up to 60 characters.",
   signup_closed: "This app isn't taking new accounts right now.",
   already_signed_in: "You're already signed in.",
+  uv_required:
+    "Admins confirm with Face ID, Touch ID, Windows Hello or the key's PIN. Sign in again and you'll be asked.",
   passkey_not_discoverable:
     "This passkey can't be found without an email. Use a passkey manager (phone, laptop or a password manager).",
 };
 
 function friendlyError(e: unknown): string {
+  if (e instanceof Error && e.message === "uv_required") requireUv = true;
   if (e instanceof Error) {
     const text = ERROR_NAMES[e.name] ?? ERROR_CODES[e.message];
     if (text) return text;
@@ -67,12 +70,18 @@ const isAuthOptions = (v: unknown): v is PublicKeyCredentialRequestOptionsJSON =
 const isRegOptions = (v: unknown): v is PublicKeyCredentialCreationOptionsJSON =>
   isRecord(v) && typeof v.challenge === "string" && isRecord(v.rp) && isRecord(v.user);
 
+let requireUv = false;
+
 async function attemptLogin(
   email: string | undefined,
   autofill: boolean,
   stepUp: boolean,
 ): Promise<boolean> {
-  const raw = await postJSON("/webauthn/auth/options", { ...(email ? { email } : {}), stepUp });
+  const raw = await postJSON("/webauthn/auth/options", {
+    ...(email ? { email } : {}),
+    stepUp,
+    requireUv,
+  });
   if (!isAuthOptions(raw)) throw new Error("bad_response");
   const resp = await startAuthentication({ optionsJSON: raw, useBrowserAutofill: autofill });
   if (!resp) return false;
@@ -112,7 +121,11 @@ export async function initLogin(): Promise<void> {
         if (ok) finish();
         return ok;
       })
-      .catch(() => false);
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.message === "uv_required")
+          status("login-status", friendlyError(e), "error");
+        return false;
+      });
   }
   btn?.addEventListener("click", () => void onLoginClick(btn, finish, stepUp));
 }

@@ -3,7 +3,8 @@ import type { Env } from "./config";
 import { getSession, hasRecentStepUp } from "./session";
 import { confirmEmailChange, startEmailChange } from "./email-change";
 import { OpError } from "./ops-core";
-import { DonePage, ErrorPage, TokenFormPage } from "./pages";
+import { ErrorPage } from "./pages";
+import { DonePage, TokenFormPage } from "./pages-flow";
 import { setFlash, uiFor } from "./ui/layout";
 
 export const accountEmail = new Hono<{ Bindings: Env }>();

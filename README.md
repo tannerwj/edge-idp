@@ -16,7 +16,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 
 **For everyone who signs in**
 
-- Passkeys only: no passwords, no codes, no reset emails to phish
+- Passkeys first: no passwords. Optionally, members can sign in with an
+  emailed one-time link (never admins), and each app can insist on a passkey
+  or a recent sign-in
 - A home screen of the apps they're allowed to use
 - Account & security: passkeys (with provider names like iCloud Keychain or
   YubiKey), where they're signed in, connected apps and AI tools, recent activity

@@ -81,8 +81,11 @@ try {
     });
     await page2.goto(`${instance.base}${path}`);
     await page2.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
-    return (await verify.catch(() => null))?.status() ?? null;
+    const res = await verify.catch(() => null);
+    lastError = res ? ((await res.json().catch(() => ({}))).error ?? null) : null;
+    return res?.status() ?? null;
   };
+  let lastError = null;
   await ctx2.clearCookies();
   const strict = await signIn("/login");
   if (strict !== 401) throw new Error(`server didn't refuse sign-in without UV: ${strict}`);
@@ -99,6 +102,22 @@ try {
   const recheck = await signIn(`/login?reauth=1&next=${encodeURIComponent("/account")}`);
   if (recheck !== 401) throw new Error(`server didn't refuse a recheck without UV: ${recheck}`);
   console.log("passkey recheck still requires UV: PASS");
+
+  await instance.sql("UPDATE users SET is_admin = 1 WHERE id = 'review-skip-uv'");
+  await ctx2.clearCookies();
+  const admin = await signIn("/login");
+  if (admin !== 401 || lastError !== "uv_required")
+    throw new Error(`an admin signed in without UV: ${admin} ${lastError}`);
+  console.log("admins still have to verify by default: PASS");
+
+  await instance.sql(
+    `INSERT INTO instance_settings (key, value, updated_at) VALUES ('admins_always_verify', '0', ${now})`,
+  );
+  await new Promise((r) => setTimeout(r, 11_000));
+  await ctx2.clearCookies();
+  const relaxedAdmin = await signIn("/login");
+  if (relaxedAdmin !== 200) throw new Error(`relaxed admin sign-in failed: ${relaxedAdmin}`);
+  console.log("…unless that setting is turned off: PASS");
 } finally {
   await browser?.close();
   await instance.stop();

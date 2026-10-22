@@ -12,6 +12,7 @@ export function LoginPage(props: {
   reauth?: boolean;
   signedOut?: boolean;
   recovery?: boolean;
+  magicLink?: boolean;
 }) {
   return (
     <AuthLayout
@@ -75,6 +76,24 @@ export function LoginPage(props: {
           </label>
         </details>
         <p id="login-status" class="status" role="status" aria-live="polite"></p>
+        {props.magicLink && !props.reauth ? (
+          <details class="disclose">
+            <summary>
+              <Icon name="send" size="sm" />
+              No passkey on this device? Email me a sign-in link
+            </summary>
+            <form method="post" action="/login/email" class="stack-sm">
+              <input type="hidden" name="next" value={props.next} />
+              <label class="field">
+                <span class="label">Email</span>
+                <input name="email" type="email" required autocomplete="email" />
+              </label>
+              <button class="btn block" type="submit">
+                Send me a link
+              </button>
+            </form>
+          </details>
+        ) : null}
         {props.app?.signup && !props.reauth ? (
           <p class="muted small center">
             New here?{" "}
@@ -349,49 +368,6 @@ export function ErrorPage(props: { ui: Ui; title?: string; message: string }) {
       <p class="lede">{props.message}</p>
       <a class="btn block" href="/">
         Go to {props.ui.rpName}
-      </a>
-    </AuthLayout>
-  );
-}
-
-export function TokenFormPage(props: {
-  ui: Ui;
-  title: string;
-  lede: string;
-  action: string;
-  button: string;
-  icon?: IconName;
-}) {
-  return (
-    <AuthLayout ui={props.ui} title={props.title}>
-      <div class="hero-icon">
-        <Icon name={props.icon ?? "mail"} />
-      </div>
-      <h1>{props.title}</h1>
-      <p class="lede">{props.lede}</p>
-      <form method="post" action={props.action} data-fragment-token class="stack-sm">
-        <input type="hidden" name="token" />
-        <button class="btn primary lg block" type="submit">
-          {props.button}
-        </button>
-        <p class="muted small" data-fragment-missing hidden>
-          This link is incomplete. Open it straight from the email.
-        </p>
-      </form>
-    </AuthLayout>
-  );
-}
-
-export function DonePage(props: { ui: Ui; title: string; message: string; href?: string }) {
-  return (
-    <AuthLayout ui={props.ui} title={props.title}>
-      <div class="hero-icon ok">
-        <Icon name="check" />
-      </div>
-      <h1>{props.title}</h1>
-      <p class="lede">{props.message}</p>
-      <a class="btn block" href={props.href ?? "/"}>
-        Continue to {props.ui.rpName}
       </a>
     </AuthLayout>
   );

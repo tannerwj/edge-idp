@@ -99,7 +99,7 @@ export function accessClaimsClient(client: OidcClient, scope: string): string | 
 export function claimsFor(
   ctx: UserContext,
   authTime: number,
-  opts: { nonce?: string | null; accessFor?: string | null } = {},
+  opts: { nonce?: string | null; accessFor?: string | null; method?: string | null } = {},
 ): TokenClaims | null {
   const { user } = ctx;
   if (user.disabled) return null;
@@ -110,6 +110,7 @@ export function claimsFor(
     public: user.public === 1,
     groups: ctx.groups,
     authTime,
+    method: opts.method ?? null,
     ...(opts.nonce ? { nonce: opts.nonce } : {}),
     ...(opts.accessFor ? claimsForClient(ctx.apps, ctx.access, opts.accessFor) : {}),
   };

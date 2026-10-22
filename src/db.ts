@@ -50,6 +50,8 @@ export interface OidcClient {
   skip_consent: boolean;
   metadata_expires_at: number | null;
   public_signup: boolean;
+  require_passkey: boolean;
+  max_auth_age: number | null;
 }
 
 interface Row {
@@ -194,6 +196,8 @@ function rowToClient(r: Row): OidcClient {
     skip_consent: r.skip_consent === undefined ? true : num(r.skip_consent) === 1,
     metadata_expires_at: numOrNull(r.metadata_expires_at),
     public_signup: r.public_signup === undefined ? false : num(r.public_signup) === 1,
+    require_passkey: r.require_passkey === undefined ? false : num(r.require_passkey) === 1,
+    max_auth_age: r.max_auth_age === undefined ? null : numOrNull(r.max_auth_age),
   };
 }
 

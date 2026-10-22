@@ -4,7 +4,8 @@ import { requestRecovery } from "./recovery";
 import { getInstanceSettings } from "./settings-cache";
 import { OpError } from "./ops-core";
 import { AuthLayout, uiFor } from "./ui/layout";
-import { DonePage, ErrorPage } from "./pages";
+import { ErrorPage } from "./pages";
+import { DonePage } from "./pages-flow";
 import { Icon } from "./ui/icons";
 import { sha256Hex } from "./util";
 

@@ -102,6 +102,27 @@ export async function updateClient(
   await audit(db, "CLIENT_UPDATED", { clientId: client.id, detail: by(a) });
 }
 
+export const MAX_AUTH_AGES = [0, 3600, 43200, 86400, 604800];
+
+export async function setClientSignInPolicy(
+  db: D1Database,
+  client: OidcClient,
+  input: { requirePasskey: boolean; maxAuthAge: number },
+  a: Actor,
+): Promise<void> {
+  if (client.source !== "admin")
+    throw new OpError("Sign-in policy is for admin-registered clients.");
+  if (!MAX_AUTH_AGES.includes(input.maxAuthAge)) throw new OpError("Pick one of the offered ages.");
+  await db
+    .prepare("UPDATE oidc_clients SET require_passkey = ?1, max_auth_age = ?2 WHERE id = ?3")
+    .bind(input.requirePasskey ? 1 : 0, input.maxAuthAge || null, client.id)
+    .run();
+  await audit(db, "CLIENT_UPDATED", {
+    clientId: client.id,
+    detail: by(a, { requirePasskey: input.requirePasskey, maxAuthAge: input.maxAuthAge }),
+  });
+}
+
 export async function rotateClientSecret(
   db: D1Database,
   client: OidcClient,

@@ -95,6 +95,18 @@ async function authorizeInBrowser(params, { approve } = {}) {
   return captured;
 }
 
+async function settledGoto(p, url) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await p.goto(url);
+    } catch (e) {
+      if (!String(e).includes("interrupted by another navigation")) throw e;
+      await p.waitForLoadState("load").catch(() => {});
+    }
+  }
+  return p.goto(url);
+}
+
 async function waitForMail(match, skip = 0) {
   for (let i = 0; i < 40; i++) {
     const mail = instance
@@ -108,9 +120,17 @@ async function waitForMail(match, skip = 0) {
 }
 
 async function stepUp(next) {
-  await page.goto(`${BASE}/login?reauth=1&next=${encodeURIComponent(next)}`);
-  await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
-  await page.waitForURL((u) => u.pathname === next.split(/[?#]/)[0], { timeout: 15000 });
+  await settledGoto(page, `${BASE}/login?reauth=1&next=${encodeURIComponent(next)}`);
+  const arrived = (u) => u.pathname === next.split(/[?#]/)[0];
+  for (let i = 0; i < 3; i++) {
+    await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+    const ok = await page
+      .waitForURL(arrived, { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (ok) return;
+  }
+  await page.waitForURL(arrived, { timeout: 5000 });
 }
 
 async function mcpCall(token, method, params = {}, headers = {}) {
@@ -1323,6 +1343,113 @@ try {
       page.click("form[action$='/recovery'] button[type=submit]"),
     ]);
     hookServer.close();
+  }
+
+  step("email sign-in links and per-app policy");
+  if (!instance.remote) {
+    await stepUp("/admin/settings/sign-in");
+    await page.check("input[name=magicLinks]", { force: true });
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/email-links'] button[type=submit]"),
+    ]);
+    const mailed = (await sql("SELECT id FROM users WHERE email = 'mailed@example.test'"))[0]?.id;
+    await sql(
+      `INSERT OR IGNORE INTO group_members (group_id, user_id, created_at) SELECT id, '${mailed}', 0 FROM groups WHERE name = 'family'`,
+    );
+    const mctx = await browser.newContext();
+    const mp = await mctx.newPage();
+    const askLink = async (email) => {
+      await mp.goto(`${BASE}/login`);
+      await mp.click("summary:has-text('Email me a sign-in link')");
+      await mp.fill("form[action='/login/email'] input[name=email]", email);
+      await Promise.all([
+        mp.waitForNavigation(),
+        mp.click("form[action='/login/email'] button[type=submit]"),
+      ]);
+    };
+    const before = instance.outbox().length;
+    await askLink("ada@example.test");
+    await askLink("mailed@example.test");
+    const linkMail = await waitForMail((m) => m.subject.startsWith("Sign in to"), before);
+    check(
+      "only the member gets a link, never an admin",
+      linkMail?.to.includes("mailed@example.test") &&
+        !instance
+          .outbox()
+          .slice(before)
+          .some((m) => m.to.includes("ada@example.test") && m.subject.startsWith("Sign in to")),
+      linkMail,
+    );
+    const link = linkMail?.text.match(/(http\S+\/login\/link#[A-Za-z0-9_-]{43})/)?.[1];
+    await mp.goto(link ?? `${BASE}/`);
+    await Promise.all([mp.waitForNavigation(), mp.click("form[data-fragment-token] button")]);
+    check(
+      "the link shows whose account it signs in to",
+      (await mp.textContent("h1"))?.includes("Mailed Person"),
+    );
+    await Promise.all([mp.waitForNavigation(), mp.click("button[type=submit]")]);
+    const method = (await sql(`SELECT method FROM sessions WHERE user_id = '${mailed}'`))[0]
+      ?.method;
+    check("signing in makes an email-method session", method === "email", method);
+    check(
+      "the person is told about the email sign-in",
+      !!(await waitForMail(
+        (m) => m.to.includes("mailed@example.test") && m.subject.includes("email link"),
+      )),
+    );
+    const p6 = pkce();
+    let captured = null;
+    mp.on("request", (r) => {
+      const u = new URL(r.url());
+      if (u.origin === "https://app.example.test") captured = u;
+    });
+    const authz = (extra = {}) =>
+      `${BASE}/authorize?${new URLSearchParams({
+        client_id: CLIENT_ID,
+        redirect_uri: "https://app.example.test/callback",
+        response_type: "code",
+        scope: "openid",
+        code_challenge: p6.challenge,
+        code_challenge_method: "S256",
+        ...extra,
+      })}`;
+    await mp.goto(authz()).catch(() => {});
+    for (let i = 0; i < 50 && !captured; i++) await mp.waitForTimeout(100);
+    const otp = await (
+      await tokenReq({
+        grant_type: "authorization_code",
+        code: captured?.searchParams.get("code") ?? "",
+        redirect_uri: "https://app.example.test/callback",
+        code_verifier: p6.verifier,
+      })
+    ).json();
+    check(
+      "apps see an email sign-in as amr otp",
+      JSON.stringify(otp.id_token ? decodeJwt(otp.id_token).amr : null) === '["otp"]',
+      otp,
+    );
+    await tool("clients_sign_in_policy", { client_id: CLIENT_ID, require_passkey: true });
+    captured = null;
+    await settledGoto(mp, "about:blank");
+    await settledGoto(mp, authz()).catch(() => {});
+    check(
+      "an app that requires a passkey sends an email sign-in back to sign in",
+      new URL(mp.url()).pathname === "/login" && mp.url().includes("reauth=1") && !captured,
+      mp.url(),
+    );
+    await tool("clients_sign_in_policy", { client_id: CLIENT_ID, require_passkey: false });
+    await settledGoto(mp, "about:blank");
+    await settledGoto(mp, link ?? `${BASE}/`);
+    await Promise.all([mp.waitForNavigation(), mp.click("form[data-fragment-token] button")]);
+    check("a sign-in link works once", (await mp.textContent("h1"))?.includes("expired"));
+    await mctx.close();
+    await page.goto(`${BASE}/admin/settings/sign-in`);
+    await page.uncheck("input[name=magicLinks]", { force: true });
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/email-links'] button[type=submit]"),
+    ]);
   }
 
   step("feedback + update notice");

@@ -12,6 +12,8 @@ import { admin } from "./admin";
 import { account } from "./account";
 import { accountEmail } from "./account-email";
 import { recover } from "./recover";
+import { loginLink } from "./login-link";
+import { magicLinksOpen } from "./magic-link";
 import { home } from "./home";
 import { pickup } from "./secret-pickup";
 import { mcp } from "./mcp";
@@ -24,6 +26,7 @@ import { runMaintenance } from "./maintenance";
 import { setup, setupPending } from "./setup";
 import { checkForUpdate } from "./upstream";
 import { withScope } from "./request-context";
+import { safeNext } from "./util";
 import { getInstanceSettings } from "./settings-cache";
 import { startNotifications } from "./notify";
 import { APP_CSS, APP_JS } from "./assets.gen";
@@ -52,7 +55,8 @@ function limiterFor(env: Env, path: string): RateLimit | undefined {
     path === "/setup" ||
     path === "/client-secret/pickup" ||
     path.startsWith("/account/email") ||
-    path === "/recover"
+    path === "/recover" ||
+    path.startsWith("/login/")
   )
     return env.AUTH_LIMITER;
   if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp"))
@@ -153,11 +157,6 @@ app.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
 app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
 app.get("/healthz", (c) => c.json({ ok: true }));
 
-function safeNext(raw: string | undefined): string {
-  if (raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\")) return raw;
-  return "/";
-}
-
 async function loginContext(
   db: D1Database,
   next: string,
@@ -187,6 +186,7 @@ app.get("/login", async (c) => {
       reauth={reauth && !!session}
       signedOut={c.req.query("signed_out") === "1"}
       recovery={(await getInstanceSettings(c.env.DB)).recoveryMode !== "off"}
+      magicLink={await magicLinksOpen(c.env)}
     />,
   );
 });
@@ -232,6 +232,7 @@ app.route("/", tokens);
 app.route("/", account);
 app.route("/", accountEmail);
 app.route("/", recover);
+app.route("/", loginLink);
 app.route("/", home);
 app.route("/", pickup);
 
