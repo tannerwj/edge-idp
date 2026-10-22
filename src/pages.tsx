@@ -11,6 +11,7 @@ export function LoginPage(props: {
   app?: { name: string; host: string; signup?: boolean } | null;
   reauth?: boolean;
   signedOut?: boolean;
+  recovery?: boolean;
 }) {
   return (
     <AuthLayout
@@ -78,6 +79,11 @@ export function LoginPage(props: {
           <p class="muted small center">
             New here?{" "}
             <a href={`/signup?next=${encodeURIComponent(props.next)}`}>Create an account</a>
+          </p>
+        ) : null}
+        {props.recovery && !props.reauth ? (
+          <p class="muted small center">
+            <a href="/recover">Lost your passkey?</a>
           </p>
         ) : null}
       </div>

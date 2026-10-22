@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createServer } from "node:http";
 import { chromium } from "playwright";
 import { startLocal, startRemote } from "./instances.mjs";
 import { createRemoteJWKSet, jwtVerify, decodeJwt } from "jose";
@@ -1185,6 +1186,143 @@ try {
     await Promise.all([page.waitForNavigation(), page.click("form[data-fragment-token] button")]);
     check("the link works once", (await page.textContent("h1"))?.includes("Couldn't"));
     await sql("UPDATE users SET email = 'ada@example.test' WHERE id = 'admin-1'");
+  }
+
+  step("sign-in help, alerts and webhooks");
+  if (!instance.remote) {
+    const received = [];
+    const hookServer = createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d));
+      req.on("end", () => {
+        received.push({ headers: req.headers, body });
+        res.end("ok");
+      });
+    });
+    await new Promise((r) => hookServer.listen(0, "127.0.0.1", r));
+    const hookUrl = `http://localhost:${hookServer.address().port}/hook`;
+    const hookEvent = async (event) => {
+      for (let i = 0; i < 40; i++) {
+        const hit = received.find((r) => r.body.includes(`"event":"${event}"`));
+        if (hit) return hit;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return null;
+    };
+    await stepUp("/admin/settings/notifications");
+    await page.fill("form[action$='/webhooks'] input[name=name]", "Receiver");
+    await page.fill("form[action$='/webhooks'] input[name=url]", hookUrl);
+    await page.check("form[action$='/webhooks'] input[name=sign]");
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/webhooks'] button[type=submit]"),
+    ]);
+    await Promise.all([page.waitForNavigation(), page.click("form[action$='/test'] button")]);
+    const test = await hookEvent("WEBHOOK_TEST");
+    const secret = (await sql("SELECT secret FROM webhooks"))[0]?.secret;
+    check(
+      "a webhook test arrives, signed with the webhook's secret",
+      !!test &&
+        !!secret &&
+        test.headers["x-edge-idp-signature"] ===
+          `sha256=${createHmac("sha256", secret).update(test.body).digest("hex")}`,
+    );
+    await page.check("form[action$='/alerts'] input[name=emailAdmins]", { force: true });
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/alerts'] button[type=submit]"),
+    ]);
+    await page.goto(`${BASE}/admin/settings/sign-in`);
+    await page.check("input[name=recoveryMode][value=approval]");
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/recovery'] button[type=submit]"),
+    ]);
+    await sql(
+      `INSERT INTO users (id, created_at, name, email, is_admin, updated_at) VALUES ('rec-1', ${now}, 'Rita Recover', 'rita@example.test', 0, ${now})`,
+    );
+    const anon = await browser.newContext();
+    const ap = await anon.newPage();
+    await ap.goto(`${BASE}/login`);
+    check("sign-in offers help when recovery is on", await ap.isVisible("a[href='/recover']"));
+    const ask = async (email) => {
+      await ap.goto(`${BASE}/recover`);
+      await ap.fill("input[name=email]", email);
+      await Promise.all([ap.waitForNavigation(), ap.click("button[type=submit]")]);
+      return (await ap.textContent("h1")) ?? "";
+    };
+    const unknown = await ask("nobody@example.test");
+    const known = await ask("rita@example.test");
+    check("the answer is the same for unknown and known addresses", unknown === known, {
+      unknown,
+      known,
+    });
+    const pending = await sql("SELECT status FROM recovery_requests WHERE user_id = 'rec-1'");
+    check("approval mode records a request", pending[0]?.status === "pending", pending);
+    check("…alerts the webhook", !!(await hookEvent("RECOVERY_REQUESTED")));
+    check(
+      "…and emails admins",
+      !!(await waitForMail(
+        (m) => m.to.includes("ada@example.test") && m.subject.includes("Asked for help"),
+      )),
+    );
+    await page.goto(`${BASE}/admin`);
+    check(
+      "the overview says someone needs help",
+      (await page.textContent("body")).includes("needs help signing in"),
+    );
+    await page.goto(`${BASE}/admin/users/recovery`);
+    await page.click("form[action$='/approve'] button");
+    await page.waitForSelector("#confirm-dialog[open]");
+    await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
+    const recMail = await waitForMail(
+      (m) => m.to.includes("rita@example.test") && m.subject.includes("Add a passkey"),
+    );
+    const recToken = recMail?.text.match(/\/enroll#([A-Za-z0-9_-]{43})/)?.[1];
+    const recOk = recToken
+      ? (
+          await fetch(`${BASE}/webauthn/register/options`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ enrollmentToken: recToken }),
+          })
+        ).status === 200
+      : false;
+    check("approving emails a working one-hour link", recOk, recMail);
+    await page.goto(`${BASE}/admin/settings/sign-in`);
+    await page.check("input[name=recoveryMode][value=auto]");
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/recovery'] button[type=submit]"),
+    ]);
+    const before = instance.outbox().length;
+    await ask("rita@example.test");
+    check(
+      "automatic mode emails a member directly",
+      !!(await waitForMail((m) => m.to.includes("rita@example.test"), before)),
+    );
+    await ask("ada@example.test");
+    const adminAsk = await sql(
+      "SELECT status FROM recovery_requests WHERE user_id = 'admin-1' AND status = 'pending'",
+    );
+    check("…but an admin's request still waits for another admin", adminAsk.length === 1);
+    await sql("DELETE FROM recovery_requests");
+    await anon.close();
+    await tool("users_set_admin", { user_id: "rec-1", is_admin: true });
+    check(
+      "the person is told when they become an admin",
+      !!(await waitForMail(
+        (m) => m.to.includes("rita@example.test") && m.subject.includes("now an admin"),
+      )),
+    );
+    await tool("users_set_admin", { user_id: "rec-1", is_admin: false });
+    await page.goto(`${BASE}/admin/settings/sign-in`);
+    await page.check("input[name=recoveryMode][value=off]");
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action$='/recovery'] button[type=submit]"),
+    ]);
+    hookServer.close();
   }
 
   step("feedback + update notice");

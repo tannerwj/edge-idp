@@ -43,6 +43,10 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   over through a one-time pickup instead of the response
 - Apps: the launcher, organized into app groups, with favorites and search;
   optional import of your Cloudflare Access apps and their policies (read-only)
+- Lost passkeys: off (you send a new link), or a "Lost your passkey?" request
+  you approve, or an emailed one-hour link straight away
+- Alerts for chosen events by email and webhooks (Discord, Slack, ntfy or
+  signed JSON), and security notices to the people affected
 - Clients: OIDC/OAuth clients, both confidential and public, with exact
   redirect matching, per-client groups, PKCE and consent settings
 - Overview: sign-in trends, most-used apps, and "needs attention" items (only

@@ -6,6 +6,7 @@ import { cloudflareSettings } from "./cloudflare";
 import { emailSettings } from "./email";
 import { generalSettings } from "./general";
 import { keySettings } from "./keys";
+import { notificationSettings } from "./notifications";
 import { signInSettings } from "./sign-in";
 
 export const settingsAdmin = new Hono<AdminVars>();
@@ -14,6 +15,7 @@ for (const r of [
   generalSettings,
   signInSettings,
   emailSettings,
+  notificationSettings,
   clientSettings,
   keySettings,
   cloudflareSettings,

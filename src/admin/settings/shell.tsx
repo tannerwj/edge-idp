@@ -13,6 +13,7 @@ export type SettingsTab =
   | "general"
   | "sign-in"
   | "email"
+  | "notifications"
   | "clients"
   | "keys"
   | "cloudflare"
@@ -43,6 +44,12 @@ export const SETTINGS_TABS: TabDef[] = [
     label: "Email",
     icon: "mail",
     lede: "Optional. Lets this server send invites, sign-in links and security notices.",
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    icon: "bell",
+    lede: "Alerts for admins, webhooks, and security notices to the people affected.",
   },
   {
     id: "clients",
@@ -85,6 +92,8 @@ function badgeFor(id: SettingsTab, env: Env, s: InstanceSettings): Badge {
   if (id === "sign-in" && (s.signInUv === "discouraged" || s.adminStepUp === "off"))
     return { text: "Relaxed", tone: "warn" };
   if (id === "cloudflare" && cfConfigured(env)) return { text: "Connected", tone: "ok" };
+  if (id === "notifications" && s.alertEmailAdmins && emailStatus(env, s) === "ready")
+    return { text: "Email", tone: "ok" };
   return null;
 }
 

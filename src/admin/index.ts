@@ -7,6 +7,7 @@ import type { ACtx, AdminVars } from "./shell";
 import { dashboardAdmin } from "./dashboard";
 import { usersAdmin } from "./users";
 import { invitesAdmin } from "./invites";
+import { recoveryAdmin } from "./recovery";
 import { userDetailAdmin } from "./user-detail";
 import { groupsAdmin } from "./groups";
 import { appsAdmin } from "./apps";
@@ -24,6 +25,7 @@ const SENSITIVE = [
   /^\/admin\/users\/[^/]+\/(profile|role|member|enrollment|revoke-keys)$/,
   /^\/admin\/users\/[^/]+\/keys\/[^/]+\/remove$/,
   /^\/admin\/users\/invites(\/[^/]+\/resend)?$/,
+  /^\/admin\/users\/recovery\/[^/]+\/approve$/,
   /^\/admin\/tokens$/,
   /^\/admin\/clients$/,
   /^\/admin\/clients\/[^/]+(\/rotate)?$/,
@@ -108,6 +110,7 @@ admin.get("/audit.csv", async (c) =>
 
 admin.route("/", dashboardAdmin);
 admin.route("/users/invites", invitesAdmin);
+admin.route("/users/recovery", recoveryAdmin);
 admin.route("/users", usersAdmin);
 admin.route("/users/:id", userDetailAdmin);
 admin.route("/groups", groupsAdmin);

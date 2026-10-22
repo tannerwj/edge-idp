@@ -47,7 +47,7 @@ export async function revealLink(
   c: ACtx,
   userId: string,
   link: string,
-  opts: { fresh: boolean; delivery: Delivery | null },
+  opts: { fresh: boolean; delivery: Delivery | null; validFor?: string },
 ) {
   const u = await getUser(c.env.DB, userId);
   const name = u?.name ?? "them";
@@ -75,8 +75,8 @@ export async function revealLink(
         <div>
           <h1>{opts.fresh ? `${first} is invited` : "New enrollment link"}</h1>
           <p class="muted">
-            The link works once, for 7 days, and is shown only now: only its hash is stored. Older
-            unused links for {first} stopped working.
+            The link works once, for {opts.validFor ?? "7 days"}, and is shown only now: only its
+            hash is stored. Older unused links for {first} stopped working.
           </p>
         </div>
         <DeliveryNote delivery={opts.delivery} email={u?.email ?? ""} />

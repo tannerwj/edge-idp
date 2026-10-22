@@ -311,12 +311,18 @@ export function auditStmt(
     );
 }
 
-export async function audit(
-  db: D1Database,
-  event: string,
-  opts: Parameters<typeof auditStmt>[2] = {},
-): Promise<void> {
+export type AuditOpts = NonNullable<Parameters<typeof auditStmt>[2]>;
+
+type AuditListener = (event: string, opts: AuditOpts) => void;
+let listener: AuditListener | null = null;
+
+export function onAudit(fn: AuditListener): void {
+  listener = fn;
+}
+
+export async function audit(db: D1Database, event: string, opts: AuditOpts = {}): Promise<void> {
   await auditStmt(db, event, opts).run();
+  listener?.(event, opts);
 }
 
 export async function getSetting(db: D1Database, key: string, fallback: string): Promise<string> {

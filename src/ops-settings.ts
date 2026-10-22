@@ -99,6 +99,22 @@ export async function setEmailSettings(
   });
 }
 
+export async function setChoiceSetting(
+  db: D1Database,
+  key: string,
+  value: string,
+  allowed: readonly string[],
+  a: Actor,
+): Promise<void> {
+  if (!allowed.includes(value)) throw new OpError("Pick one of the offered options.");
+  await setSetting(db, key, value);
+  invalidateSettingsCache();
+  await audit(db, "SECURITY_SETTINGS_CHANGED", {
+    userId: a.adminId,
+    detail: by(a, { [key]: value }),
+  });
+}
+
 export async function setFlagSetting(
   db: D1Database,
   key: string,

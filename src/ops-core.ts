@@ -4,7 +4,7 @@ export class OpError extends Error {}
 
 export interface Actor {
   adminId: string;
-  via: "ui" | "mcp";
+  via: "ui" | "mcp" | "system";
 }
 
 export const by = (a: Actor, extra: Record<string, unknown> = {}) => ({
