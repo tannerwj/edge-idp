@@ -55,6 +55,8 @@ export interface InstanceSettings {
   alertEvents: string[];
   alertEmailAdmins: boolean;
   userNotices: boolean;
+  magicLinks: boolean;
+  adminsAlwaysVerify: boolean;
 }
 
 export const SETTING_KEYS = {
@@ -74,6 +76,8 @@ export const SETTING_KEYS = {
   alertEvents: "alert_events",
   alertEmailAdmins: "alert_email_admins",
   userNotices: "user_notices",
+  magicLinks: "magic_links",
+  adminsAlwaysVerify: "admins_always_verify",
 } as const;
 
 export function oneOf<T extends string>(list: readonly T[], v: string | null, fallback: T): T {
@@ -105,6 +109,8 @@ function parseSettings(rows: { key: string; value: string }[]): InstanceSettings
     alertEvents: stringList(map.get(K.alertEvents) ?? null, DEFAULT_ALERT_EVENTS),
     alertEmailAdmins: flag(K.alertEmailAdmins, false),
     userNotices: flag(K.userNotices, true),
+    magicLinks: flag(K.magicLinks, false),
+    adminsAlwaysVerify: flag(K.adminsAlwaysVerify, true),
   };
 }
 

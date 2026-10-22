@@ -65,6 +65,7 @@ export interface TokenClaims {
   public?: boolean;
   apps?: string[];
   roles?: string[];
+  method?: string | null;
 }
 
 export const ID_TOKEN_TTL = 3600;
@@ -88,7 +89,7 @@ export async function mintIdToken(
     ...(claims.apps ? { apps: claims.apps } : {}),
     ...(claims.roles ? { roles: claims.roles } : {}),
     auth_time: claims.authTime,
-    amr: ["pop", "user"],
+    amr: claims.method === "email" ? ["otp"] : ["pop", "user"],
     ...(claims.nonce ? { nonce: claims.nonce } : {}),
   })
     .setProtectedHeader({ alg: "RS256", kid, typ: "JWT" })

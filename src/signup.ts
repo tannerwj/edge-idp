@@ -118,7 +118,11 @@ signup.post("/signup/verify", async (c) => {
     userAgent: c.req.header("user-agent"),
   });
   await destroySession(c);
-  const raw = await createSession(db, userId, c.req.header("user-agent") ?? null, ip, cred.id);
+  const raw = await createSession(db, userId, {
+    userAgent: c.req.header("user-agent") ?? null,
+    ip,
+    credentialId: cred.id,
+  });
   setSessionCookie(c, raw);
   return c.json({ ok: true });
 });

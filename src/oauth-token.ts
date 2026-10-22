@@ -56,6 +56,7 @@ interface RefreshGrant {
   scope: string;
   resource: string | null;
   authTime: number;
+  method: string | null;
 }
 
 async function refreshStmt(
@@ -65,8 +66,8 @@ async function refreshStmt(
   const raw = randomToken(32);
   const stmt = db
     .prepare(
-      `INSERT INTO refresh_tokens (token_hash, family_id, client_id, user_id, scope, resource, auth_time, created_at, expires_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+      `INSERT INTO refresh_tokens (token_hash, family_id, client_id, user_id, scope, resource, auth_time, created_at, expires_at, method)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
     )
     .bind(
       await sha256Hex(raw),
@@ -78,6 +79,7 @@ async function refreshStmt(
       g.authTime,
       nowSec(),
       g.family.expiresAt,
+      g.method,
     );
   return { raw, stmt };
 }
@@ -179,7 +181,7 @@ async function codeGrant(
     `UPDATE auth_codes SET used = 1
      WHERE code_hash = ?1 AND client_id = ?2 AND redirect_uri = ?3 AND code_challenge = ?4
        AND used = 0 AND expires_at >= ?5
-     RETURNING user_id, scope, nonce, resource, auth_time`,
+     RETURNING user_id, scope, nonce, resource, auth_time, method`,
   )
     .bind(codeHash, client.id, candidate.redirect_uri, candidate.code_challenge, nowSec())
     .first<{
@@ -188,12 +190,14 @@ async function codeGrant(
       nonce: string | null;
       resource: string | null;
       auth_time: number | null;
+      method: string | null;
     }>();
   if (!row) return tokenError(c, "invalid_grant", "code is invalid, expired, or already used");
   const authTime = row.auth_time ?? nowSec();
   const claims = claimsFor(ctx, authTime, {
     nonce: row.nonce,
     accessFor: accessClaimsClient(client, row.scope),
+    method: row.method,
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = wantsRefresh(row.scope)
@@ -204,6 +208,7 @@ async function codeGrant(
         scope: row.scope,
         resource: row.resource,
         authTime,
+        method: row.method,
       })
     : null;
   await c.env.DB.batch([
@@ -282,7 +287,7 @@ async function refreshGrant(
   const row = await c.env.DB.prepare(
     `UPDATE refresh_tokens SET rotated_at = ?2
      WHERE token_hash = ?1 AND client_id = ?3 AND rotated_at IS NULL AND expires_at >= ?2
-     RETURNING family_id, user_id, scope, resource, auth_time, expires_at`,
+     RETURNING family_id, user_id, scope, resource, auth_time, expires_at, method`,
   )
     .bind(hash, now, client.id)
     .first<{
@@ -292,10 +297,12 @@ async function refreshGrant(
       resource: string | null;
       auth_time: number;
       expires_at: number;
+      method: string | null;
     }>();
   if (!row) return replay();
   const claims = claimsFor(ctx, row.auth_time, {
     accessFor: accessClaimsClient(client, row.scope),
+    method: row.method,
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = await refreshStmt(c.env.DB, {
@@ -305,6 +312,7 @@ async function refreshGrant(
     scope: row.scope,
     resource: row.resource,
     authTime: row.auth_time,
+    method: row.method,
   });
   await refresh.stmt.run();
   c.executionCtx.waitUntil(

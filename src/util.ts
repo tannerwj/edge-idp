@@ -41,3 +41,8 @@ export function rpIdFromIssuer(issuer: string): string {
 export function emailKey(email: string): string {
   return email.trim().replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
+
+export function safeNext(raw: string | undefined): string {
+  if (raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\")) return raw;
+  return "/";
+}

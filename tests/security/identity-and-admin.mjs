@@ -276,6 +276,20 @@ try {
     check(`a webhook with ${why} is refused`, await scalar("SELECT COUNT(*) FROM webhooks"), 0);
   }
 
+  const magicOff = await fetch(`${base}/login/email`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ email: "member@example.test", next: "/" }),
+  });
+  check("email sign-in links are off by default", magicOff.status, 404);
+  const junkLink = await fetch(`${base}/login/link`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token: "x".repeat(43), confirm: "1" }),
+  });
+  check("an unknown sign-in link signs nobody in", junkLink.status, 400);
+  check("…and sets no session", junkLink.headers.get("set-cookie"), null);
+
   const enroll = await get("/enroll");
   check(
     "the enrollment page keeps no-referrer",

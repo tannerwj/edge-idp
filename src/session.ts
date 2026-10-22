@@ -10,11 +10,14 @@ export const SESSION_COOKIE = "__Host-idp_session";
 const SESSION_TTL = 30 * 24 * 3600;
 const STEP_UP_TTL = 5 * 60;
 
+export type SignInMethod = "passkey" | "email";
+
 export interface Session {
   user: User;
   idHash: string;
   authTime: number;
   stepUpAt: number | null;
+  method: SignInMethod;
 }
 
 export function hasRecentStepUp(session: Session, ttl = STEP_UP_TTL): boolean {
@@ -25,21 +28,27 @@ export function adminStepUpOk(session: Session, window: StepUpWindow): boolean {
   return window === "off" || hasRecentStepUp(session, Number(window) * 60);
 }
 
+export interface NewSession {
+  userAgent: string | null;
+  ip: string | null;
+  credentialId?: string | null;
+  stepUp?: boolean;
+  method?: SignInMethod;
+}
+
 export async function createSession(
   db: D1Database,
   userId: string,
-  userAgent: string | null,
-  ip: string | null,
-  credentialId: string | null = null,
-  stepUp = false,
+  opts: NewSession,
 ): Promise<string> {
+  const { userAgent, ip, credentialId = null, stepUp = false, method = "passkey" } = opts;
   const raw = randomToken(32);
   const now = nowSec();
   await db.batch([
     db
       .prepare(
-        `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip_hash, credential_id, step_up_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+        `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip_hash, credential_id, step_up_at, method)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
       )
       .bind(
         await sha256Hex(raw),
@@ -51,6 +60,7 @@ export async function createSession(
         ip ? await sha256Hex(ip) : null,
         credentialId,
         stepUp ? now : null,
+        method,
       ),
     db.prepare("UPDATE users SET last_sign_in_at = ?1 WHERE id = ?2").bind(now, userId),
   ]);
@@ -65,7 +75,8 @@ export async function getSession<E extends { Bindings: Env }>(
   const hash = await sha256Hex(raw);
   const row = await c.env.DB.prepare(
     `SELECT u.*, s.created_at AS session_created_at, s.expires_at AS session_expires_at,
-            s.last_seen_at AS session_last_seen_at, s.step_up_at AS session_step_up_at
+            s.last_seen_at AS session_last_seen_at, s.step_up_at AS session_step_up_at,
+            s.method AS session_method
      FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ?1`,
   )
     .bind(hash)
@@ -94,6 +105,7 @@ export async function getSession<E extends { Bindings: Env }>(
     idHash: hash,
     authTime: Number(row.session_created_at),
     stepUpAt: typeof stepUpAt === "number" ? stepUpAt : null,
+    method: row.session_method === "email" ? "email" : "passkey",
   };
 }
 

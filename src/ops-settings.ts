@@ -64,7 +64,7 @@ export async function disconnectCloudflare(db: D1Database, a: Actor): Promise<vo
 
 export async function setSecuritySettings(
   db: D1Database,
-  input: { adminStepUp: string; signInUv: string },
+  input: { adminStepUp: string; signInUv: string; adminsAlwaysVerify: boolean },
   a: Actor,
 ): Promise<void> {
   const adminStepUp = STEP_UP_WINDOWS.find((w) => w === input.adminStepUp);
@@ -72,10 +72,11 @@ export async function setSecuritySettings(
   if (!adminStepUp || !signInUv) throw new OpError("Pick one of the offered options.");
   await setSetting(db, SETTING_KEYS.adminStepUp, adminStepUp);
   await setSetting(db, SETTING_KEYS.signInUv, signInUv);
+  await setSetting(db, SETTING_KEYS.adminsAlwaysVerify, input.adminsAlwaysVerify ? "1" : "0");
   invalidateSettingsCache();
   await audit(db, "SECURITY_SETTINGS_CHANGED", {
     userId: a.adminId,
-    detail: by(a, { adminStepUp, signInUv }),
+    detail: by(a, { adminStepUp, signInUv, adminsAlwaysVerify: input.adminsAlwaysVerify }),
   });
 }
 
@@ -120,8 +121,9 @@ export async function setFlagSetting(
   key: string,
   on: boolean,
   a: Actor,
+  event = "SETTINGS_CHANGED",
 ): Promise<void> {
   await setSetting(db, key, on ? "1" : "0");
   invalidateSettingsCache();
-  await audit(db, "SETTINGS_CHANGED", { userId: a.adminId, detail: by(a, { [key]: on }) });
+  await audit(db, event, { userId: a.adminId, detail: by(a, { [key]: on }) });
 }

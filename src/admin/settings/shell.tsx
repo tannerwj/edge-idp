@@ -89,7 +89,13 @@ function badgeFor(id: SettingsTab, env: Env, s: InstanceSettings): Badge {
     if (st === "ready") return { text: "On", tone: "ok" };
     return { text: st === "off" ? "Off" : "Not set up", tone: "" };
   }
-  if (id === "sign-in" && (s.signInUv === "discouraged" || s.adminStepUp === "off"))
+  if (
+    id === "sign-in" &&
+    (s.signInUv === "discouraged" ||
+      s.adminStepUp === "off" ||
+      s.magicLinks ||
+      s.recoveryMode === "auto")
+  )
     return { text: "Relaxed", tone: "warn" };
   if (id === "cloudflare" && cfConfigured(env)) return { text: "Connected", tone: "ok" };
   if (id === "notifications" && s.alertEmailAdmins && emailStatus(env, s) === "ready")

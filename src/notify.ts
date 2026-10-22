@@ -34,6 +34,7 @@ export const ALERT_GROUPS: { label: string; events: string[] }[] = [
       "SETUP_REJECTED",
       "ACCESS_DENIED",
       "EMAIL_CHANGED",
+      "MAGIC_LINK_SIGN_IN",
     ],
   },
   {

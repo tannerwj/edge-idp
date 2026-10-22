@@ -12,6 +12,7 @@ import { userDetailAdmin } from "./user-detail";
 import { groupsAdmin } from "./groups";
 import { appsAdmin } from "./apps";
 import { clientsAdmin } from "./clients";
+import { clientPolicyAdmin } from "./client-policy";
 import { auditAdmin, auditCsv } from "./audit";
 import { connectAdmin } from "./connect";
 import { tokensAdmin } from "./tokens";
@@ -28,7 +29,7 @@ const SENSITIVE = [
   /^\/admin\/users\/recovery\/[^/]+\/approve$/,
   /^\/admin\/tokens$/,
   /^\/admin\/clients$/,
-  /^\/admin\/clients\/[^/]+(\/rotate)?$/,
+  /^\/admin\/clients\/[^/]+(\/rotate|\/sign-in)?$/,
   /^\/admin\/settings(\/.*)?$/,
 ];
 
@@ -51,6 +52,8 @@ admin.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
   if (!session) return c.redirect(`/login?next=${encodeURIComponent(path)}`, 302);
   if (!session.user.is_admin) return c.redirect("/", 302);
+  if (session.method !== "passkey")
+    return c.redirect(`/login?reauth=1&next=${encodeURIComponent(path)}`, 302);
   if (isSensitiveAdminPost(c.req.method, path)) {
     const { adminStepUp } = await getInstanceSettings(c.env.DB);
     if (!adminStepUpOk(session, adminStepUp)) {
@@ -115,6 +118,7 @@ admin.route("/users", usersAdmin);
 admin.route("/users/:id", userDetailAdmin);
 admin.route("/groups", groupsAdmin);
 admin.route("/apps", appsAdmin);
+admin.route("/clients", clientPolicyAdmin);
 admin.route("/clients", clientsAdmin);
 admin.route("/audit", auditAdmin);
 admin.route("/connect", connectAdmin);

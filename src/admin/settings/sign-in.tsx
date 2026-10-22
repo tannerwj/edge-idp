@@ -55,6 +55,39 @@ const RECOVERY: { value: RecoveryMode; label: string; sub: string; warn?: boolea
   },
 ];
 
+function EmailLinksCard(props: { on: boolean; emailReady: boolean }) {
+  return (
+    <form method="post" action="/admin/settings/sign-in/email-links">
+      <SettingsCard
+        icon="send"
+        title="Email sign-in links"
+        sub="Lets members without a passkey on this device sign in with a one-time link sent to their email. Admins and public accounts never can."
+        badge={props.on ? <span class="badge warn dot">On</span> : <span class="badge">Off</span>}
+      >
+        <div class="card-body stack">
+          <label class="switch">
+            <input type="checkbox" name="magicLinks" value="1" checked={props.on} />
+            <span class="track"></span>
+            <span>
+              Offer "Email me a sign-in link"
+              <span class="sub">
+                Convenient for family who struggle with passkeys, but it makes each member's inbox a
+                way into every app they can use, and email links can be phished where passkeys
+                can't. Apps see these sign-ins as <code>amr: ["otp"]</code>; require a passkey for
+                sensitive apps on their client page.
+              </span>
+            </span>
+          </label>
+          {props.emailReady ? null : (
+            <Callout>Needs email (Settings › Email); until then the option stays hidden.</Callout>
+          )}
+        </div>
+        <SaveFoot />
+      </SettingsCard>
+    </form>
+  );
+}
+
 function RecoveryCard(props: { mode: RecoveryMode; emailReady: boolean }) {
   return (
     <form method="post" action="/admin/settings/sign-in/recovery">
@@ -91,6 +124,21 @@ signInSettings.get("/sign-in", async (c) => {
         >
           <div class="card-body">
             <ChoiceList name="signInUv" value={s.signInUv} options={UV} />
+            <label class="check">
+              <input
+                type="checkbox"
+                name="adminsAlwaysVerify"
+                value="1"
+                checked={s.adminsAlwaysVerify}
+              />
+              <span>
+                Admins always verify
+                <span class="sub">
+                  Even when sign-in doesn't ask for it, an admin's sign-in is refused without the
+                  biometric or PIN, and they're asked again.
+                </span>
+              </span>
+            </label>
           </div>
         </SettingsCard>
         <SettingsCard
@@ -110,8 +158,22 @@ signInSettings.get("/sign-in", async (c) => {
           <SaveFoot />
         </SettingsCard>
       </form>
+      <EmailLinksCard on={s.magicLinks} emailReady={emailStatus(c.env, s) === "ready"} />
       <RecoveryCard mode={s.recoveryMode} emailReady={emailStatus(c.env, s) === "ready"} />
     </>,
+  );
+});
+
+signInSettings.post("/sign-in/email-links", async (c) => {
+  const form = await c.req.parseBody();
+  return act(c, "/admin/settings/sign-in", "Saved", () =>
+    ops.setFlagSetting(
+      c.env.DB,
+      SETTING_KEYS.magicLinks,
+      field(form, "magicLinks") === "1",
+      actor(c),
+      "SECURITY_SETTINGS_CHANGED",
+    ),
   );
 });
 
@@ -133,7 +195,11 @@ signInSettings.post("/sign-in", async (c) => {
   return act(c, "/admin/settings/sign-in", "Sign-in settings saved", () =>
     ops.setSecuritySettings(
       c.env.DB,
-      { adminStepUp: field(form, "adminStepUp"), signInUv: field(form, "signInUv") },
+      {
+        adminStepUp: field(form, "adminStepUp"),
+        signInUv: field(form, "signInUv"),
+        adminsAlwaysVerify: field(form, "adminsAlwaysVerify") === "1",
+      },
       actor(c),
     ),
   );

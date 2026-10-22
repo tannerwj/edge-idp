@@ -178,6 +178,9 @@ src/
   account-email.tsx     /account/email routes (start, confirm)
   recovery.ts           "lost my passkey" requests: automatic links, approval, dismissal
   recover.tsx           public /recover pages
+  magic-link.ts         email sign-in links: send, peek, redeem
+  login-link.tsx        /login/email and /login/link routes
+  pages-flow.tsx        pages for emailed-link flows (token form, done)
   notify.ts             audit-event fan-out: admin alert emails, webhooks, security notices
   ops-notify.ts         alert settings and webhook management
   outbound.ts           guarded outbound POSTs (webhooks): URL rules, timeout, no redirects
@@ -188,7 +191,8 @@ src/
   account-sections.tsx  Account & security views
   home.tsx              home launcher: app-group sections, favorites, search
   pages.tsx             sign-in, enrollment, consent, sign-out, error pages
-  admin/                admin UI: index (router, middleware), shell, dashboard, users, invites, recovery, user-detail,
+  admin/                admin UI: index (router, middleware), shell, dashboard, users, invites, recovery,
+                        client-policy, user-detail,
                         user-tabs, groups, apps (+ apps-form, apps-access grants and app groups,
                         apps-cloudflare import view), clients,
                         client-detail, audit, connect, tokens, metrics, settings/ (one module per tab
@@ -231,7 +235,12 @@ authentication time. Expiry slides at most once a minute, and the write runs
 in the background (`waitUntil`) with errors swallowed, so a page that makes
 several fetches doesn't rewrite the row each time and a failed slide never
 fails the request (`src/session.ts › getSession`). The session and its user
-come back in one joined query. Step-up is a separate timestamp on the session
+come back in one joined query. Each session records how it was made
+(`method`: `passkey`, or `email` for a sign-in link); `/authorize` copies it
+onto the code, the code grant onto the refresh token, and the ID token's
+`amr` follows it. The admin middleware sends an `email` session to sign in
+with a passkey. `createSession` takes an options object
+(`userAgent`, `ip`, `credentialId`, `stepUp`, `method`). Step-up is a separate timestamp on the session
 (`step_up_at`), set only by an explicit recheck: a sign-in started from
 `/login?reauth=1` asks `/webauthn/auth/options` for a `stepUp` challenge, and
 the challenge row, not the verify request, decides that the new session is a
@@ -534,8 +543,8 @@ no user-facing request pays for a table scan. One D1 batch
   50,000 rows. Ids only ever leave from the bottom, so gaps can only make it
   keep more than 50,000, never fewer;
 - `mcp_calls` older than 30 days;
-- secret pickups past their 10-minute expiry, and pending email changes past
-  their 1-hour expiry;
+- secret pickups past their 10-minute expiry, pending email changes past
+  their 1-hour expiry, and sign-in links past their 10-minute expiry;
 - dynamically registered (DCR) clients older than 30 days that never received
   a consent.
 

@@ -8,9 +8,11 @@ Code references use the form `src/file.ts › symbol`. How the pieces fit
 together is in [ARCHITECTURE.md](ARCHITECTURE.md); how each property is tested
 is in [TESTING.md](TESTING.md).
 
-## Credentials: passkeys only
+## Credentials: passkeys first
 
-There is no password column, no password reset flow, and no fallback factor.
+There is no password column and no password reset flow. Passkeys are the only
+credential unless an admin turns on email sign-in links for members (see
+_Email sign-in links_), and nothing but a passkey ever signs an admin in.
 That deletes credential stuffing, password spraying, and reset-token phishing
 in one move, at the cost that account recovery goes through a fresh
 enrollment link, sent by an admin or, if an admin allows it, by email
@@ -39,8 +41,8 @@ and `requireUserVerification: true` at verify. Owning or touching the device
 should not be enough to authenticate to a service that is the root of trust
 for every app.
 
-Admins can relax this for **sign-in only** (Settings › Security, "Sign in
-without Face ID, Touch ID or a PIN"), which asks for `discouraged`. The cost is
+Admins can relax this for **sign-in only** (Settings › Sign-in & security,
+"Verify the person at sign-in"), which asks for `discouraged`. The cost is
 explicit in the UI: a found or stolen unlocked device or security key is then
 enough to sign in. Whether the biometric prompt actually disappears is the
 passkey provider's decision; Apple's passkeys usually still ask. Registration,
@@ -51,6 +53,12 @@ the browser sends (`src/webauthn.ts › /auth/options, verifyAssertion`). ID
 tokens keep `amr: ["pop", "user"]`: RFC 8176 defines `user` as a user-presence
 test, which every WebAuthn assertion includes, so the claim stays accurate
 either way (`src/crypto.ts › mintIdToken`).
+
+"Admins always verify" (on by default) keeps admins out of the relaxation: an
+admin's assertion without the UV flag is refused with `uv_required`, and the
+sign-in page asks again with verification required. It is checked after the
+signature, on the flag the authenticator signed, so a modified client can't
+skip it (`src/webauthn.ts › assertionProblem`).
 
 Algorithms are pinned to ES256 and RS256
 (`supportedAlgorithmIDs: [-7, -257]`). Without the pin, SimpleWebAuthn v14
@@ -149,7 +157,7 @@ everything opaque. Anything else falls back to the sign-in page, so
 The `next` parameter on `/login` accepts only same-origin relative paths.
 Values starting with `//` (protocol-relative) or `/\` (which browsers treat as
 `//`) fall back to `/`, so a fresh login can never be redirected off-site
-(`src/index.tsx › safeNext`).
+(`src/util.ts › safeNext`).
 
 ## Client secret pickup
 
@@ -308,6 +316,38 @@ it. The email carries the same bearer link, so whoever reads that inbox can
 enroll a passkey, exactly as if the admin had pasted the link into a chat;
 the admin still sees the link on screen as a fallback. Invites never go to a
 public account (it has no address) (`src/invites.ts › deliverLink`).
+
+## Email sign-in links (optional)
+
+Off by default. When an admin turns it on (Settings › Sign-in & security) and
+email is sending, the sign-in page offers "Email me a sign-in link". This is
+the one way in that isn't a passkey, so it is fenced in:
+
+- **Members only.** Admins and public accounts never get a link, whatever
+  address is typed; the answer is the same for every address, so it can't
+  find accounts. At most one link per person per minute, on the
+  authentication rate limit.
+- **The link is a bearer token like an enrollment link:** 256-bit, hashed at
+  rest, single-use (`DELETE … RETURNING`), 10 minutes, in the URL fragment
+  so it never reaches a log.
+- **Two steps.** Opening the link shows whose account it signs in to and
+  needs a second click. A forwarded link, or one an attacker sends for their
+  own account, can't sign someone in without them seeing the name.
+- **The session says how it was made.** It is an `email` session. It can't
+  open the admin UI, can't recheck (that takes a passkey), and therefore
+  can't add a passkey, change the email or do anything else behind a
+  recheck. Codes and refresh tokens carry the method, and ID tokens say
+  `amr: ["otp"]` instead of `["pop", "user"]`.
+- **Apps can refuse it.** A client's sign-in policy can require a passkey
+  sign-in, or a sign-in no older than an hour, 12 hours, a day or a week; an
+  `email` session (or a stale one) is sent back to sign in with a passkey
+  before a code is issued (`src/oidc.tsx › needsFreshSignIn`).
+- **Every use is announced.** The person gets a security notice after each
+  email sign-in, and it's an alertable event.
+
+The cost is stated in the setting: email can be phished and inboxes get
+compromised, so a member's inbox becomes a way into every app they can use
+that doesn't require a passkey (`src/magic-link.ts`, `src/login-link.tsx`).
 
 ## Account recovery (optional)
 
@@ -515,6 +555,11 @@ Tokens are signed with RS256 only. Cloudflare Access accepts RSA and ECDSA but
 not EdDSA or HS256, and signing with anything else would silently break the
 integration this server exists for. Verification pins `algorithms:
 ["RS256"]` as well (`src/crypto.ts`).
+
+Sign-in policy is per admin-registered client: "require a passkey sign-in"
+and "maximum sign-in age" are checked at `/authorize` alongside `prompt` and
+`max_age`, and a failing session is sent to sign in again rather than given a
+code (`src/oidc.tsx › needsFreshSignIn`, `src/admin/client-policy.tsx`).
 
 ID tokens are RS256 JWTs (`typ: JWT`) with `aud` set to the client, a 1-hour
 TTL, and `auth_time` taken from the passkey ceremony (not the mint time).
