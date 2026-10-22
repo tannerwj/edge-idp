@@ -116,7 +116,7 @@ signInSettings.get("/sign-in", async (c) => {
     c,
     "sign-in",
     <>
-      <form method="post" action="/admin/settings/sign-in" class="stack-lg">
+      <form method="post" action="/admin/settings/sign-in/verify">
         <SettingsCard
           icon="fingerprint"
           title="Verify the person at sign-in"
@@ -140,7 +140,10 @@ signInSettings.get("/sign-in", async (c) => {
               </span>
             </label>
           </div>
+          <SaveFoot />
         </SettingsCard>
+      </form>
+      <form method="post" action="/admin/settings/sign-in/recheck">
         <SettingsCard
           icon="shield"
           title="Recheck before sensitive admin actions"
@@ -190,15 +193,32 @@ signInSettings.post("/sign-in/recovery", async (c) => {
   );
 });
 
-signInSettings.post("/sign-in", async (c) => {
+signInSettings.post("/sign-in/verify", async (c) => {
   const form = await c.req.parseBody();
-  return act(c, "/admin/settings/sign-in", "Sign-in settings saved", () =>
+  const s = await getInstanceSettings(c.env.DB);
+  return act(c, "/admin/settings/sign-in", "Saved", () =>
+    ops.setSecuritySettings(
+      c.env.DB,
+      {
+        adminStepUp: s.adminStepUp,
+        signInUv: field(form, "signInUv"),
+        adminsAlwaysVerify: field(form, "adminsAlwaysVerify") === "1",
+      },
+      actor(c),
+    ),
+  );
+});
+
+signInSettings.post("/sign-in/recheck", async (c) => {
+  const form = await c.req.parseBody();
+  const s = await getInstanceSettings(c.env.DB);
+  return act(c, "/admin/settings/sign-in", "Saved", () =>
     ops.setSecuritySettings(
       c.env.DB,
       {
         adminStepUp: field(form, "adminStepUp"),
-        signInUv: field(form, "signInUv"),
-        adminsAlwaysVerify: field(form, "adminsAlwaysVerify") === "1",
+        signInUv: s.signInUv,
+        adminsAlwaysVerify: s.adminsAlwaysVerify,
       },
       actor(c),
     ),

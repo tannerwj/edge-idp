@@ -102,9 +102,9 @@ keySettings.get("/keys", async (c) => {
         badge={<span class="badge">{database ? "Database" : "Secret"}</span>}
       >
         <div class="card-body">
-          <ul class="list">
+          <div class="key-rows">
             {jwks.keys.map((k, i) => (
-              <li key={k.kid ?? String(i)} class="row">
+              <div key={k.kid ?? String(i)} class="row key-row">
                 <span class="mono small grow">{k.kid}</span>
                 {i === 0 ? (
                   <span class="badge ok">
@@ -127,9 +127,9 @@ keySettings.get("/keys", async (c) => {
                     ) : null}
                   </span>
                 )}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
         {database ? (
           <div class="card-foot">

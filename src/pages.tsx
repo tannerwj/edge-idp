@@ -21,7 +21,9 @@ export function LoginPage(props: {
       page="login"
       below={
         <span>
-          Passkeys only — nothing to remember, nothing to phish.{" "}
+          {props.magicLink
+            ? "No passwords — nothing to remember."
+            : "Passkeys only — nothing to remember, nothing to phish."}{" "}
           <a href="https://passkeys.dev" rel="noopener">
             What's a passkey?
           </a>

@@ -1,6 +1,6 @@
 # edge-idp
 
-A passkey-only identity provider for your personal stuff, on Cloudflare
+A passkey-first identity provider for your personal stuff, on Cloudflare
 Workers + D1. One sign-in (Face ID / Touch ID / a security key) for every app
 you and your people use: Cloudflare Access apps, anything that speaks OpenID
 Connect, and AI assistants over MCP.

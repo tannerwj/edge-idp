@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { getInstanceSettings } from "../../settings-cache";
+import { getInstanceSettings, SETTING_KEYS } from "../../settings-cache";
+import * as ops from "../../ops";
 import { emailStatus } from "../../email";
 import { ALERT_GROUPS, listWebhooks, WEBHOOK_FORMATS } from "../../notify";
 import type { Webhook } from "../../notify";
@@ -27,70 +28,75 @@ function AlertsCard(props: {
 }) {
   const on = new Set(props.events);
   return (
-    <form method="post" action="/admin/settings/notifications/alerts" class="stack-lg">
-      <SettingsCard
-        icon="bell"
-        title="Admin alerts"
-        sub="Which events reach admins by email and every webhook below. Everything is always in the audit log."
-      >
-        <div class="card-body stack">
-          {ALERT_GROUPS.map((g) => (
-            <fieldset key={g.label} class="field">
-              <legend class="label">{g.label}</legend>
-              <div class="chips">
-                {g.events.map((e) => (
-                  <label key={e} class="chip-toggle">
-                    <input type="checkbox" name="events" value={e} checked={on.has(e)} />
-                    <span>{eventMeta(e).label}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ))}
-          <label class="switch">
-            <input type="checkbox" name="emailAdmins" value="1" checked={props.emailAdmins} />
-            <span class="track"></span>
-            <span>
-              Email every admin
-              <span class="sub">
-                {props.mail
-                  ? "Sends each chosen event to every admin."
-                  : "Needs email (Settings › Email)."}
+    <>
+      <form method="post" action="/admin/settings/notifications/alerts">
+        <SettingsCard
+          icon="bell"
+          title="Admin alerts"
+          sub="Which events reach admins by email and every webhook below. Everything is always in the audit log."
+        >
+          <div class="card-body stack">
+            {ALERT_GROUPS.map((g) => (
+              <fieldset key={g.label} class="field">
+                <legend class="label">{g.label}</legend>
+                <div class="chips">
+                  {g.events.map((e) => (
+                    <label key={e} class="chip-toggle">
+                      <input type="checkbox" name="events" value={e} checked={on.has(e)} />
+                      <span>{eventMeta(e).label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+            <label class="switch">
+              <input type="checkbox" name="emailAdmins" value="1" checked={props.emailAdmins} />
+              <span class="track"></span>
+              <span>
+                Email every admin
+                <span class="sub">
+                  {props.mail
+                    ? "Sends each chosen event to every admin."
+                    : "Needs email (Settings › Email)."}
+                </span>
               </span>
-            </span>
-          </label>
-        </div>
-      </SettingsCard>
-      <SettingsCard
-        icon="user"
-        title="Security notices to people"
-        sub="An email to the person concerned when a passkey is added or removed, their passkeys are reset, they become an admin, or they sign in with an email link."
-      >
-        <div class="card-body">
-          <label class="switch">
-            <input type="checkbox" name="userNotices" value="1" checked={props.notices} />
-            <span class="track"></span>
-            <span>
-              Send security notices
-              <span class="sub">
-                {props.mail
-                  ? "Recommended: people notice changes they didn't make."
-                  : "Needs email."}
+            </label>
+          </div>
+          <SaveFoot />
+        </SettingsCard>
+      </form>
+      <form method="post" action="/admin/settings/notifications/notices">
+        <SettingsCard
+          icon="user"
+          title="Security notices to people"
+          sub="An email to the person concerned when a passkey is added or removed, their passkeys are reset, they become an admin, or they sign in with an email link."
+        >
+          <div class="card-body">
+            <label class="switch">
+              <input type="checkbox" name="userNotices" value="1" checked={props.notices} />
+              <span class="track"></span>
+              <span>
+                Send security notices
+                <span class="sub">
+                  {props.mail
+                    ? "Recommended: people notice changes they didn't make."
+                    : "Needs email."}
+                </span>
               </span>
-            </span>
-          </label>
-        </div>
-        <SaveFoot />
-      </SettingsCard>
-    </form>
+            </label>
+          </div>
+          <SaveFoot />
+        </SettingsCard>
+      </form>
+    </>
   );
 }
 
 function WebhookRow({ h }: { h: Webhook }) {
   const ok = h.last_status ? /^2\d\d$/.test(h.last_status) : null;
   return (
-    <li class="stack-sm">
-      <div class="row">
+    <div class="webhook stack-sm">
+      <div class="row wrap">
         <div class="grow truncate">
           <b>{h.name}</b> <span class="badge">{FORMAT_LABEL[h.format]?.split(" ")[0]}</span>
           <div class="sub truncate mono small">{h.url}</div>
@@ -118,7 +124,7 @@ function WebhookRow({ h }: { h: Webhook }) {
         />
       </div>
       {h.secret ? <CopyField value={h.secret} mask label="signing secret" /> : null}
-    </li>
+    </div>
   );
 }
 
@@ -130,11 +136,11 @@ function WebhooksCard({ hooks }: { hooks: Webhook[] }) {
       sub="Posts each chosen event to a URL: a Discord or Slack channel, an ntfy topic, or your own endpoint. https only; redirects aren't followed."
     >
       {hooks.length ? (
-        <ul class="list card-body">
+        <div class="card-body stack webhooks">
           {hooks.map((h) => (
             <WebhookRow key={h.id} h={h} />
           ))}
-        </ul>
+        </div>
       ) : null}
       <form method="post" action="/admin/settings/notifications/webhooks" class="card-body stack">
         <div class="grid-2">
@@ -202,14 +208,22 @@ notificationSettings.get("/notifications", async (c) => {
 
 notificationSettings.post("/notifications/alerts", async (c) => {
   const form = await c.req.parseBody({ all: true });
-  return act(c, "/admin/settings/notifications", "Notifications saved", () =>
+  return act(c, "/admin/settings/notifications", "Alerts saved", () =>
     setAlerts(
       c.env.DB,
-      {
-        events: fields(form, "events"),
-        emailAdmins: field(form, "emailAdmins") === "1",
-        userNotices: field(form, "userNotices") === "1",
-      },
+      { events: fields(form, "events"), emailAdmins: field(form, "emailAdmins") === "1" },
+      actor(c),
+    ),
+  );
+});
+
+notificationSettings.post("/notifications/notices", async (c) => {
+  const form = await c.req.parseBody();
+  return act(c, "/admin/settings/notifications", "Saved", () =>
+    ops.setFlagSetting(
+      c.env.DB,
+      SETTING_KEYS.userNotices,
+      field(form, "userNotices") === "1",
       actor(c),
     ),
   );
