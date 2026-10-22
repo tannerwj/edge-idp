@@ -1,29 +1,29 @@
 import type { Env } from "./config";
-import { getUser, getUserGroups } from "./db";
-import { clientAccessClaims, linkedAppAccess } from "./access";
-import type { OidcClient, User } from "./db";
+import { claimsForClient } from "./access";
+import type { UserContext } from "./access";
+import type { OidcClient } from "./db";
 import type { TokenClaims } from "./crypto";
 
 export const SCOPES = ["openid", "profile", "email", "groups", "offline_access", "mcp", "mcp:read"];
 export const ADMIN_SCOPES = ["mcp", "mcp:read"];
 
-export async function clientAccessProblem(
-  db: D1Database,
-  user: User,
+export function clientAccessProblem(
+  ctx: UserContext,
   client: OidcClient,
   scopes: string[],
-): Promise<string | null> {
+): string | null {
+  const { user } = ctx;
   if (scopes.some((scope) => ADMIN_SCOPES.includes(scope)) && !user.is_admin) {
     return "admin access was removed";
   }
   if (user.public && !(client.source === "admin" && client.public_signup)) {
     return "this app is for members only";
   }
-  const linked = client.source === "admin" ? await linkedAppAccess(db, user.id, client.id) : null;
-  if (linked !== null) return linked ? null : "app access was removed";
+  const linked = client.source === "admin" ? ctx.apps.filter((a) => a.client_id === client.id) : [];
+  if (linked.length)
+    return linked.some((a) => ctx.access.has(a.id)) ? null : "app access was removed";
   if (client.allowed_groups?.length) {
-    const groups = await getUserGroups(db, user.id);
-    if (!client.allowed_groups.some((group) => groups.includes(group)))
+    if (!client.allowed_groups.some((group) => ctx.groups.includes(group)))
       return "group access was removed";
   } else if (client.source !== "admin" && !user.is_admin) {
     return "client access was removed";
@@ -96,22 +96,21 @@ export function accessClaimsClient(client: OidcClient, scope: string): string | 
   return client.source === "admin" && scope.split(" ").includes("groups") ? client.id : null;
 }
 
-export async function claimsFor(
-  db: D1Database,
-  userId: string,
+export function claimsFor(
+  ctx: UserContext,
   authTime: number,
   opts: { nonce?: string | null; accessFor?: string | null } = {},
-): Promise<TokenClaims | null> {
-  const user = await getUser(db, userId);
-  if (!user || user.disabled) return null;
+): TokenClaims | null {
+  const { user } = ctx;
+  if (user.disabled) return null;
   return {
     sub: user.id,
     email: user.email,
     name: user.name,
     public: user.public === 1,
-    groups: await getUserGroups(db, user.id),
+    groups: ctx.groups,
     authTime,
     ...(opts.nonce ? { nonce: opts.nonce } : {}),
-    ...(opts.accessFor ? await clientAccessClaims(db, user.id, opts.accessFor) : {}),
+    ...(opts.accessFor ? claimsForClient(ctx.apps, ctx.access, opts.accessFor) : {}),
   };
 }

@@ -78,7 +78,12 @@ context, so WebAuthn works over plain http), then drives Chromium with a
 virtual authenticator through:
 
 - seeding an admin, then enrollment and passkey sign-in;
-- the step-up requirement for credential changes;
+- the step-up requirement for credential changes, and for sensitive admin
+  actions: with the recheck aged out, creating an API token goes to the
+  passkey prompt and comes back to the page (the suite rechecks before the
+  MCP and settings sections so a slow run never trips the 5-minute window);
+- enrollment links are fragment-only: the token is single-use and the old
+  `/enroll/<token>` path is gone;
 - the admin UI, including creating an app group and an app in it, granting a
   group a role through the Access dialog, and the launcher showing the section,
   opening tiles in a new tab and moving a favorited app under Favorites;
@@ -135,7 +140,8 @@ that:
   refused;
 - the right token leads to passkey enrollment and an admin account;
 - `/setup` is gone (GET and POST) once a user exists, and setup is audited;
-- there is no `execute` MCP tool without a Worker Loader; after a restart
+- after a passkey recheck (minting an API token is a sensitive admin action),
+  there is no `execute` MCP tool without a Worker Loader; after a restart
   with one added, the signing key is unchanged and `execute` works and uses
   the derived issuer;
 - an initialized database without its issuer pin fails closed (`/healthz` 500) and recovers when the pin is restored.
@@ -143,15 +149,17 @@ that:
 ### Security regressions (`npm run test:security`)
 
 Runs each `tests/security/*.mjs` script in turn and stops at the first
-failure. They come from the October 2026 security review.
+failure. They come from the October 2026 security reviews
+(`docs/archive/2026-10-security-review/`, `docs/archive/2026-10-21-review/`).
 
-| Script                     | Instance        | What it proves                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `d1-read-forgery.mjs`      | portable        | Read access to D1 alone can't reveal the generated signing key: `signing_keys.current` starts with `enc:v1:` and has no private `"d"` member, and JWKS exposes exactly one key. It prints no key or token.                                                                                                                                                                       |
-| `first-run-failure.mjs`    | portable        | If a dependency fails after the first-admin insert (simulated by dropping `audit_log`), the setup POST returns 500, no users or enrollment tokens remain, and `/setup` stays open.                                                                                                                                                                                               |
-| `no-user-verification.mjs` | local, Chromium | An authenticator without user verification can't enroll: options demand `userVerification: "required"`, the enrollment page shows an error, and no credential is stored.                                                                                                                                                                                                         |
-| `public-accounts.mjs`      | local           | A public account (seeded with a real-looking email) can't redeem a code at an admin client that admits every member, the way Cloudflare Access's does, and gets no token; at a client open to the public it can, and its ID token carries no `email`, `email_verified` or `preferred_username`.                                                                                  |
-| `token-boundaries.mjs`     | local           | A code or refresh token presented by the wrong client is rejected without being consumed; a group-restricted client's refresh is denied and its family revoked after the user leaves the group; an `offline_access`-only access token is rejected by `/userinfo` and carries no email; a read-only API token can't write through `execute`; the sandbox has no outbound network. |
+| Script                     | Instance        | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `d1-read-forgery.mjs`      | portable        | Read access to D1 alone can't reveal the generated signing key: `signing_keys.current` starts with `enc:v1:` and has no private `"d"` member, and JWKS exposes exactly one key. It prints no key or token.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `first-run-failure.mjs`    | portable        | If a dependency fails after the first-admin insert (simulated by dropping `audit_log`), the setup POST returns 500, no users or enrollment tokens remain, and `/setup` stays open.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `identity-and-admin.mjs`   | local           | Members and public accounts can't change their own email, so the address stays free to invite; Make member needs a real email and stores it; a public account is refused at a members-only `/authorize`; `/end-session` won't redirect for a self-registered client or to an opaque (`javascript:`) target but does to an admin client's own origin; sensitive admin POSTs without a recent recheck go to `/login?reauth=1` and write nothing; an admin can't mint their own enrollment link even after a recheck; `/authorize` for `mcp` needs a recheck (`login_required` with `prompt=none`); the recheck window is a setting and changing it is audited; a DCR client asking only `openid` gets no email, groups or name; 60 concurrent sandbox calls still hit the 50-call limit; `/enroll` keeps `no-referrer`. |
+| `no-user-verification.mjs` | local, Chromium | An authenticator without user verification can't enroll (options demand `userVerification: "required"`, the page shows an error, nothing is stored). Then a second account enrolls with verification and its authenticator stops verifying; a `navigator.credentials.get` wrapper forces `discouraged` so the browser never refuses first, and the server must: sign-in is refused (401) by default, accepted once `sign_in_uv` is `discouraged` (after the 10-second settings cache), and a passkey recheck is still refused.                                                                                                                                                                                                                                                                                        |
+| `public-accounts.mjs`      | local           | A public account (seeded with a real-looking email) can't redeem a code at an admin client that admits every member, the way Cloudflare Access's does, and gets no token; at a client open to the public it can, and its ID token carries no `email`, `email_verified` or `preferred_username`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `token-boundaries.mjs`     | local           | A code or refresh token presented by the wrong client is rejected without being consumed; a group-restricted client's refresh is denied and its family revoked after the user leaves the group; an `offline_access`-only access token is rejected by `/userinfo` and carries no email; a read-only API token can't write through `execute`; the sandbox has no outbound network.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 "Local" means `startLocal` (`cf dev`, `cloudflare.config.ts`); "portable"
 means `startPortable` (`wrangler dev`, `wrangler.jsonc`).
@@ -217,7 +225,12 @@ Each suite gets its own throwaway instance, so tests never touch your
 - `authorizeInBrowser` (`full.mjs`) waits for the browser to settle on the
   redirect target after capturing the callback URL. The test redirect hosts
   don't resolve, so Chromium finishes the redirect as a late `chrome-error://`
-  navigation that otherwise interrupts the test's next `page.goto`.
+  navigation that otherwise interrupts the test's next `page.goto`. In the
+  public sign-up step even that wasn't enough: about 1 run in 3 (before and
+  after the 2026-10-21 fixes) a further `chrome-error://` navigation arrived
+  after the test had moved on and interrupted its next `goto`, so that `goto`
+  retries once when, and only when, it was interrupted that way
+  (`gotoSettled`).
 
 **Issuer and hosts.**
 

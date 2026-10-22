@@ -64,6 +64,7 @@ export class Agent extends WorkerEntrypoint {
     const ID = this.env.ID;
     const logs = [];
     const toolCalls = [];
+    let started = 0;
     let logChars = 0;
     const fmt = (a) => {
       if (typeof a === "string") return a.slice(0, 2000);
@@ -86,7 +87,8 @@ export class Agent extends WorkerEntrypoint {
         if (name === "then") return undefined;
         const tool = String(name);
         return async (args) => {
-          if (toolCalls.length >= 50) throw new Error("execute tool-call limit reached");
+          if (started >= 50) throw new Error("execute tool-call limit reached");
+          started++;
           const t0 = Date.now();
           try {
             const r = await ID.callTool(tool, args || {});

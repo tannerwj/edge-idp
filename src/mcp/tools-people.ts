@@ -170,10 +170,16 @@ export const PEOPLE_TOOLS: ToolDef[] = [
     name: "users_make_member",
     write: true,
     description:
-      "Turn a public (self-registered) account into a member: it can then sign in to members-only apps and is covered by everyone grants, subject to its groups and grants.",
-    inputSchema: obj(USER_REF),
+      "Turn a public (self-registered) account into a member: it can then sign in to members-only apps and is covered by everyone grants, subject to its groups and grants. Requires the person's real email, which apps will see as verified.",
+    inputSchema: obj(
+      {
+        user_id: { type: "string", description: "User id" },
+        email: { type: "string", description: "The person's real email address" },
+      },
+      ["user_id", "email"],
+    ),
     handler: async ({ db, actor }, args) => {
-      await ops.makeMember(db, (await userByRef(db, args)).id, actor);
+      await ops.makeMember(db, str(args.user_id), str(args.email), actor);
       return { ok: true };
     },
   },

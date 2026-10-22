@@ -3,7 +3,7 @@ import { audit } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
-import { act, actor, field, page } from "./shell";
+import { act, actor, field, page, failBack } from "./shell";
 import { Callout, CopyField, Dialog, Empty, PageHead, PostButton, Time } from "../ui/components";
 import { Icon } from "../ui/icons";
 
@@ -185,11 +185,7 @@ tokensAdmin.post("/", async (c) => {
       actor(c),
     );
   } catch (e) {
-    if (e instanceof ops.OpError)
-      return act(c, "/admin/tokens", "", async () => {
-        throw e;
-      });
-    throw e;
+    return failBack(c, "/admin/tokens", e);
   }
   const url = `${c.env.ISSUER}/mcp`;
   return await page(

@@ -7,6 +7,7 @@ const port = 10300 + Math.floor(Math.random() * 100);
 const instance = await startLocal({ issuer: `http://localhost:${port}`, port });
 const enrollment = randomBytes(32).toString("base64url");
 const hash = createHash("sha256").update(enrollment).digest("hex");
+const second = randomBytes(32).toString("base64url");
 const now = Math.floor(Date.now() / 1000);
 let browser;
 try {
@@ -15,6 +16,10 @@ try {
       VALUES ('review-no-uv', ${now}, 'Review No UV', 'no-uv@example.test', 0, ${now});
     INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at)
       VALUES ('${hash}', 'review-no-uv', ${now}, ${now + 3600});
+    INSERT INTO users (id, created_at, name, email, is_admin, updated_at)
+      VALUES ('review-skip-uv', ${now}, 'Review Skip UV', 'skip-uv@example.test', 0, ${now});
+    INSERT INTO enrollment_tokens (token_hash, user_id, created_at, expires_at)
+      VALUES ('${createHash("sha256").update(second).digest("hex")}', 'review-skip-uv', ${now}, ${now + 3600});
   `);
   browser = await chromium.launch();
   const ctx = await browser.newContext();
@@ -30,7 +35,7 @@ try {
       automaticPresenceSimulation: true,
     },
   });
-  await page.goto(`${instance.base}/enroll/${enrollment}`);
+  await page.goto(`${instance.base}/enroll#${enrollment}`);
   const options = page.waitForResponse((response) =>
     response.url().endsWith("/webauthn/register/options"),
   );
@@ -46,6 +51,54 @@ try {
   )[0].n;
   if (count !== 0) throw new Error("no-UV credential was enrolled");
   console.log("no-user-verification enrollment rejected: PASS");
+
+  const ctx2 = await browser.newContext();
+  const page2 = await ctx2.newPage();
+  const cdp2 = await ctx2.newCDPSession(page2);
+  await cdp2.send("WebAuthn.enable");
+  const { authenticatorId } = await cdp2.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  await page2.goto(`${instance.base}/enroll#${second}`);
+  await page2.click("#enroll-btn");
+  await page2.waitForURL(`${instance.base}/?**`, { timeout: 15000 });
+  await cdp2.send("WebAuthn.setUserVerified", { authenticatorId, isUserVerified: false });
+  await page2.addInitScript(() => {
+    const get = navigator.credentials.get.bind(navigator.credentials);
+    navigator.credentials.get = (options) =>
+      get({ ...options, publicKey: { ...options.publicKey, userVerification: "discouraged" } });
+  });
+  const signIn = async (path) => {
+    const verify = page2.waitForResponse((r) => r.url().endsWith("/webauthn/auth/verify"), {
+      timeout: 8000,
+    });
+    await page2.goto(`${instance.base}${path}`);
+    await page2.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+    return (await verify.catch(() => null))?.status() ?? null;
+  };
+  await ctx2.clearCookies();
+  const strict = await signIn("/login");
+  if (strict !== 401) throw new Error(`server didn't refuse sign-in without UV: ${strict}`);
+  console.log("sign-in without UV refused by default: PASS");
+
+  await instance.sql(
+    `INSERT INTO instance_settings (key, value, updated_at) VALUES ('sign_in_uv', 'discouraged', ${now})`,
+  );
+  await new Promise((r) => setTimeout(r, 11_000));
+  const relaxed = await signIn("/login");
+  if (relaxed !== 200) throw new Error(`relaxed sign-in without UV failed: ${relaxed}`);
+  console.log("sign-in without UV allowed when the setting is relaxed: PASS");
+
+  const recheck = await signIn(`/login?reauth=1&next=${encodeURIComponent("/account")}`);
+  if (recheck !== 401) throw new Error(`server didn't refuse a recheck without UV: ${recheck}`);
+  console.log("passkey recheck still requires UV: PASS");
 } finally {
   await browser?.close();
   await instance.stop();

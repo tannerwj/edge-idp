@@ -3,6 +3,7 @@ import * as ops from "../ops";
 import { nowSec } from "../util";
 import { listAppGroups } from "../access";
 import { createPickup, PICKUP_TTL } from "../secret-pickup";
+import { ACCENTS, getInstanceSettings, invalidateSettingsCache } from "../settings-cache";
 import { clientByRef, obj, str, strList } from "./common";
 import type { ToolDef } from "./common";
 
@@ -300,9 +301,13 @@ export const APP_TOOLS: ToolDef[] = [
     name: "settings_get",
     write: false,
     description:
-      "Instance settings: name, accent color, dynamic client registration, CIMD support, whether the read-only Cloudflare Access connection is set up.",
+      "Instance settings: name, accent color, dynamic client registration, CIMD support, whether the read-only Cloudflare Access connection is set up, and the security settings (changed only in the admin UI).",
     inputSchema: obj(),
     handler: async ({ db, env }) => ({
+      ...(await getInstanceSettings(db).then((s) => ({
+        admin_step_up: s.adminStepUp,
+        sign_in_user_verification: s.signInUv,
+      }))),
       name: env.RP_NAME,
       cloudflare_connected: !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID),
       accent: await getSetting(db, "accent", "indigo"),
@@ -326,7 +331,11 @@ export const APP_TOOLS: ToolDef[] = [
     }),
     handler: async ({ db, actor }, args) => {
       if (typeof args.name === "string") await ops.setInstanceName(db, args.name, actor);
-      if (str(args.accent)) await setSetting(db, "accent", str(args.accent));
+      const accent = str(args.accent);
+      if (accent && !(ACCENTS as readonly string[]).includes(accent))
+        throw new ops.OpError(`Unknown accent. Use one of: ${ACCENTS.join(", ")}`);
+      if (accent) await setSetting(db, "accent", accent);
+      invalidateSettingsCache();
       if (typeof args.dcr_enabled === "boolean")
         await setSetting(db, "dcr_enabled", args.dcr_enabled ? "1" : "0");
       if (typeof args.cimd_enabled === "boolean")

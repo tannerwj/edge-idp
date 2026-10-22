@@ -165,7 +165,7 @@ export function OverviewTab({ id, self, user, creds, groups, allGroups }: TabDat
   );
 }
 
-export function PasskeysTab({ id, user, creds }: TabData) {
+export function PasskeysTab({ id, self, user, creds }: TabData) {
   return (
     <div class="card">
       {creds.length ? (
@@ -196,12 +196,14 @@ export function PasskeysTab({ id, user, creds }: TabData) {
                   )}
                 </div>
               </div>
-              <PostButton
-                action={`/admin/users/${id}/keys/${k.id}/remove`}
-                label="Remove"
-                class="btn ghost sm danger"
-                confirm={`Remove “${k.name}” from ${user.name}?`}
-              />
+              {self ? null : (
+                <PostButton
+                  action={`/admin/users/${id}/keys/${k.id}/remove`}
+                  label="Remove"
+                  class="btn ghost sm danger"
+                  confirm={`Remove “${k.name}” from ${user.name}?`}
+                />
+              )}
             </li>
           ))}
         </ul>

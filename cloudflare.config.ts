@@ -6,7 +6,7 @@ const STAGES = {
     issuer: "https://auth.johnson.network",
     d1: { name: "identity", id: "832a3094-2375-47b8-aa06-7f146c56eb25" },
     route: { pattern: "auth.johnson.network/*", zone: "johnson.network" },
-    previewUrls: true,
+    previewUrls: false,
     limiters: { auth: "1001", api: "1002" },
   },
   staging: {

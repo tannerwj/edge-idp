@@ -44,7 +44,7 @@ export function LoginPage(props: {
       <h1>{props.reauth ? "Confirm it's you" : "Sign in"}</h1>
       <p class="lede">
         {props.reauth
-          ? "This app asked for a fresh sign-in. Use your passkey to continue."
+          ? "Use your passkey again to continue."
           : "Use Face ID, Touch ID, Windows Hello, or a security key."}
       </p>
       <div
@@ -127,7 +127,7 @@ export function SignupPage(props: {
   );
 }
 
-export function EnrollPage(props: { ui: Ui; name?: string; email?: string; token?: string }) {
+export function EnrollPage(props: { ui: Ui }) {
   return (
     <AuthLayout ui={props.ui} title="Set up your passkey" page="enroll" wide>
       <div class="steps" aria-hidden="true">
@@ -137,16 +137,10 @@ export function EnrollPage(props: { ui: Ui; name?: string; email?: string; token
       <div class="hero-icon">
         <Icon name="fingerprint" />
       </div>
-      <h1>{props.name ? `Welcome, ${props.name.split(" ")[0]}` : "Create your passkey"}</h1>
+      <h1>Create your passkey</h1>
       <p class="lede">
-        You've been invited to <b>{props.ui.rpName}</b>
-        {props.email ? (
-          <>
-            {" "}
-            as <b>{props.email}</b>
-          </>
-        ) : null}
-        . Create a passkey and you're done — no password, ever.
+        You've been invited to <b>{props.ui.rpName}</b>. Create a passkey and you're done — no
+        password, ever.
       </p>
       <ul class="scope-list">
         <li>
@@ -166,7 +160,7 @@ export function EnrollPage(props: { ui: Ui; name?: string; email?: string; token
           </div>
         </li>
       </ul>
-      <div id="enroll-box" data-enrollment-token={props.token ?? ""} class="stack-sm">
+      <div id="enroll-box" class="stack-sm">
         <label class="field">
           <span class="label">Name this passkey (optional)</span>
           <input id="key-name" placeholder="e.g. iPhone, MacBook, YubiKey" maxLength={60} />

@@ -1,5 +1,5 @@
 import { sqlRows, stageArg, stageConfig } from "./cf-local.mjs";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -35,7 +35,7 @@ if (!issuer || issuer.includes("REPLACE")) {
 
 const now = Math.floor(Date.now() / 1000);
 const userId = randomUUID();
-const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+const token = randomBytes(32).toString("base64url");
 const tokenHash = createHash("sha256").update(token).digest("hex");
 const q = (s) => `'${s.replace(/'/g, "''")}'`;
 
@@ -47,4 +47,4 @@ const sql = [
 await sqlRows(sql, local ? { local: true, persistTo: ".wrangler/state" } : { local: false, stage });
 
 console.log(`\nAdmin user created: ${name} <${email}>`);
-console.log(`Enrollment link (valid 7 days, one-time):\n${issuer}/enroll/${token}\n`);
+console.log(`Enrollment link (valid 7 days, one-time):\n${issuer}/enroll#${token}\n`);

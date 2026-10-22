@@ -1,13 +1,16 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
-import { audit, getClient } from "./db";
+import { audit, auditStmt, getClient } from "./db";
+import { loadUserContext } from "./access";
 import type { OidcClient, User } from "./db";
 import { jwksDocument, verifyIdToken } from "./crypto";
-import { destroySession, getSession } from "./session";
+import { adminStepUpOk, destroySession, getSession } from "./session";
+import { getInstanceSettings } from "./settings-cache";
 import type { Session } from "./session";
-import { redirectMatches, resolveClient } from "./oauth-clients";
+import { isLoopbackHost, redirectMatches, resolveClient } from "./oauth-clients";
 import {
+  ADMIN_SCOPES,
   clientAccessProblem,
   discovery,
   mcpResource,
@@ -158,7 +161,8 @@ async function accessProblem(
   user: User,
   req: AuthzRequest,
 ): Promise<string | null> {
-  const reason = await clientAccessProblem(db, user, req.client, req.scopes);
+  const ctx = await loadUserContext(db, user.id);
+  const reason = ctx ? clientAccessProblem(ctx, req.client, req.scopes) : "account not found";
   return reason ? `Your account can no longer use ${req.client.name}: ${reason}.` : null;
 }
 
@@ -200,9 +204,18 @@ async function issueCode(
       now,
       req.client.id,
     ),
+    auditStmt(c.env.DB, "CODE_ISSUED", { userId: session.user.id, clientId: req.client.id }),
   ]);
-  await audit(c.env.DB, "CODE_ISSUED", { userId: session.user.id, clientId: req.client.id });
   return redirectWith(c, req, { code });
+}
+
+async function needsAdminStepUp(
+  db: D1Database,
+  session: Session,
+  req: AuthzRequest,
+): Promise<boolean> {
+  if (!req.scopes.some((s) => ADMIN_SCOPES.includes(s))) return false;
+  return !adminStepUpOk(session, (await getInstanceSettings(db)).adminStepUp);
 }
 
 function resumeUrl(c: Context): string {
@@ -232,6 +245,11 @@ oidc.get("/authorize", async (c) => {
     if (req.prompt.includes("none")) return redirectWith(c, req, { error: "access_denied" });
     await audit(c.env.DB, "ACCESS_DENIED", { userId: session.user.id, clientId: req.client.id });
     return errorPage(c, "Access denied", problem, 403);
+  }
+  if (await needsAdminStepUp(c.env.DB, session, req)) {
+    if (req.prompt.includes("none")) return redirectWith(c, req, { error: "login_required" });
+    const params = new URLSearchParams({ next: resumeUrl(c), reauth: "1" });
+    return c.redirect(`/login?${params.toString()}`, 302);
   }
   const needsConsent =
     req.prompt.includes("consent") ||
@@ -269,6 +287,8 @@ oidc.post("/authorize/decision", async (c) => {
   }
   const problem = await accessProblem(c.env.DB, session.user, req);
   if (problem) return errorPage(c, "Access denied", problem, 403);
+  if (await needsAdminStepUp(c.env.DB, session, req))
+    return errorPage(c, "Confirm it's you", "Start the sign-in again from the app.", 403);
   await c.env.DB.prepare(
     `INSERT INTO oauth_grants (user_id, client_id, scope, created_at, last_used_at)
      VALUES (?1, ?2, ?3, ?4, ?4)
@@ -283,6 +303,15 @@ oidc.post("/authorize/decision", async (c) => {
   });
   return issueCode(c, req, session);
 });
+
+function webOrigin(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:" || (u.protocol === "http:" && isLoopbackHost(u.hostname)))
+      return u.origin;
+  } catch {}
+  return null;
+}
 
 async function postLogoutTarget(
   c: Context<{ Bindings: Env }>,
@@ -301,23 +330,9 @@ async function postLogoutTarget(
   }
   if (!clientId) return null;
   const client = await getClient(c.env.DB, clientId);
-  if (!client) return null;
-  let origin: string;
-  try {
-    origin = new URL(target).origin;
-  } catch {
-    return null;
-  }
-  if (
-    !client.redirect_uris.some((r) => {
-      try {
-        return new URL(r).origin === origin;
-      } catch {
-        return false;
-      }
-    })
-  )
-    return null;
+  if (!client || client.source !== "admin") return null;
+  const origin = webOrigin(target);
+  if (!origin || !client.redirect_uris.some((r) => webOrigin(r) === origin)) return null;
   const u = new URL(target);
   if (q.state) u.searchParams.set("state", q.state);
   return u.toString();

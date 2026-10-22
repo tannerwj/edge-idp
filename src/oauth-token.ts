@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
-import { audit, getClient, getUser } from "./db";
+import { audit, auditStmt, getClient } from "./db";
+import { loadUserContext } from "./access";
 import type { OidcClient } from "./db";
 import { ACCESS_TOKEN_TTL, mintAccessToken, mintIdToken, verifyAccessToken } from "./crypto";
 import type { TokenClaims } from "./crypto";
@@ -57,9 +58,12 @@ interface RefreshGrant {
   authTime: number;
 }
 
-async function mintRefresh(db: D1Database, g: RefreshGrant): Promise<string> {
+async function refreshStmt(
+  db: D1Database,
+  g: RefreshGrant,
+): Promise<{ raw: string; stmt: D1PreparedStatement }> {
   const raw = randomToken(32);
-  await db
+  const stmt = db
     .prepare(
       `INSERT INTO refresh_tokens (token_hash, family_id, client_id, user_id, scope, resource, auth_time, created_at, expires_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
@@ -74,9 +78,8 @@ async function mintRefresh(db: D1Database, g: RefreshGrant): Promise<string> {
       g.authTime,
       nowSec(),
       g.family.expiresAt,
-    )
-    .run();
-  return raw;
+    );
+  return { raw, stmt };
 }
 
 async function tokenResponse(
@@ -94,7 +97,9 @@ async function tokenResponse(
     clientId: client.id,
     scope: grant.scope,
   });
-  const idToken = scopes.includes("openid") ? await mintIdToken(c.env, claims, client.id) : null;
+  const idToken = scopes.includes("openid")
+    ? await mintIdToken(c.env, claims, client.id, client.source === "admin" ? undefined : scopes)
+    : null;
   return c.json(
     {
       access_token: accessToken,
@@ -113,6 +118,26 @@ const tokenError = (c: Context, error: string, description?: string, status: 400
   c.json({ error, ...(description ? { error_description: description } : {}) }, status, {
     "cache-control": "no-store",
   });
+
+async function codeBindingProblem(
+  code: { expires_at: number; client_id: string; redirect_uri: string; code_challenge: string },
+  client: OidcClient,
+  body: TokenBody,
+): Promise<string | null> {
+  if (
+    code.expires_at < nowSec() ||
+    code.client_id !== client.id ||
+    (body.redirect_uri !== undefined && body.redirect_uri !== code.redirect_uri)
+  )
+    return "";
+  if (!code.code_challenge)
+    return client.require_pkce || client.client_type === "public" ? "" : null;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(body.code_verifier ?? ""),
+  );
+  return base64url(digest) === code.code_challenge ? null : "PKCE verification failed";
+}
 
 async function codeGrant(
   c: Context<{ Bindings: Env }>,
@@ -144,29 +169,10 @@ async function codeGrant(
     });
     return tokenError(c, "invalid_grant", "code is invalid, expired, or already used");
   }
-  if (
-    candidate.expires_at < nowSec() ||
-    candidate.client_id !== client.id ||
-    (body.redirect_uri !== undefined && body.redirect_uri !== candidate.redirect_uri)
-  ) {
-    return tokenError(c, "invalid_grant");
-  }
-  if (candidate.code_challenge) {
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(body.code_verifier ?? ""),
-    );
-    if (base64url(digest) !== candidate.code_challenge)
-      return tokenError(c, "invalid_grant", "PKCE verification failed");
-  } else if (client.require_pkce || client.client_type === "public") {
-    return tokenError(c, "invalid_grant");
-  }
-  const user = await getUser(c.env.DB, candidate.user_id);
-  if (
-    !user ||
-    user.disabled ||
-    (await clientAccessProblem(c.env.DB, user, client, candidate.scope.split(" ")))
-  ) {
+  const bound = await codeBindingProblem(candidate, client, body);
+  if (bound !== null) return tokenError(c, "invalid_grant", bound || undefined);
+  const ctx = await loadUserContext(c.env.DB, candidate.user_id);
+  if (!ctx || ctx.user.disabled || clientAccessProblem(ctx, client, candidate.scope.split(" "))) {
     return tokenError(c, "invalid_grant", "user or client access was removed");
   }
   const row = await c.env.DB.prepare(
@@ -185,13 +191,13 @@ async function codeGrant(
     }>();
   if (!row) return tokenError(c, "invalid_grant", "code is invalid, expired, or already used");
   const authTime = row.auth_time ?? nowSec();
-  const claims = await claimsFor(c.env.DB, row.user_id, authTime, {
+  const claims = claimsFor(ctx, authTime, {
     nonce: row.nonce,
     accessFor: accessClaimsClient(client, row.scope),
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = wantsRefresh(row.scope)
-    ? await mintRefresh(c.env.DB, {
+    ? await refreshStmt(c.env.DB, {
         family: { id: newId(), expiresAt: nowSec() + REFRESH_TTL },
         clientId: client.id,
         userId: row.user_id,
@@ -200,12 +206,19 @@ async function codeGrant(
         authTime,
       })
     : null;
-  await audit(c.env.DB, "TOKEN_ISSUED", {
-    userId: row.user_id,
-    clientId: client.id,
-    detail: { scope: row.scope },
+  await c.env.DB.batch([
+    ...(refresh ? [refresh.stmt] : []),
+    auditStmt(c.env.DB, "TOKEN_ISSUED", {
+      userId: row.user_id,
+      clientId: client.id,
+      detail: { scope: row.scope },
+    }),
+  ]);
+  return tokenResponse(c, client, claims, {
+    scope: row.scope,
+    resource: row.resource,
+    refresh: refresh?.raw ?? null,
   });
-  return tokenResponse(c, client, claims, { scope: row.scope, resource: row.resource, refresh });
 }
 
 async function refreshGrant(
@@ -259,12 +272,8 @@ async function refreshGrant(
       return tokenError(c, "invalid_scope");
     scope = asked.join(" ");
   }
-  const user = await getUser(c.env.DB, candidate.user_id);
-  if (
-    !user ||
-    user.disabled ||
-    (await clientAccessProblem(c.env.DB, user, client, candidate.scope.split(" ")))
-  ) {
+  const ctx = await loadUserContext(c.env.DB, candidate.user_id);
+  if (!ctx || ctx.user.disabled || clientAccessProblem(ctx, client, candidate.scope.split(" "))) {
     await c.env.DB.prepare("DELETE FROM refresh_tokens WHERE family_id = ?1 AND client_id = ?2")
       .bind(candidate.family_id, client.id)
       .run();
@@ -285,11 +294,11 @@ async function refreshGrant(
       expires_at: number;
     }>();
   if (!row) return replay();
-  const claims = await claimsFor(c.env.DB, row.user_id, row.auth_time, {
+  const claims = claimsFor(ctx, row.auth_time, {
     accessFor: accessClaimsClient(client, row.scope),
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
-  const refresh = await mintRefresh(c.env.DB, {
+  const refresh = await refreshStmt(c.env.DB, {
     family: { id: row.family_id, expiresAt: row.expires_at },
     clientId: client.id,
     userId: row.user_id,
@@ -297,6 +306,7 @@ async function refreshGrant(
     resource: row.resource,
     authTime: row.auth_time,
   });
+  await refresh.stmt.run();
   c.executionCtx.waitUntil(
     c.env.DB.prepare(
       "UPDATE oauth_grants SET last_used_at = ?1 WHERE user_id = ?2 AND client_id = ?3",
@@ -305,7 +315,7 @@ async function refreshGrant(
       .run()
       .catch(() => {}),
   );
-  return tokenResponse(c, client, claims, { scope, resource: row.resource, refresh });
+  return tokenResponse(c, client, claims, { scope, resource: row.resource, refresh: refresh.raw });
 }
 
 async function parseForm(c: Context): Promise<TokenBody> {
@@ -365,21 +375,27 @@ async function userinfo(c: Context<{ Bindings: Env }>): Promise<Response> {
     payload.aud !== payload.client_id
   )
     return unauthorized();
-  const client =
-    typeof payload.client_id === "string" ? await getClient(c.env.DB, payload.client_id) : null;
-  const claims = await claimsFor(c.env.DB, payload.sub, 0, {
-    accessFor: client ? accessClaimsClient(client, scopes.join(" ")) : null,
-  });
+  const [client, ctx] = await Promise.all([
+    typeof payload.client_id === "string" ? getClient(c.env.DB, payload.client_id) : null,
+    loadUserContext(c.env.DB, payload.sub),
+  ]);
+  const claims = ctx
+    ? claimsFor(ctx, 0, { accessFor: client ? accessClaimsClient(client, scopes.join(" ")) : null })
+    : null;
   if (!claims) return unauthorized();
-  return c.json({
+  return c.json(userinfoClaims(claims, scopes));
+}
+
+function userinfoClaims(claims: TokenClaims, scopes: string[]): Record<string, unknown> {
+  const email = scopes.includes("email") && !claims.public;
+  const profile = scopes.includes("profile");
+  return {
     sub: claims.sub,
-    ...(scopes.includes("email") && !claims.public
-      ? { email: claims.email, email_verified: true }
-      : {}),
-    ...(scopes.includes("profile") ? { name: claims.name } : {}),
-    ...(scopes.includes("profile") && !claims.public ? { preferred_username: claims.email } : {}),
+    ...(email ? { email: claims.email, email_verified: true } : {}),
+    ...(profile ? { name: claims.name } : {}),
+    ...(profile && !claims.public ? { preferred_username: claims.email } : {}),
     ...(scopes.includes("groups") ? { groups: claims.groups } : {}),
     ...(claims.apps ? { apps: claims.apps } : {}),
     ...(claims.roles ? { roles: claims.roles } : {}),
-  });
+  };
 }

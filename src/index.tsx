@@ -4,7 +4,7 @@ import * as Sentry from "@sentry/cloudflare";
 import { assertConfigured, isLocalIssuer } from "./config";
 import { resolveEnv } from "./instance";
 import type { Env } from "./config";
-import { webauthn, validEnrollmentToken } from "./webauthn";
+import { webauthn } from "./webauthn";
 import { oidc } from "./oidc";
 import { tokens } from "./oauth-token";
 import { registration } from "./oauth-clients";
@@ -60,13 +60,40 @@ function canonicalResponse(c: Context<{ Bindings: Env }>, url: URL): Response | 
   return c.text("Use the configured issuer hostname.", 421);
 }
 
-// eslint-disable-next-line typescript/consistent-return
+const STATIC_PATHS = new Set(["/app.css", "/app.js", "/favicon.svg", "/favicon.ico"]);
+
+function securityHeaders(h: Headers): void {
+  h.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  h.set("X-Content-Type-Options", "nosniff");
+  if (!h.has("Referrer-Policy")) h.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  h.set("X-Frame-Options", "DENY");
+  h.set("Cross-Origin-Opener-Policy", "same-origin");
+  h.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
+  );
+  h.set(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; " +
+      "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+  );
+  if ((h.get("content-type") ?? "").startsWith("text/html") && !h.has("cache-control")) {
+    h.set("cache-control", "no-store");
+  }
+}
+
+app.use("*", async (c, next) => {
+  await next();
+  securityHeaders(c.res.headers);
+});
+
 app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
   if (url.pathname.length > 1 && url.pathname.endsWith("/") && c.req.method === "GET") {
     url.pathname = url.pathname.slice(0, -1);
     return c.redirect(url.toString(), 301);
   }
+  if (STATIC_PATHS.has(url.pathname)) return next();
   try {
     c.env = await resolveEnv(c.env, c.req.url);
     assertConfigured(c.env);
@@ -99,26 +126,7 @@ app.use("*", async (c, next) => {
       );
   }
 
-  await next();
-
-  const h = c.res.headers;
-  h.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  h.set("X-Content-Type-Options", "nosniff");
-  h.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  h.set("X-Frame-Options", "DENY");
-  h.set("Cross-Origin-Opener-Policy", "same-origin");
-  h.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
-  );
-  h.set(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; " +
-      "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
-  );
-  if ((h.get("content-type") ?? "").startsWith("text/html") && !h.has("cache-control")) {
-    h.set("cache-control", "no-store");
-  }
+  return next();
 });
 
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d5ef6"/><stop offset="1" stop-color="#3b3bb8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" transform="translate(4 4)"><path d="M12 10a2 2 0 0 0-2 2c0 1-.1 2.5-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></g></svg>`;
@@ -196,28 +204,6 @@ app.get("/enroll", async (c) =>
     "cache-control": "no-store",
   }),
 );
-
-app.get("/enroll/:token", async (c) => {
-  const v = await validEnrollmentToken(c.env.DB, c.req.param("token"));
-  const ui = await uiFor(c);
-  if (!v) {
-    return c.html(
-      <ErrorPage
-        ui={ui}
-        title="This link has expired"
-        message="Enrollment links work once and last 7 days. Ask your admin for a fresh one."
-      />,
-      400,
-    );
-  }
-  return c.html(
-    <EnrollPage ui={ui} name={v.user.name} email={v.user.email} token={c.req.param("token")} />,
-    200,
-    {
-      "referrer-policy": "no-referrer",
-    },
-  );
-});
 
 app.post("/logout", async (c) => {
   const session = await getSession(c);

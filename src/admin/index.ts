@@ -1,7 +1,9 @@
 import { Hono } from "hono";
-import { sessionUser } from "../session";
+import { adminStepUpOk, getSession } from "../session";
+import { getInstanceSettings } from "../settings-cache";
+import { setFlash } from "../ui/layout";
 import { listApps, listClients, listGroups, listUsers } from "../db";
-import type { AdminVars } from "./shell";
+import type { ACtx, AdminVars } from "./shell";
 import { dashboardAdmin } from "./dashboard";
 import { usersAdmin } from "./users";
 import { userDetailAdmin } from "./user-detail";
@@ -16,13 +18,43 @@ import { settingsAdmin } from "./settings";
 
 export const admin = new Hono<AdminVars>();
 
+const SENSITIVE = [
+  /^\/admin\/users$/,
+  /^\/admin\/users\/[^/]+\/(profile|role|member|enrollment|revoke-keys)$/,
+  /^\/admin\/users\/[^/]+\/keys\/[^/]+\/remove$/,
+  /^\/admin\/tokens$/,
+  /^\/admin\/clients$/,
+  /^\/admin\/clients\/[^/]+(\/rotate)?$/,
+  /^\/admin\/settings(\/.*)?$/,
+];
+
+export function isSensitiveAdminPost(method: string, path: string): boolean {
+  return method === "POST" && SENSITIVE.some((re) => re.test(path));
+}
+
+function backTo(c: ACtx): string {
+  const ref = c.req.header("referer");
+  try {
+    const u = new URL(ref ?? "");
+    if (u.pathname.startsWith("/admin/") || u.pathname === "/admin") return u.pathname + u.search;
+  } catch {}
+  return "/admin";
+}
+
 // eslint-disable-next-line typescript/consistent-return
 admin.use("*", async (c, next) => {
-  const user = await sessionUser(c);
-  if (!user)
-    return c.redirect(`/login?next=${encodeURIComponent(new URL(c.req.url).pathname)}`, 302);
-  if (!user.is_admin) return c.redirect("/", 302);
-  c.set("admin", user);
+  const session = await getSession(c);
+  const path = new URL(c.req.url).pathname;
+  if (!session) return c.redirect(`/login?next=${encodeURIComponent(path)}`, 302);
+  if (!session.user.is_admin) return c.redirect("/", 302);
+  if (isSensitiveAdminPost(c.req.method, path)) {
+    const { adminStepUp } = await getInstanceSettings(c.env.DB);
+    if (!adminStepUpOk(session, adminStepUp)) {
+      setFlash(c, "Confirm it's you with your passkey, then try that again.", "bad");
+      return c.redirect(`/login?reauth=1&next=${encodeURIComponent(backTo(c))}`, 303);
+    }
+  }
+  c.set("admin", session.user);
   await next();
 });
 

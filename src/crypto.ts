@@ -74,15 +74,17 @@ export async function mintIdToken(
   env: Env,
   claims: TokenClaims,
   audience: string,
+  scopedTo?: string[],
 ): Promise<string> {
   const { key, kid } = await getSigningKey(env);
   const now = nowSec();
+  const allows = (scope: string) => !scopedTo || scopedTo.includes(scope);
   return await new jose.SignJWT({
-    ...(claims.public
+    ...(claims.public || !allows("email")
       ? {}
       : { email: claims.email, email_verified: true, preferred_username: claims.email }),
-    name: claims.name,
-    groups: claims.groups,
+    ...(allows("profile") ? { name: claims.name } : {}),
+    ...(allows("groups") ? { groups: claims.groups } : {}),
     ...(claims.apps ? { apps: claims.apps } : {}),
     ...(claims.roles ? { roles: claims.roles } : {}),
     auth_time: claims.authTime,

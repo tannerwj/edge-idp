@@ -59,11 +59,14 @@ const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
   USER_MADE_MEMBER: { label: "Made a member", icon: "users", tone: "" },
   CLIENT_SECRET_PICKED_UP: { label: "Client secret picked up", icon: "key", tone: "" },
   SETTINGS_CHANGED: { label: "Settings changed", icon: "settings", tone: "" },
+  SECURITY_SETTINGS_CHANGED: { label: "Security settings changed", icon: "shield", tone: "warn" },
   CF_API_CONNECTED: { label: "Cloudflare connected", icon: "cloud", tone: "warn" },
   CF_API_DISCONNECTED: { label: "Cloudflare disconnected", icon: "cloud", tone: "" },
   THEME_CHANGED: { label: "Theme changed", icon: "settings", tone: "" },
   CLIENT_PKCE_TOGGLED: { label: "PKCE setting changed", icon: "plug", tone: "" },
 };
+
+export const EVENT_NAMES = Object.keys(EVENTS);
 
 export function eventMeta(event: string): { label: string; icon: IconName; tone: Tone } {
   return (

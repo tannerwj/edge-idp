@@ -17,20 +17,27 @@ function status(elId: string, msg: string, kind: "" | "error" | "ok" = ""): void
   el.classList.toggle("ok", kind === "ok");
 }
 
+const ERROR_NAMES: Record<string, string> = {
+  NotAllowedError: "Cancelled — no problem. Try again when you're ready.",
+  InvalidStateError: "This device already has a passkey here. Try signing in instead.",
+  SecurityError: "This site's address doesn't match its passkey domain. Tell your admin.",
+};
+
+const ERROR_CODES: Record<string, string> = {
+  auth_failed: "That passkey isn't recognized here. Was it removed?",
+  invalid_enrollment_token: "This enrollment link was already used or has expired.",
+  rate_limited: "Too many attempts — wait a minute and try again.",
+  invalid_name: "Pick a name up to 60 characters.",
+  signup_closed: "This app isn't taking new accounts right now.",
+  already_signed_in: "You're already signed in.",
+  passkey_not_discoverable:
+    "This passkey can't be found without an email. Use a passkey manager (phone, laptop or a password manager).",
+};
+
 function friendlyError(e: unknown): string {
   if (e instanceof Error) {
-    if (e.name === "NotAllowedError") return "Cancelled — no problem. Try again when you're ready.";
-    if (e.name === "InvalidStateError")
-      return "This device already has a passkey here. Try signing in instead.";
-    if (e.name === "SecurityError")
-      return "This site's address doesn't match its passkey domain. Tell your admin.";
-    if (e.message === "auth_failed") return "That passkey isn't recognized here. Was it removed?";
-    if (e.message === "invalid_enrollment_token")
-      return "This enrollment link was already used or has expired.";
-    if (e.message === "rate_limited") return "Too many attempts — wait a minute and try again.";
-    if (e.message === "invalid_name") return "Pick a name up to 60 characters.";
-    if (e.message === "signup_closed") return "This app isn't taking new accounts right now.";
-    if (e.message === "already_signed_in") return "You're already signed in.";
+    const text = ERROR_NAMES[e.name] ?? ERROR_CODES[e.message];
+    if (text) return text;
   }
   return "Something went wrong — please try again.";
 }
@@ -65,11 +72,11 @@ async function attemptLogin(
   autofill: boolean,
   stepUp: boolean,
 ): Promise<boolean> {
-  const raw = await postJSON("/webauthn/auth/options", email ? { email } : {});
+  const raw = await postJSON("/webauthn/auth/options", { ...(email ? { email } : {}), stepUp });
   if (!isAuthOptions(raw)) throw new Error("bad_response");
   const resp = await startAuthentication({ optionsJSON: raw, useBrowserAutofill: autofill });
   if (!resp) return false;
-  const result = await postJSON("/webauthn/auth/verify", { response: resp, email, stepUp });
+  const result = await postJSON("/webauthn/auth/verify", { response: resp, email });
   return result.ok === true;
 }
 
@@ -136,7 +143,7 @@ async function register(body: Record<string, unknown>, name: string): Promise<bo
 export function initEnroll(): void {
   const box = $("enroll-box");
   if (!box) return;
-  const token = window.location.hash.slice(1) || box.getAttribute("data-enrollment-token") || "";
+  const token = window.location.hash.slice(1);
   const btn = $("enroll-btn");
   if (!token) {
     status("enroll-status", "Open the enrollment link your admin sent you.", "error");

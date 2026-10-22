@@ -8,6 +8,9 @@ part of the build, lint or test runs.
   measurements. The fixes shipped in `f421d76`; the regression checks live on
   in `tests/security/`. Versions deployed before that commit carry the
   reviewed issues.
+- `2026-10-21-review/`: the follow-up security, performance and best-practice
+  review of `f43acce` (`REVIEW.md`), its local reproduction script, and
+  `REMEDIATION.md`, which maps each finding to its fix and regression check.
 - `access-proof.py`: a one-off proof that Cloudflare Access → this IdP →
   passkey → app works end to end. Hardcoded to one Access app; not maintained.
 - `upgrade-notes-2026-10.md`: the v1 → v2 upgrade and the portable

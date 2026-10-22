@@ -1,8 +1,9 @@
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Context } from "hono";
-import { getUser } from "./db";
+import { rowToUser } from "./db";
 import type { Env } from "./config";
 import type { User } from "./db";
+import type { StepUpWindow } from "./settings-cache";
 import { nowSec, randomToken, sha256Hex } from "./util";
 
 export const SESSION_COOKIE = "__Host-idp_session";
@@ -16,8 +17,12 @@ export interface Session {
   stepUpAt: number | null;
 }
 
-export function hasRecentStepUp(session: Session): boolean {
-  return session.stepUpAt !== null && nowSec() - session.stepUpAt <= STEP_UP_TTL;
+export function hasRecentStepUp(session: Session, ttl = STEP_UP_TTL): boolean {
+  return session.stepUpAt !== null && nowSec() - session.stepUpAt <= ttl;
+}
+
+export function adminStepUpOk(session: Session, window: StepUpWindow): boolean {
+  return window === "off" || hasRecentStepUp(session, Number(window) * 60);
 }
 
 export async function createSession(
@@ -59,26 +64,22 @@ export async function getSession<E extends { Bindings: Env }>(
   if (!raw) return null;
   const hash = await sha256Hex(raw);
   const row = await c.env.DB.prepare(
-    "SELECT user_id, created_at, expires_at, last_seen_at, step_up_at FROM sessions WHERE id_hash = ?1",
+    `SELECT u.*, s.created_at AS session_created_at, s.expires_at AS session_expires_at,
+            s.last_seen_at AS session_last_seen_at, s.step_up_at AS session_step_up_at
+     FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ?1`,
   )
     .bind(hash)
-    .first<{
-      user_id: string;
-      created_at: number;
-      expires_at: number;
-      last_seen_at: number;
-      step_up_at: number | null;
-    }>();
+    .first();
   const now = nowSec();
-  if (!row || row.expires_at < now) {
-    if (row) {
-      await c.env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1").bind(hash).run();
-    }
+  if (!row) return null;
+  const expiresAt = Number(row.session_expires_at);
+  if (expiresAt < now) {
+    await c.env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1").bind(hash).run();
     return null;
   }
-  const user = await getUser(c.env.DB, row.user_id);
-  if (!user || user.disabled) return null;
-  if (now - row.last_seen_at > 60) {
+  const user = rowToUser(row);
+  if (user.disabled) return null;
+  if (now - Number(row.session_last_seen_at) > 60) {
     const slide = c.env.DB.prepare(
       "UPDATE sessions SET expires_at = ?1, last_seen_at = ?2 WHERE id_hash = ?3",
     )
@@ -87,13 +88,13 @@ export async function getSession<E extends { Bindings: Env }>(
       .catch(() => {});
     c.executionCtx.waitUntil(slide);
   }
-  return { user, idHash: hash, authTime: row.created_at, stepUpAt: row.step_up_at };
-}
-
-export async function sessionUser<E extends { Bindings: Env }>(
-  c: Context<E>,
-): Promise<User | null> {
-  return (await getSession(c))?.user ?? null;
+  const stepUpAt = row.session_step_up_at;
+  return {
+    user,
+    idHash: hash,
+    authTime: Number(row.session_created_at),
+    stepUpAt: typeof stepUpAt === "number" ? stepUpAt : null,
+  };
 }
 
 export function setSessionCookie(c: Context, raw: string): void {

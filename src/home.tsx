@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./config";
-import { getCredentialsForUser, getUserGroups } from "./db";
-import { appsForUser, listAppGroups } from "./access";
+import { getCredentialsForUser } from "./db";
+import { appsForUser, listAppGroups, loadUserContext } from "./access";
 import type { AppGroup } from "./access";
 import { setFavorite } from "./ops";
 import type { App, WebAuthnCredential } from "./db";
@@ -291,9 +291,8 @@ home.get("/", async (c) => {
   const s = await getSession(c);
   if (!s) return c.redirect("/login", 302);
   const db = c.env.DB;
-  const groups = await getUserGroups(db, s.user.id);
-  const [apps, appGroups, favorites, creds, recent] = await Promise.all([
-    appsForUser(db, s.user.id),
+  const [ctx, appGroups, favorites, creds, recent] = await Promise.all([
+    loadUserContext(db, s.user.id),
     listAppGroups(db),
     favoritesOf(db, s.user.id),
     getCredentialsForUser(db, s.user.id),
@@ -307,6 +306,8 @@ home.get("/", async (c) => {
       .bind(s.user.id)
       .all<{ event: string; created_at: number; client_name: string | null }>(),
   ]);
+  const groups = ctx?.groups ?? [];
+  const apps = ctx ? ctx.apps.filter((a) => ctx.access.has(a.id)) : [];
   const first = s.user.name.split(" ")[0];
   return c.html(
     <AppShell

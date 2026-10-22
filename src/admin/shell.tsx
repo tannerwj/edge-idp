@@ -66,3 +66,9 @@ export async function act(
   }
   return c.redirect(back, 303);
 }
+
+export function failBack(c: ACtx, back: string, e: unknown): Response {
+  if (!(e instanceof OpError)) throw e;
+  setFlash(c, e.message, "bad");
+  return c.redirect(back, 303);
+}

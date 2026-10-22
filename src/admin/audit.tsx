@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AdminVars } from "./shell";
 import { page } from "./shell";
 import { Avatar, Empty, PageHead, Time } from "../ui/components";
-import { eventMeta } from "../ui/feed";
+import { EVENT_NAMES, eventMeta } from "../ui/feed";
 import { Icon } from "../ui/icons";
 
 const PER_PAGE = 50;
@@ -21,15 +21,13 @@ interface AuditRow {
 
 function AuditTable({
   rows,
-  total,
   pageNo,
-  pages,
+  older,
   qs,
 }: {
   rows: AuditRow[];
-  total: number;
   pageNo: number;
-  pages: number;
+  older: boolean;
   qs: (p: number) => string;
 }) {
   return (
@@ -91,16 +89,14 @@ function AuditTable({
             </table>
           </div>
           <div class="pager">
-            <span>
-              {total.toLocaleString()} event{total === 1 ? "" : "s"} · page {pageNo} of {pages}
-            </span>
+            <span>Page {pageNo}</span>
             {pageNo > 1 ? (
               <a class="btn sm" href={qs(pageNo - 1)}>
                 <Icon name="chevronLeft" size="sm" />
                 Newer
               </a>
             ) : null}
-            {pageNo < pages ? (
+            {older ? (
               <a class="btn sm" href={qs(pageNo + 1)}>
                 Older
                 <Icon name="chevronRight" size="sm" />
@@ -130,6 +126,7 @@ const CATEGORIES: Record<string, string[]> = {
     "ADMIN_GRANTED",
     "API_TOKEN_CREATED",
     "SETUP_REJECTED",
+    "SECURITY_SETTINGS_CHANGED",
   ],
   passkeys: [
     "PASSKEY_REGISTERED",
@@ -169,6 +166,7 @@ const CATEGORIES: Record<string, string[]> = {
     "USER_MADE_MEMBER",
     "CLIENT_SECRET_PICKED_UP",
     "SETTINGS_CHANGED",
+    "SECURITY_SETTINGS_CHANGED",
     "CF_API_CONNECTED",
     "CF_API_DISCONNECTED",
     "API_TOKEN_CREATED",
@@ -185,6 +183,26 @@ const CATEGORIES: Record<string, string[]> = {
   ],
 };
 
+const EVENT_TYPES = [...new Set([...EVENT_NAMES, ...Object.values(CATEGORIES).flat()])].sort();
+
+async function matchingIds(db: D1Database, q: string): Promise<{ users: string; clients: string }> {
+  const like = `%${q}%`;
+  const [users, clients] = await Promise.all([
+    db
+      .prepare("SELECT id FROM users WHERE lower(email) LIKE ?1 OR lower(name) LIKE ?1")
+      .bind(like)
+      .all<{ id: string }>(),
+    db
+      .prepare("SELECT id FROM oidc_clients WHERE lower(name) LIKE ?1")
+      .bind(like)
+      .all<{ id: string }>(),
+  ]);
+  return {
+    users: JSON.stringify(users.results.map((r) => r.id)),
+    clients: JSON.stringify(clients.results.map((r) => r.id)),
+  };
+}
+
 function AuditFilters({
   category,
   event,
@@ -194,7 +212,7 @@ function AuditFilters({
   category: string;
   event: string;
   q: string;
-  eventTypes: { event: string }[];
+  eventTypes: string[];
 }) {
   return (
     <div class="filters">
@@ -227,8 +245,8 @@ function AuditFilters({
         <select name="event" aria-label="Event" data-autosubmit>
           <option value="">Any event</option>
           {eventTypes.map((e) => (
-            <option key={e.event} value={e.event} selected={e.event === event}>
-              {eventMeta(e.event).label}
+            <option key={e} value={e} selected={e === event}>
+              {eventMeta(e).label}
             </option>
           ))}
         </select>
@@ -262,39 +280,22 @@ auditAdmin.get("/", async (c) => {
     where.push("a.event NOT IN ('CODE_ISSUED','TOKEN_ISSUED')");
   }
   if (q) {
-    binds.push(`%${q}%`);
+    const ids = await matchingIds(db, q);
+    binds.push(ids.users, ids.clients);
     where.push(
-      `(lower(u.email) LIKE ?${binds.length} OR lower(u.name) LIKE ?${binds.length} OR lower(c.name) LIKE ?${binds.length})`,
+      `(a.user_id IN (SELECT value FROM json_each(?${binds.length - 1})) OR a.client_id IN (SELECT value FROM json_each(?${binds.length})))`,
     );
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const from = `FROM audit_log a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN oidc_clients c ON c.id = a.client_id ${whereSql}`;
-  const [countRow, rows, eventTypes] = await Promise.all([
-    db
-      .prepare(`SELECT COUNT(*) AS n ${from}`)
-      .bind(...binds)
-      .first<{ n: number }>(),
-    db
-      .prepare(
-        `SELECT a.id, a.created_at, a.event, a.detail, a.user_agent, u.id AS uid, u.name, u.email, c.name AS client_name ${from}
-         ORDER BY a.id DESC LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`,
-      )
-      .bind(...binds, PER_PAGE, (pageNo - 1) * PER_PAGE)
-      .all<{
-        id: number;
-        created_at: number;
-        event: string;
-        detail: string | null;
-        user_agent: string | null;
-        uid: string | null;
-        name: string | null;
-        email: string | null;
-        client_name: string | null;
-      }>(),
-    db.prepare("SELECT DISTINCT event FROM audit_log ORDER BY event").all<{ event: string }>(),
-  ]);
-  const total = countRow?.n ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const rows = await db
+    .prepare(
+      `SELECT a.id, a.created_at, a.event, a.detail, a.user_agent, u.id AS uid, u.name, u.email, c.name AS client_name
+       FROM audit_log a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN oidc_clients c ON c.id = a.client_id ${whereSql}
+       ORDER BY ${event ? "a.created_at DESC, a.id DESC" : "a.id DESC"} LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`,
+    )
+    .bind(...binds, PER_PAGE + 1, (pageNo - 1) * PER_PAGE)
+    .all<AuditRow>();
+  const older = rows.results.length > PER_PAGE;
   const qs = (p: number) => {
     const u = new URLSearchParams();
     if (event) u.set("event", event);
@@ -318,8 +319,8 @@ auditAdmin.get("/", async (c) => {
           </a>
         }
       />
-      <AuditFilters category={category} event={event} q={q} eventTypes={eventTypes.results} />
-      <AuditTable rows={rows.results} total={total} pageNo={pageNo} pages={pages} qs={qs} />
+      <AuditFilters category={category} event={event} q={q} eventTypes={EVENT_TYPES} />
+      <AuditTable rows={rows.results.slice(0, PER_PAGE)} pageNo={pageNo} older={older} qs={qs} />
     </>,
   );
 });

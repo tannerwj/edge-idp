@@ -18,6 +18,7 @@ import {
 } from "./session";
 import { base64url, newId, nowSec, rpIdFromIssuer, sha256Hex } from "./util";
 import { aaguidName } from "./aaguid";
+import { getInstanceSettings } from "./settings-cache";
 import {
   b64urlToBytes,
   challengeFromResponse,
@@ -26,7 +27,7 @@ import {
 } from "./webauthn-challenges";
 import type { StoredChallenge } from "./webauthn-challenges";
 
-export async function validEnrollmentToken(
+async function validEnrollmentToken(
   db: D1Database,
   token: string,
 ): Promise<{ user: User; tokenHash: string } | null> {
@@ -150,18 +151,6 @@ export function credentialInsert(
   return { id, stmt };
 }
 
-async function persistCredential(
-  db: D1Database,
-  userId: string,
-  response: RegistrationResponseJSON,
-  info: RegistrationInfo,
-  name: string,
-): Promise<string> {
-  const { id, stmt } = credentialInsert(db, userId, response, info, name);
-  await stmt.run();
-  return id;
-}
-
 async function burnEnrollmentToken(db: D1Database, token: string): Promise<boolean> {
   const burned = await db
     .prepare("UPDATE enrollment_tokens SET used = 1 WHERE token_hash = ?1 AND used = 0")
@@ -229,7 +218,8 @@ webauthn.post("/register/verify", async (c) => {
   }
 
   const name = credentialName(body.name, info);
-  const credId = await persistCredential(c.env.DB, user.id, body.response, info, name);
+  const { id: credId, stmt } = credentialInsert(c.env.DB, user.id, body.response, info, name);
+  await stmt.run();
 
   const ip = clientIp(c);
   await audit(c.env.DB, "PASSKEY_REGISTERED", {
@@ -239,6 +229,7 @@ webauthn.post("/register/verify", async (c) => {
     detail: { name, backedUp: info.credentialBackedUp },
   });
 
+  await destroySession(c);
   const raw = await createSession(
     c.env.DB,
     user.id,
@@ -251,11 +242,13 @@ webauthn.post("/register/verify", async (c) => {
 });
 
 webauthn.post("/auth/options", async (c) => {
-  const body = await c.req.json<{ email?: string }>();
+  const body = await c.req.json<{ email?: string; stepUp?: boolean }>();
   let user: User | null = null;
   if (body.email) {
     user = await getUserByEmail(c.env.DB, body.email);
   }
+  const stepUp = body.stepUp === true;
+  const uv = stepUp ? "required" : (await getInstanceSettings(c.env.DB)).signInUv;
   const rpID = rpIdFromIssuer(c.env.ISSUER);
   const creds = user ? await getCredentialsForUser(c.env.DB, user.id) : [];
   const options = await generateAuthenticationOptions({
@@ -264,12 +257,12 @@ webauthn.post("/auth/options", async (c) => {
       id: credIdB64(cred),
       transports: cred.transports,
     })),
-    userVerification: "required",
+    userVerification: uv,
   });
   await storeChallenge(c.env.DB, options.challenge, {
     type: "authentication",
     userId: user ? user.id : null,
-    data: {},
+    data: { uv, stepUp },
   });
   return c.json(options);
 });
@@ -292,11 +285,38 @@ async function resolveAuthUser(
   }
 }
 
+async function verifyAssertion(
+  env: Env,
+  cred: WebAuthnCredential,
+  response: AuthenticationResponseJSON,
+  challenge: string,
+  stored: StoredChallenge,
+): Promise<number | null> {
+  try {
+    const verification = await verifyAuthenticationResponse({
+      response,
+      expectedChallenge: challenge,
+      expectedOrigin: env.ISSUER,
+      expectedRPID: rpIdFromIssuer(env.ISSUER),
+      credential: {
+        id: credIdB64(cred),
+        publicKey: cred.public_key,
+        counter: cred.counter,
+        transports: cred.transports,
+      },
+      requireUserVerification:
+        stored.data["stepUp"] === true || stored.data["uv"] !== "discouraged",
+    });
+    return verification.verified ? verification.authenticationInfo.newCounter : null;
+  } catch {
+    return null;
+  }
+}
+
 webauthn.post("/auth/verify", async (c) => {
   const body = await c.req.json<{
     response: AuthenticationResponseJSON;
     email?: string;
-    stepUp?: boolean;
   }>();
   if (!body.response) return c.json({ error: "bad_request" }, 400);
 
@@ -306,6 +326,7 @@ webauthn.post("/auth/verify", async (c) => {
   if (!stored || stored.type !== "authentication") {
     return c.json({ error: "invalid_challenge" }, 400);
   }
+  const stepUp = stored.data["stepUp"] === true;
 
   const user = await resolveAuthUser(c.env.DB, body.email, stored, body.response);
   if (!user || user.disabled) return c.json({ error: "auth_failed" }, 401);
@@ -317,34 +338,12 @@ webauthn.post("/auth/verify", async (c) => {
   const cred = creds.find((k) => credIdB64(k) === body.response.id);
   if (!cred) return c.json({ error: "auth_failed" }, 401);
 
-  const rpID = rpIdFromIssuer(c.env.ISSUER);
-  let verification;
-  try {
-    verification = await verifyAuthenticationResponse({
-      response: body.response,
-      expectedChallenge: challenge,
-      expectedOrigin: c.env.ISSUER,
-      expectedRPID: rpID,
-      credential: {
-        id: credIdB64(cred),
-        publicKey: cred.public_key,
-        counter: cred.counter,
-        transports: cred.transports,
-      },
-      requireUserVerification: true,
-    });
-  } catch {
-    return c.json({ error: "auth_failed" }, 401);
-  }
-  if (!verification.verified || !verification.authenticationInfo) {
-    return c.json({ error: "auth_failed" }, 401);
-  }
-  if (body.stepUp) {
+  const newCounter = await verifyAssertion(c.env, cred, body.response, challenge, stored);
+  if (newCounter === null) return c.json({ error: "auth_failed" }, 401);
+  if (stepUp) {
     const prior = await getSession(c);
     if (!prior || prior.user.id !== user.id) return c.json({ error: "auth_failed" }, 401);
   }
-
-  const newCounter = verification.authenticationInfo.newCounter;
   if (cred.counter > 0 && newCounter <= cred.counter) {
     await audit(c.env.DB, "PASSKEY_COUNTER_REGRESSION", {
       userId: user.id,
@@ -352,11 +351,10 @@ webauthn.post("/auth/verify", async (c) => {
     });
     return c.json({ error: "auth_failed" }, 401);
   }
-  const now = nowSec();
   await c.env.DB.prepare(
     "UPDATE webauthn_credentials SET counter = ?1, last_used_at = ?2 WHERE id = ?3",
   )
-    .bind(newCounter, now, cred.id)
+    .bind(newCounter, nowSec(), cred.id)
     .run();
 
   const ip = clientIp(c);
@@ -373,7 +371,7 @@ webauthn.post("/auth/verify", async (c) => {
     c.req.header("user-agent") ?? null,
     ip,
     cred.id,
-    body.stepUp === true,
+    stepUp,
   );
   setSessionCookie(c, raw);
   return c.json({ ok: true, name: user.name });

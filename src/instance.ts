@@ -79,30 +79,47 @@ async function generateSigningJwk(): Promise<string> {
   });
 }
 
-async function storedSigningKey(db: D1Database, secret: string): Promise<string> {
-  const read = () =>
-    db.prepare("SELECT jwk FROM signing_keys WHERE id = 'current'").first<{ jwk: string }>();
-  let row = await read();
-  if (!row) {
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO signing_keys (id, jwk, created_at) VALUES ('current', ?1, ?2)",
-      )
-      .bind(await sealKey(await generateSigningJwk(), secret), nowSec())
-      .run();
-    row = await read();
-  }
+async function storedSigningKey(
+  db: D1Database,
+  secret: string,
+  existing: string | null,
+): Promise<string> {
+  if (existing) return openKey(existing, secret);
+  await db
+    .prepare("INSERT OR IGNORE INTO signing_keys (id, jwk, created_at) VALUES ('current', ?1, ?2)")
+    .bind(await sealKey(await generateSigningJwk(), secret), nowSec())
+    .run();
+  const row = await db
+    .prepare("SELECT jwk FROM signing_keys WHERE id = 'current'")
+    .first<{ jwk: string }>();
   if (!row) throw new Error("identity: could not create the signing key (are migrations applied?)");
   return openKey(row.jwk, secret);
 }
 
+async function instanceRows(
+  env: Env,
+): Promise<{ pinned: string | null; storedKey: string | null }> {
+  const stmts = [
+    ...(env.ISSUER
+      ? []
+      : [env.DB.prepare("SELECT value FROM instance_settings WHERE key = 'issuer'")]),
+    ...(env.SIGNING_KEY_JWK
+      ? []
+      : [env.DB.prepare("SELECT jwk AS value FROM signing_keys WHERE id = 'current'")]),
+  ];
+  if (!stmts.length) return { pinned: null, storedKey: null };
+  const results = await env.DB.batch<{ value: string }>(stmts);
+  const value = (i: number) => results[i]?.results[0]?.value ?? null;
+  return env.ISSUER
+    ? { pinned: null, storedKey: value(0) }
+    : { pinned: value(0), storedKey: env.SIGNING_KEY_JWK ? null : value(1) };
+}
+
 export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
-  const settings = await getInstanceSettings(env.DB);
-  const pinned = env.ISSUER
-    ? null
-    : await env.DB.prepare("SELECT value FROM instance_settings WHERE key = 'issuer'").first<{
-        value: string;
-      }>();
+  const [settings, { pinned, storedKey }] = await Promise.all([
+    getInstanceSettings(env.DB),
+    instanceRows(env),
+  ]);
   if (!env.ISSUER && !pinned) {
     const existing = await env.DB.prepare("SELECT 1 AS present FROM users LIMIT 1").first();
     if (existing)
@@ -110,13 +127,14 @@ export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
         "identity: existing installation needs an explicit ISSUER before upgrade; see DEPLOY.md",
       );
   }
-  const issuer = env.ISSUER || pinned?.value || new URL(requestUrl).origin;
+  const issuer = env.ISSUER || pinned || new URL(requestUrl).origin;
   return {
     ...env,
     ISSUER: issuer,
     RP_NAME: settings.name || env.RP_NAME || "Identity",
     CF_API_TOKEN: env.CF_API_TOKEN || settings.cfApiToken || undefined,
     CF_ACCOUNT_ID: env.CF_ACCOUNT_ID || settings.cfAccountId || undefined,
-    SIGNING_KEY_JWK: env.SIGNING_KEY_JWK || (await storedSigningKey(env.DB, encryptionSecret(env))),
+    SIGNING_KEY_JWK:
+      env.SIGNING_KEY_JWK || (await storedSigningKey(env.DB, encryptionSecret(env), storedKey)),
   };
 }

@@ -199,7 +199,7 @@ npm run seed:admin -- --email=you@example.com --name="Your Name"
 ```
 
 This inserts you as an admin and prints a one-time enrollment link (valid 7
-days). Open it, set up your passkey, and you're in. Then visit `/admin` to
+days, token in the `#fragment` so it never reaches the Worker's logs). Open it, set up your passkey, and you're in. Then visit `/admin` to
 create users, groups, and apps.
 
 Run it after the migrations. It targets remote production by default; add
@@ -213,7 +213,7 @@ contains `REPLACE`.
 `cloudflare.config.ts` declares two Workers Rate Limiting bindings:
 
 - `AUTH_LIMITER`, 30/min per IP: passkey ceremonies, `/register`, consent,
-  `/setup`;
+  `/setup`, `/client-secret/pickup`;
 - `API_LIMITER`, 300/min per IP: `/authorize`, `/token`, `/revoke`, `/mcp`.
 
 The limits are deliberately generous because Claude's connector egress
@@ -439,8 +439,8 @@ npm run test:e2e:staging    # wipes staging data first; refuses any other stage
 The cron check is skipped there (it's a local-only trigger); the deployed cron
 fires at :17 and shows up in Workers Logs. Rate-limit namespace ids are unique
 per account, so staging uses its own pair (2001/2002, production 1001/1002).
-Preview URLs are off because a preview hostname isn't the issuer and passkeys
-wouldn't work on it.
+Preview URLs are off for both stages (`previewUrls: false`) because a preview
+hostname isn't the issuer and passkeys wouldn't work on it.
 
 Smoke checks work against any stage: `npm run smoke` (production issuer),
 `npm run smoke -- --stage=staging`, or `E2E_BASE_URL=https://… npm run smoke`.

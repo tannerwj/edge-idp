@@ -2,7 +2,12 @@ import { audit, deleteSettings, setSetting } from "./db";
 import { detectAccountId, verifyAccessRead } from "./cf-access";
 import { by, OpError } from "./ops-core";
 import type { Actor } from "./ops-core";
-import { invalidateSettingsCache, SETTING_KEYS } from "./settings-cache";
+import {
+  invalidateSettingsCache,
+  SETTING_KEYS,
+  SIGN_IN_UV,
+  STEP_UP_WINDOWS,
+} from "./settings-cache";
 
 const NAME_MAX = 60;
 const ACCOUNT_RE = /^[0-9a-f]{32}$/;
@@ -55,4 +60,21 @@ export async function disconnectCloudflare(db: D1Database, a: Actor): Promise<vo
   await deleteSettings(db, [SETTING_KEYS.cfApiToken, SETTING_KEYS.cfAccountId]);
   invalidateSettingsCache();
   await audit(db, "CF_API_DISCONNECTED", { userId: a.adminId, detail: by(a) });
+}
+
+export async function setSecuritySettings(
+  db: D1Database,
+  input: { adminStepUp: string; signInUv: string },
+  a: Actor,
+): Promise<void> {
+  const adminStepUp = STEP_UP_WINDOWS.find((w) => w === input.adminStepUp);
+  const signInUv = SIGN_IN_UV.find((v) => v === input.signInUv);
+  if (!adminStepUp || !signInUv) throw new OpError("Pick one of the offered options.");
+  await setSetting(db, SETTING_KEYS.adminStepUp, adminStepUp);
+  await setSetting(db, SETTING_KEYS.signInUv, signInUv);
+  invalidateSettingsCache();
+  await audit(db, "SECURITY_SETTINGS_CHANGED", {
+    userId: a.adminId,
+    detail: by(a, { adminStepUp, signInUv }),
+  });
 }
