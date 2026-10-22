@@ -102,7 +102,19 @@ export function migrateLocal(persistTo) {
   ]);
 }
 
-export async function sqlRows(sql, { local = true, persistTo, stage = "production" } = {}) {
+export async function sqlRows(sql, opts = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sqlRowsOnce(sql, opts);
+    } catch (e) {
+      const lost = String(e).includes("[10000] Network connection lost");
+      if (!lost || opts.local === false || attempt >= 2) throw e;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+}
+
+async function sqlRowsOnce(sql, { local = true, persistTo, stage = "production" } = {}) {
   const res = await cfJson([
     "d1",
     "raw",

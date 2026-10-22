@@ -6,6 +6,7 @@ import { cloudflareSettings } from "./cloudflare";
 import { emailSettings } from "./email";
 import { generalSettings } from "./general";
 import { keySettings } from "./keys";
+import { backupSettings } from "./backup";
 import { notificationSettings } from "./notifications";
 import { signInSettings } from "./sign-in";
 
@@ -18,6 +19,7 @@ for (const r of [
   notificationSettings,
   clientSettings,
   keySettings,
+  backupSettings,
   cloudflareSettings,
   aboutSettings,
 ])

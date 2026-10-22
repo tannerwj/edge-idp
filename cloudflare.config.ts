@@ -39,6 +39,7 @@ export default defineConfig(({ mode }) => {
         ISSUER: bindings.text(stage.issuer),
         RP_NAME: bindings.text("Johnson ID"),
         SIGNING_KEY_JWK: bindings.secret(),
+        SETUP_TOKEN: bindings.secret(),
         DB: bindings.d1(stage.d1),
         AUTH_LIMITER: bindings.rateLimit({
           namespace: stage.limiters.auth,

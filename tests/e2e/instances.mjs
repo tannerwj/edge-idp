@@ -82,13 +82,10 @@ function cleanup(work) {
   if (!process.env.E2E_KEEP) rmSync(work, { recursive: true, force: true });
 }
 
-export async function startLocal({ issuer, rpName = "E2E Identity", port }) {
+export async function startLocal({ issuer, rpName = "E2E Identity", port, vars = {} }) {
   const jwk = execFileSync("node", ["scripts/gen-key.mjs"], { encoding: "utf8" }).trim();
-  const work = projectCopy("e2e", "cloudflare.config.ts", {
-    ISSUER: issuer,
-    RP_NAME: rpName,
-    SIGNING_KEY_JWK: jwk,
-  });
+  const initial = { ISSUER: issuer, RP_NAME: rpName, SIGNING_KEY_JWK: jwk, ...vars };
+  const work = projectCopy("e2e", "cloudflare.config.ts", initial);
   const state = join(work, ".wrangler", "state");
   await migrateLocal(state);
   const base = `http://localhost:${port}`;
@@ -105,6 +102,16 @@ export async function startLocal({ issuer, rpName = "E2E Identity", port }) {
     sql: (command) => sqlRows(command, { persistTo: state }),
     log: srv.log,
     outbox: () => outboxFrom(srv.log()),
+    restart: async (next) => {
+      await srv.stop();
+      writeFileSync(
+        join(work, ".dev.vars"),
+        Object.entries(next(initial))
+          .map(([k, v]) => `${k}='${v}'\n`)
+          .join(""),
+      );
+      await srv.start();
+    },
     stop: async () => {
       await srv.stop();
       cleanup(work);

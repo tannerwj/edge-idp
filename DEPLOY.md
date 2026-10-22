@@ -348,21 +348,21 @@ one-click installs). Secrets are set with `npx cf workers secrets update
 <NAME> --worker identity --type secret_text --text …` (or in the dashboard)
 and are never committed.
 
-| Name                          | Kind                  | Required                                        | Purpose                                                                                                                                          |
-| ----------------------------- | --------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ISSUER`                      | var                   | reference: yes; one-click: no (pinned at setup) | Public base URL, https, no trailing slash or path. Plain-http `localhost` is allowed for local dev.                                              |
-| `RP_NAME`                     | var                   | no (defaults to "Identity")                     | Default instance name; Admin → Settings overrides it. Shown on sign-in and enrollment pages and in passkey managers.                             |
-| `SIGNING_KEY_JWK`             | secret                | reference: yes; one-click: no                   | RS256 private JWK from `scripts/gen-key.mjs`. Always wins over the D1 key.                                                                       |
-| `SIGNING_KEY_JWK_PREVIOUS`    | secret                | no                                              | Previous key during a rotation; published in JWKS, never used to sign.                                                                           |
-| `SETUP_TOKEN`                 | secret                | one-click: yes                                  | Authorizes `/setup` and encrypts the generated D1 signing key. Keep it after setup and back it up separately from D1.                            |
-| `SENTRY_DSN`                  | secret                | no                                              | Sentry error tracking.                                                                                                                           |
-| `CF_API_TOKEN`                | secret                | no                                              | Read-only Cloudflare Access integration. Usually set in Admin → Settings instead; the secret wins when both exist.                               |
-| `CF_ACCOUNT_ID`               | var                   | no                                              | Account for the Access integration. Detected from the token when connected in Settings.                                                          |
-| `UPSTREAM_REPO`               | var                   | no                                              | `owner/repo` for feedback links and the update check, or `off`. Defaults to the upstream project.                                                |
-| `DB`                          | D1 binding            | yes                                             | The database.                                                                                                                                    |
-| `AUTH_LIMITER`, `API_LIMITER` | rate-limit bindings   | recommended                                     | See section 9. `/setup` and `/register` return 503 without `AUTH_LIMITER`.                                                                       |
-| `EMAIL`                       | send_email binding    | no                                              | Outgoing email (section 13). Without it, Settings › Email explains how to add it and links are shown to admins instead.                          |
-| `LOADER`                      | Worker Loader binding | no                                              | MCP code mode (`execute`). The reference config always binds it; `wrangler.jsonc` doesn't (see One click). Without it, `execute` is not offered. |
+| Name                          | Kind                  | Required                                         | Purpose                                                                                                                                          |
+| ----------------------------- | --------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ISSUER`                      | var                   | reference: yes; one-click: no (pinned at setup)  | Public base URL, https, no trailing slash or path. Plain-http `localhost` is allowed for local dev.                                              |
+| `RP_NAME`                     | var                   | no (defaults to "Identity")                      | Default instance name; Admin → Settings overrides it. Shown on sign-in and enrollment pages and in passkey managers.                             |
+| `SIGNING_KEY_JWK`             | secret                | reference: yes; one-click: no                    | RS256 private JWK from `scripts/gen-key.mjs`. Always wins over the D1 key.                                                                       |
+| `SIGNING_KEY_JWK_PREVIOUS`    | secret                | no                                               | Previous key during a rotation; published in JWKS, never used to sign.                                                                           |
+| `SETUP_TOKEN`                 | secret                | one-click: yes; reference: to keep the key in D1 | Authorizes `/setup` (only while there are no users) and encrypts the D1 signing key. Keep it after setup and back it up separately from D1.      |
+| `SENTRY_DSN`                  | secret                | no                                               | Sentry error tracking.                                                                                                                           |
+| `CF_API_TOKEN`                | secret                | no                                               | Read-only Cloudflare Access integration. Usually set in Admin → Settings instead; the secret wins when both exist.                               |
+| `CF_ACCOUNT_ID`               | var                   | no                                               | Account for the Access integration. Detected from the token when connected in Settings.                                                          |
+| `UPSTREAM_REPO`               | var                   | no                                               | `owner/repo` for feedback links and the update check, or `off`. Defaults to the upstream project.                                                |
+| `DB`                          | D1 binding            | yes                                              | The database.                                                                                                                                    |
+| `AUTH_LIMITER`, `API_LIMITER` | rate-limit bindings   | recommended                                      | See section 9. `/setup` and `/register` return 503 without `AUTH_LIMITER`.                                                                       |
+| `EMAIL`                       | send_email binding    | no                                               | Outgoing email (section 13). Without it, Settings › Email explains how to add it and links are shown to admins instead.                          |
+| `LOADER`                      | Worker Loader binding | no                                               | MCP code mode (`execute`). The reference config always binds it; `wrangler.jsonc` doesn't (see One click). Without it, `execute` is not offered. |
 
 The Worker refuses to serve if `ISSUER`, `RP_NAME` or the signing key is still
 missing after it fills in defaults, or still contains the placeholder
@@ -370,6 +370,26 @@ missing after it fills in defaults, or still contains the placeholder
 in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#configuration-and-per-request-env).
 
 ## Rotating the signing key
+
+**Database-held key** (one-click installs, or after moving it): Admin →
+Settings › Identity & keys → **Rotate now**, or choose automatic rotation
+there. The old key stays published for two hours.
+
+**Moving a secret-held key into the database**, so it can be rotated from the
+UI: set a generated `SETUP_TOKEN` secret (it encrypts the key in D1; the
+reference `cloudflare.config.ts` declares it), deploy, use **Move the key into
+the database** on the same page, then delete the `SIGNING_KEY_JWK` secret
+(and `SIGNING_KEY_JWK_PREVIOUS` if set). The same key keeps signing, so
+nothing changes for apps. Back up `SETUP_TOKEN` with the database: one
+without the other can't recover the key.
+
+```bash
+SETUP_TOKEN=$(node scripts/gen-setup-token.mjs)   # also save it in your password manager
+npx cf workers secrets update SETUP_TOKEN --worker identity --type secret_text --text "$SETUP_TOKEN"
+npx cf workers secrets delete SIGNING_KEY_JWK --worker identity   # after the move
+```
+
+**Secret-held key**, by hand:
 
 1. `node scripts/gen-key.mjs` creates a fresh key with a unique `kid`. Keep the
    old private key offline during the overlap.
@@ -391,6 +411,13 @@ npm run db:migrate     # migrations are additive; the previous version runs on t
 npm run deploy
 npm run smoke
 ```
+
+**Backups.** D1 Time Travel covers 30 days. For anything longer, or to
+rebuild somewhere else, download a backup from Admin → Settings › Backup
+(people, passkeys' public keys, groups, apps, grants, clients, webhooks and
+settings; no sessions, tokens or keys). Restoring adds people and replaces
+configuration with the same ids; passkeys come back only on the same
+passkey domain.
 
 **Rollback:** point the Worker back at the previous version. Cloudflare keeps
 every uploaded version, so no rebuild is needed, and the schema stays:

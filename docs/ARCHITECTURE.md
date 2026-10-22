@@ -86,8 +86,9 @@ prefixes. Unhandled errors go to Sentry (when `SENTRY_DSN` is set) and render a
 generic 500.
 
 **Scheduled work.** The same Worker exports a `scheduled` handler for the
-hourly cron (minute 17). It runs maintenance and the upstream update check
-(see [Data model](#data-model-and-maintenance)).
+hourly cron (minute 17). It runs maintenance, scheduled signing-key rotation
+(`src/key-rotation.ts › autoRotate`) and the upstream update check (see
+[Data model](#data-model-and-maintenance)).
 
 ## Configuration and per-request env
 
@@ -119,7 +120,11 @@ for that reason, even though the raw values can be missing
   (`src/instance.ts › storedSigningKey`). The issuer pin and the key row are
   read in one D1 batch, and only the ones the Worker config doesn't already
   provide, so a portable install pays one round trip per request and the
-  reference install none (`src/instance.ts › instanceRows`). The stored format is
+  reference install none (`src/instance.ts › instanceRows`). With a database
+  key, the same batch reads the retiring `previous` row (until its
+  `retire_at`) and resolves it as `SIGNING_KEY_JWK_PREVIOUS`, and
+  `SIGNING_KEY_SOURCE` records which kind of key this is, so the settings page
+  knows what it can offer (`src/instance.ts › keysFor`). The stored format is
   `enc:v1:<iv>:<ciphertext>`, AES-GCM with a 12-byte random IV under
   SHA-256(`"edge-idp signing key v1\0"` + `SETUP_TOKEN`).
 
@@ -185,6 +190,8 @@ src/
   ops-notify.ts         alert settings and webhook management
   outbound.ts           guarded outbound POSTs (webhooks, logout tokens): URL rules, timeout, no redirects
   app-logout.ts         back-channel logout tokens and Cloudflare Access revocation on sign-out-everywhere
+  key-rotation.ts       database-held signing key: rotate, move from a secret, scheduled rotation
+  backup.ts             backup export, parsing and restore
   request-context.ts    per-request scope (env + waitUntil) via AsyncLocalStorage
   cf-access.ts          optional read-only Cloudflare Access integration
   util.ts               small pure helpers (encoding, hashing, comparisons)
@@ -197,7 +204,8 @@ src/
                         user-tabs, groups, apps (+ apps-form, apps-access grants and app groups,
                         apps-cloudflare import view), clients,
                         client-detail, audit, connect, tokens, metrics, settings/ (one module per tab
-                        plus shell: general, sign-in, email, notifications, clients, keys, cloudflare, about)
+                        plus shell: general, sign-in, email, notifications, clients, keys, backup,
+                        cloudflare, about)
   ui/                   layout (document, flash), components, icons, activity feed
   client/               browser bundle: app.ts entry, ui.ts, dom.ts, passkeys.ts, palette.ts, app.css
   assets.gen.ts         generated: bundled app.js/app.css, build hash, version
@@ -547,6 +555,7 @@ no user-facing request pays for a table scan. One D1 batch
 - `mcp_calls` older than 30 days;
 - secret pickups past their 10-minute expiry, pending email changes past
   their 1-hour expiry, and sign-in links past their 10-minute expiry;
+- a retired previous signing key;
 - dynamically registered (DCR) clients older than 30 days that never received
   a consent.
 
@@ -701,4 +710,5 @@ Remove each when its condition is met.
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
 | `cfJson` reads stdout until it parses as JSON, then stops the whole process group and waits for it to exit (60 s default timeout) (`scripts/cf-local.mjs › cfJson`, `stopGroup`) | `cf d1 … --local` prints its result but leaves its local Miniflare running. Run through `npx`, killing only the wrapper orphans `cf` and its engine, which keep the D1 files open and make later local SQL fail with `[10000] Network connection lost` | `cf d1 --local` exits on its own                |
 | Local migrations and seeding pass `--persist-to .wrangler/state` (`scripts/db-migrate.mjs`, `scripts/cf-local.mjs › migrateLocal`)                                               | `cf dev` reads local D1 from `.wrangler/state`, but `cf d1 --local` defaults elsewhere                                                                                                                                                                 | `cf dev` and `cf d1 --local` agree on a default |
+| Local `sqlRows` retries up to twice, 500 ms apart, when `cf d1 raw --local` fails with `[10000] Network connection lost` (`scripts/cf-local.mjs › sqlRows`)                      | `cf`'s local D1 bridge drops a connection now and then even with no orphaned process, which failed long e2e runs at random                                                                                                                             | `cf d1 --local` stops dropping connections      |
 | The Worker bundle is minified only on the `wrangler.jsonc` path (`"minify": true`, with source maps uploaded so stack traces stay readable)                                      | `cf`'s config has no minify option, so the reference deploy ships unminified (about 1.8 MB raw, 383 KB gzip vs 935 KB / 281 KB)                                                                                                                        | `cf` exposes minify                             |

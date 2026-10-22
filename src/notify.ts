@@ -46,6 +46,9 @@ export const ALERT_GROUPS: { label: string; events: string[] }[] = [
       "CLIENT_SECRET_ROTATED",
       "PASSKEYS_REVOKED",
       "SECURITY_SETTINGS_CHANGED",
+      "SIGNING_KEY_ROTATED",
+      "BACKUP_EXPORTED",
+      "BACKUP_IMPORTED",
     ],
   },
   {

@@ -156,6 +156,27 @@ try {
     exec,
   );
 
+  console.log("\n== rotating the database-held signing key ==");
+  await page.goto(`${BASE}/login?reauth=1&next=${encodeURIComponent("/admin/settings/keys")}`);
+  await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+  await page.waitForURL(`${BASE}/admin/settings/keys`, { timeout: 15000 });
+  const before = (await (await fetch(`${BASE}/jwks`)).json()).keys.map((k) => k.kid);
+  await page.click("form[action='/admin/settings/keys/rotate'] button");
+  await page.waitForSelector("#confirm-dialog[open]");
+  await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
+  const after = (await (await fetch(`${BASE}/jwks`)).json()).keys.map((k) => k.kid);
+  check(
+    "Rotate now signs with a new key and keeps the old one published",
+    after.length === 2 && after[1] === before[0] && after[0] !== before[0],
+    { before, after },
+  );
+  check(
+    "the new key is stored encrypted, the old one marked to retire",
+    sql("SELECT id, substr(jwk, 1, 7) AS p, retire_at FROM signing_keys ORDER BY id")
+      .map((r) => `${r.id}:${r.p}:${r.retire_at ? "retiring" : "-"}`)
+      .join(",") === "current:enc:v1::-,previous:enc:v1::retiring",
+  );
+
   sql("DELETE FROM instance_settings WHERE key = 'issuer'");
   check(
     "initialized portable DB without issuer pin fails closed",

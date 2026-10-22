@@ -5,7 +5,7 @@ import { base64url, nowSec } from "./util";
 const KEY_PREFIX = "enc:v1:";
 const KEY_CONTEXT = "edge-idp signing key v1\0";
 
-function encryptionSecret(env: Env): string {
+export function encryptionSecret(env: Env): string {
   const secret = env.SETUP_TOKEN ?? "";
   if (!/^[A-Za-z0-9_-]{43,}$/.test(secret)) {
     throw new Error(
@@ -28,7 +28,7 @@ function fromBase64url(value: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
-async function sealKey(jwk: string, secret: string): Promise<string> {
+export async function sealKey(jwk: string, secret: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
@@ -57,7 +57,7 @@ async function openKey(stored: string, secret: string): Promise<string> {
   }
 }
 
-async function generateSigningJwk(): Promise<string> {
+export async function generateSigningJwk(): Promise<string> {
   const pair = await crypto.subtle.generateKey(
     {
       name: "RSASSA-PKCS1-v1_5",
@@ -96,30 +96,60 @@ async function storedSigningKey(
   return openKey(row.jwk, secret);
 }
 
-async function instanceRows(
-  env: Env,
-): Promise<{ pinned: string | null; storedKey: string | null }> {
-  const stmts = [
-    ...(env.ISSUER
-      ? []
-      : [env.DB.prepare("SELECT value FROM instance_settings WHERE key = 'issuer'")]),
-    ...(env.SIGNING_KEY_JWK
-      ? []
-      : [env.DB.prepare("SELECT jwk AS value FROM signing_keys WHERE id = 'current'")]),
-  ];
-  if (!stmts.length) return { pinned: null, storedKey: null };
-  const results = await env.DB.batch<{ value: string }>(stmts);
-  const value = (i: number) => results[i]?.results[0]?.value ?? null;
-  return env.ISSUER
-    ? { pinned: null, storedKey: value(0) }
-    : { pinned: value(0), storedKey: env.SIGNING_KEY_JWK ? null : value(1) };
+interface InstanceRows {
+  pinned: string | null;
+  storedKey: string | null;
+  previousKey: string | null;
+}
+
+async function instanceRows(env: Env): Promise<InstanceRows> {
+  const wanted: { name: keyof InstanceRows; stmt: D1PreparedStatement }[] = [];
+  if (!env.ISSUER)
+    wanted.push({
+      name: "pinned",
+      stmt: env.DB.prepare("SELECT value FROM instance_settings WHERE key = 'issuer'"),
+    });
+  if (!env.SIGNING_KEY_JWK) {
+    wanted.push({
+      name: "storedKey",
+      stmt: env.DB.prepare("SELECT jwk AS value FROM signing_keys WHERE id = 'current'"),
+    });
+    wanted.push({
+      name: "previousKey",
+      stmt: env.DB.prepare(
+        "SELECT jwk AS value FROM signing_keys WHERE id = 'previous' AND retire_at > ?1",
+      ).bind(nowSec()),
+    });
+  }
+  const out: InstanceRows = { pinned: null, storedKey: null, previousKey: null };
+  if (!wanted.length) return out;
+  const results = await env.DB.batch<{ value: string }>(wanted.map((w) => w.stmt));
+  wanted.forEach((w, i) => {
+    out[w.name] = results[i]?.results[0]?.value ?? null;
+  });
+  return out;
+}
+
+async function keysFor(env: Env, rows: InstanceRows) {
+  if (env.SIGNING_KEY_JWK)
+    return {
+      SIGNING_KEY_JWK: env.SIGNING_KEY_JWK,
+      SIGNING_KEY_JWK_PREVIOUS: env.SIGNING_KEY_JWK_PREVIOUS,
+      SIGNING_KEY_SOURCE: "secret" as const,
+    };
+  const secret = encryptionSecret(env);
+  return {
+    SIGNING_KEY_JWK: await storedSigningKey(env.DB, secret, rows.storedKey),
+    SIGNING_KEY_JWK_PREVIOUS:
+      env.SIGNING_KEY_JWK_PREVIOUS ||
+      (rows.previousKey ? await openKey(rows.previousKey, secret) : undefined),
+    SIGNING_KEY_SOURCE: "database" as const,
+  };
 }
 
 export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
-  const [settings, { pinned, storedKey }] = await Promise.all([
-    getInstanceSettings(env.DB),
-    instanceRows(env),
-  ]);
+  const [settings, rows] = await Promise.all([getInstanceSettings(env.DB), instanceRows(env)]);
+  const { pinned } = rows;
   if (!env.ISSUER && !pinned) {
     const existing = await env.DB.prepare("SELECT 1 AS present FROM users LIMIT 1").first();
     if (existing)
@@ -135,7 +165,6 @@ export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
     RP_NAME: settings.name || env.RP_NAME || "Identity",
     CF_API_TOKEN: env.CF_API_TOKEN || settings.cfApiToken || undefined,
     CF_ACCOUNT_ID: env.CF_ACCOUNT_ID || settings.cfAccountId || undefined,
-    SIGNING_KEY_JWK:
-      env.SIGNING_KEY_JWK || (await storedSigningKey(env.DB, encryptionSecret(env), storedKey)),
+    ...(await keysFor(env, rows)),
   };
 }
