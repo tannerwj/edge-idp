@@ -16,6 +16,7 @@ export type SettingsTab =
   | "notifications"
   | "clients"
   | "keys"
+  | "backup"
   | "cloudflare"
   | "about";
 
@@ -62,6 +63,12 @@ export const SETTINGS_TABS: TabDef[] = [
     label: "Identity & keys",
     icon: "key",
     lede: "The issuer apps trust and the keys that sign their tokens.",
+  },
+  {
+    id: "backup",
+    label: "Backup",
+    icon: "download",
+    lede: "Download everything needed to rebuild this instance, or restore from a download.",
   },
   {
     id: "cloudflare",

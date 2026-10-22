@@ -514,10 +514,46 @@ The portable installation uses these defaults:
   long-lived `SETUP_TOKEN` Worker secret. A D1 read alone no longer exports
   signing authority. D1 writes can still change users, sessions and keys;
   Worker secret compromise remains critical. D1 backups and the matching
-  `SETUP_TOKEN` are both required to recover this key. The reference instance
-  uses the `SIGNING_KEY_JWK` secret, which takes precedence. Legacy plaintext
-  portable rows fail closed until the operator rotates to a secret-held key
+  `SETUP_TOKEN` are both required to recover this key. A `SIGNING_KEY_JWK`
+  secret takes precedence. Legacy plaintext portable rows fail closed until
+  the operator rotates to a secret-held key
   (`src/instance.ts › sealKey, openKey`).
+- **Rotation** of a database-held key happens in Settings › Identity & keys,
+  or on a schedule (90, 180 or 365 days, off by default) from the hourly
+  job. The current row becomes `previous` with a `retire_at` two hours out, so
+  every token it signed (1-hour TTL) keeps verifying, and a new encrypted key
+  becomes `current`, all in one batch. `previous` is read on every request
+  like `current` and leaves JWKS the moment it retires; the cron deletes it.
+  Rotations are audited and alertable (`src/key-rotation.ts`).
+- **Moving a secret-held key into the database** (Settings › Identity & keys)
+  seals the same JWK under `SETUP_TOKEN`, so no token stops verifying; it
+  takes effect once the operator deletes the `SIGNING_KEY_JWK` secret, which
+  keeps winning until then. It needs a generated `SETUP_TOKEN` secret, which
+  on an instance with users never reopens `/setup`. The trade is the one
+  above: the key is then as safe as `SETUP_TOKEN` and D1 together rather
+  than a Worker secret alone (`src/key-rotation.ts › moveKeyToDatabase`).
+
+## Backups
+
+Settings › Backup downloads people, their passkeys' public keys, memberships,
+groups, app groups, apps, grants, favorites, OIDC clients (with secret
+hashes), webhooks (with their URLs and signing secrets) and settings as one
+JSON file. It never includes sessions, codes, refresh or API tokens,
+enrollment links, signing keys, the audit log or the stored Cloudflare token,
+so a stolen backup can't sign anyone in or mint tokens; it still names
+everyone and holds webhook URLs that are often secrets, so the page says to
+treat it like a password. Downloading and restoring are behind the recheck
+and audited.
+
+Restoring is an untrusted-input path even though only admins reach it. The
+file must be an `edge-idp-backup` version 1, at most 5 MB; every column name
+must be a plain identifier and every value a string, number, null or a
+base64url blob, and only columns that exist in the live table are written
+(`src/backup.ts › parseBackup, rowStatement`). Configuration rows replace the
+ones with the same id; people, memberships, favorites and passkeys are only
+added, so a restore never changes or removes anyone who is already here.
+Passkeys are restored only when the backup's passkey domain matches, since a
+credential bound to another RP ID could never verify here.
 
 ## Admin surface
 
@@ -687,9 +723,10 @@ still checked by the host.
   and `/register` fail closed when `AUTH_LIMITER` is absent; other endpoints
   still benefit from an edge WAF backstop (DEPLOY.md). An hourly cron purges
   expired rows, so transient spam is bounded by storage quota and cleanup.
-- **Key rotation is two secrets, not a UI.** Publish the old key as
-  `SIGNING_KEY_JWK_PREVIOUS` while the new one signs (DEPLOY.md). Tokens last
-  1 hour, which bounds the overlap.
+- **Key rotation for a secret-held key is two secrets.** Publish the old key
+  as `SIGNING_KEY_JWK_PREVIOUS` while the new one signs (DEPLOY.md). Tokens
+  last 1 hour, which bounds the overlap. Database-held keys rotate from the UI
+  (see _Issuer and signing key defaults_).
 - **IPs are hashed** (`ip_hash`) in sessions and audit logs: enough for the
   admin to spot anomalies, not enough to be a PII honeypot.
 - **Audit log is bounded** to 365 days or the newest 50k events, enforced by

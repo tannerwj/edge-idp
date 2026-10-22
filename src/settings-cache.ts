@@ -15,6 +15,9 @@ export type StepUpWindow = (typeof STEP_UP_WINDOWS)[number];
 export const SIGN_IN_UV = ["required", "discouraged"] as const;
 export type SignInUv = (typeof SIGN_IN_UV)[number];
 
+export const KEY_ROTATION_DAYS = ["off", "90", "180", "365"] as const;
+export type KeyRotationDays = (typeof KEY_ROTATION_DAYS)[number];
+
 export const RECOVERY_MODES = ["off", "approval", "auto"] as const;
 export type RecoveryMode = (typeof RECOVERY_MODES)[number];
 
@@ -58,6 +61,7 @@ export interface InstanceSettings {
   magicLinks: boolean;
   adminsAlwaysVerify: boolean;
   cfAccessRevoke: boolean;
+  keyRotationDays: KeyRotationDays;
 }
 
 export const SETTING_KEYS = {
@@ -80,6 +84,7 @@ export const SETTING_KEYS = {
   magicLinks: "magic_links",
   adminsAlwaysVerify: "admins_always_verify",
   cfAccessRevoke: "cf_access_revoke",
+  keyRotationDays: "key_rotation_days",
 } as const;
 
 export function oneOf<T extends string>(list: readonly T[], v: string | null, fallback: T): T {
@@ -114,6 +119,7 @@ function parseSettings(rows: { key: string; value: string }[]): InstanceSettings
     magicLinks: flag(K.magicLinks, false),
     adminsAlwaysVerify: flag(K.adminsAlwaysVerify, true),
     cfAccessRevoke: flag(K.cfAccessRevoke, false),
+    keyRotationDays: oneOf(KEY_ROTATION_DAYS, get(K.keyRotationDays), "off"),
   };
 }
 

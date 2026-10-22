@@ -1512,6 +1512,39 @@ try {
     bc.close();
   }
 
+  step("backup and restore");
+  if (!instance.remote) {
+    await stepUp("/admin/settings/backup");
+    await sql(
+      `INSERT INTO groups (id, name, description, created_at) VALUES ('g-restore', 'restore-me', 'from backup', ${now})`,
+    );
+    const res = await page.request.post(`${BASE}/admin/settings/backup/export`);
+    const backup = await res.json();
+    check(
+      "the backup has people, passkeys and groups, but no sessions or Cloudflare token",
+      backup.format === "edge-idp-backup" &&
+        backup.tables.users.some((u) => u.id === "admin-1") &&
+        backup.tables.groups.some((g) => g.name === "restore-me") &&
+        typeof backup.tables.webauthn_credentials[0]?.public_key?.$b64 === "string" &&
+        !("sessions" in backup.tables) &&
+        !backup.tables.instance_settings.some((r) => r.key === "cf_api_token"),
+    );
+    await sql("DELETE FROM groups WHERE id = 'g-restore'");
+    const restored = await page.request.post(`${BASE}/admin/settings/backup/import`, {
+      multipart: {
+        file: {
+          name: "backup.json",
+          mimeType: "application/json",
+          buffer: Buffer.from(JSON.stringify(backup)),
+        },
+      },
+    });
+    const back = await sql("SELECT name FROM groups WHERE id = 'g-restore'");
+    check("restoring brings the group back", restored.ok && back[0]?.name === "restore-me", back);
+    const admins = (await sql("SELECT COUNT(*) AS n FROM users WHERE id = 'admin-1'"))[0]?.n;
+    check("…and leaves existing people alone", admins === 1);
+  }
+
   step("feedback + update notice");
   {
     if (!instance.remote) {

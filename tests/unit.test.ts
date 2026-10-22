@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emailKey, timingSafeEqualHex } from "../src/util";
 import { newerVersion } from "../src/upstream";
 import { parseBulk } from "../src/invites";
+import { parseBackup } from "../src/backup";
 import { claimsForClient, resolveAccess } from "../src/access";
 import type { Grant } from "../src/access";
 
@@ -182,5 +183,51 @@ describe("parseBulk", () => {
   it("refuses more than 50 people at once", () => {
     const lines = Array.from({ length: 51 }, (_, i) => `p${i}@example.com`).join("\n");
     expect(() => parseBulk(lines)).toThrow("at most 50");
+  });
+});
+
+const backupDoc = (tables: unknown, extra: Record<string, unknown> = {}) =>
+  JSON.stringify({ format: "edge-idp-backup", version: 1, tables, ...extra });
+
+describe("parseBackup", () => {
+  const doc = backupDoc;
+
+  it("refuses anything that isn't a version 1 edge-idp backup", () => {
+    expect(() => parseBackup("not json")).toThrow("isn't JSON");
+    expect(() => parseBackup(JSON.stringify({ format: "other", version: 1, tables: {} }))).toThrow(
+      "isn't an edge-idp backup",
+    );
+    expect(() => parseBackup(doc({}, { version: 2 }))).toThrow("newer version");
+    expect(() => parseBackup(JSON.stringify({ format: "edge-idp-backup", version: 1 }))).toThrow(
+      "no tables",
+    );
+  });
+
+  it("refuses column names that aren't plain identifiers", () => {
+    expect(() => parseBackup(doc({ groups: [{ "id) VALUES (1); --": "x" }] }))).toThrow(
+      "groups table is malformed",
+    );
+  });
+
+  it("refuses nested values other than base64url blobs", () => {
+    expect(() => parseBackup(doc({ users: [{ id: "u", extra: { a: 1 } }] }))).toThrow(
+      "users table is malformed",
+    );
+    expect(() =>
+      parseBackup(doc({ webauthn_credentials: [{ id: "c", public_key: { $b64: "a+b/" } }] })),
+    ).toThrow("webauthn_credentials table is malformed");
+  });
+
+  it("keeps known tables, defaults missing ones to empty, and ignores unknown ones", () => {
+    const b = parseBackup(
+      doc(
+        { groups: [{ id: "g", name: "family", created_at: 1 }], sessions: [{ id_hash: "x" }] },
+        { issuer: "https://id.example.com", rp_id: "id.example.com" },
+      ),
+    );
+    expect(b.tables.groups).toEqual([{ id: "g", name: "family", created_at: 1 }]);
+    expect(b.tables.users).toEqual([]);
+    expect(Object.keys(b.tables)).not.toContain("sessions");
+    expect(b.rp_id).toBe("id.example.com");
   });
 });

@@ -51,12 +51,15 @@ Every script prints `ok` / `FAIL` lines and exits non-zero on any failure.
 
 Vitest with `environment: "node"`, including only `tests/unit.test.ts`. It
 covers `timingSafeEqualHex`, `emailKey`, the upstream `newerVersion`
-comparison, access-grant resolution and the bulk-invite parser
+comparison, access-grant resolution, the bulk-invite parser and the backup
+parser
 (`vitest.config.ts`). Each case names a
 failure the e2e suites can't see: unequal lengths in the constant-time
 compare, non-ASCII email case folding, version ordering, grant leaks across
-users, groups, audiences and public accounts, and bulk-invite lines that
-would invite the wrong address or a name with no address. Helpers that every e2e
+users, groups, audiences and public accounts, bulk-invite lines that
+would invite the wrong address or a name with no address, and backup files
+that aren't a version 1 backup or carry non-identifier column names or
+nested values. Helpers that every e2e
 ceremony already exercises (base64url, `sha256Hex`, `rpIdFromIssuer`) have no
 unit tests.
 
@@ -141,7 +144,10 @@ virtual authenticator through:
   token that verifies against JWKS (`typ: logout+jwt`, `aud`, `sub`, the
   `events` claim, no `nonce`) to a local receiver, and the record being
   cleared; and Access revocation refused while the Cloudflare token is the
-  one saved in settings.
+  one saved in settings;
+- backup and restore: the download holding people, passkey public keys and
+  groups but no sessions or Cloudflare token, and a restore bringing a
+  deleted group back without touching existing people.
 
 ### OIDC API (`tests/e2e/api.mjs`)
 
@@ -173,6 +179,8 @@ that:
   refused;
 - the right token leads to passkey enrollment and an admin account;
 - `/setup` is gone (GET and POST) once a user exists, and setup is audited;
+- Rotate now on the database-held key publishing a new key first and keeping
+  the old one, with both rows encrypted and the old one marked to retire;
 - after a passkey recheck (minting an API token is a sensitive admin action),
   there is no `execute` MCP tool without a Worker Loader; after a restart
   with one added, the signing key is unchanged and `execute` works and uses
@@ -192,6 +200,7 @@ failure. They come from the October 2026 security reviews
 | `identity-and-admin.mjs`   | local           | Members and public accounts can't change their own email, so the address stays free to invite; Make member needs a real email and stores it; a public account is refused at a members-only `/authorize`; `/end-session` won't redirect for a self-registered client or to an opaque (`javascript:`) target but does to an admin client's own origin; sensitive admin POSTs without a recent recheck go to `/login?reauth=1` and write nothing; an admin can't mint their own enrollment link even after a recheck; `/authorize` for `mcp` needs a recheck (`login_required` with `prompt=none`); the recheck window is a setting and changing it is audited; a DCR client asking only `openid` gets no email, groups or name; 60 concurrent sandbox calls still hit the 50-call limit; with recovery off, `/recover` answers 404 and records nothing; email sign-in links are off by default (404) and an unknown link signs nobody in; webhooks over plain http, to an IP literal, or with credentials in the URL are refused; `/enroll` keeps `no-referrer`. |
 | `no-user-verification.mjs` | local, Chromium | An authenticator without user verification can't enroll (options demand `userVerification: "required"`, the page shows an error, nothing is stored). Then a second account enrolls with verification and its authenticator stops verifying; a `navigator.credentials.get` wrapper forces `discouraged` so the browser never refuses first, and the server must: sign-in is refused (401) by default, accepted once `sign_in_uv` is `discouraged` (after the 10-second settings cache), and a passkey recheck is still refused. Made an admin, the same account is refused with `uv_required` until `admins_always_verify` is turned off.                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `public-accounts.mjs`      | local           | A public account (seeded with a real-looking email) can't redeem a code at an admin client that admits every member, the way Cloudflare Access's does, and gets no token; at a client open to the public it can, and its ID token carries no `email`, `email_verified` or `preferred_username`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `signing-keys.mjs`         | local           | Started with a `SETUP_TOKEN`: a secret-held key can't be rotated from the UI; moving it stores it encrypted (`enc:v1:`); restarted without `SIGNING_KEY_JWK`, the same `kid` signs from D1 and a token from before the move still verifies; rotating publishes the new key first and keeps the old one, new tokens carry the new `kid`, old tokens verify during the overlap, and once `retire_at` passes the old key leaves JWKS and its tokens stop verifying.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `token-boundaries.mjs`     | local           | A code or refresh token presented by the wrong client is rejected without being consumed; a group-restricted client's refresh is denied and its family revoked after the user leaves the group; an `offline_access`-only access token is rejected by `/userinfo` and carries no email; a read-only API token can't write through `execute`; the sandbox has no outbound network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 "Local" means `startLocal` (`cf dev`, `cloudflare.config.ts`); "portable"
@@ -244,6 +253,9 @@ Each suite gets its own throwaway instance, so tests never touch your
   `.wrangler/state`. `startPortable` uses `wrangler.jsonc` with
   `wrangler dev`.
 - A server counts as up when `/healthz` answers OK, with a 90-second deadline.
+- `startLocal` takes extra `vars` (for example `SETUP_TOKEN`) and returns
+  `restart(fn)`, which stops the dev server, rewrites `.dev.vars` from
+  `fn(initialVars)` and starts it again on the same D1 state.
 - **`outbox()`** (local instances) returns the emails the simulated `EMAIL`
   binding was asked to send, parsed from the dev server's log: `from`, `to`,
   `subject`, and the plain-text body read from the file the simulator wrote

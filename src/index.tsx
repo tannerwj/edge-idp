@@ -25,6 +25,7 @@ import { uiFor } from "./ui/layout";
 import { runMaintenance } from "./maintenance";
 import { setup, setupPending } from "./setup";
 import { checkForUpdate } from "./upstream";
+import { autoRotate } from "./key-rotation";
 import { withScope } from "./request-context";
 import { safeNext } from "./util";
 import { getInstanceSettings } from "./settings-cache";
@@ -275,6 +276,15 @@ export default Sentry.withSentry(
           console.log(JSON.stringify({ msg: "maintenance", ...r }));
           return r;
         }),
+      );
+      ctx.waitUntil(
+        resolveEnv(env, "https://cron.invalid")
+          .then((resolved) => autoRotate(resolved))
+          .then((r) => {
+            if (r !== "skipped") console.log(JSON.stringify({ msg: "key_rotation", result: r }));
+            return r;
+          })
+          .catch((e: unknown) => console.error(e)),
       );
       ctx.waitUntil(
         checkForUpdate(env).then((r) => {
