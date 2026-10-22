@@ -1,4 +1,5 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { withScope } from "../request-context";
 import type { Env } from "../config";
 import { resolveEnv } from "../instance";
 import * as ops from "../ops";
@@ -44,9 +45,11 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
       throw new Error(`${name} needs write access; this token is read-only`);
     try {
       const env = await resolveEnv(this.env, props.issuer);
-      return await tool.handler(
-        { db: this.env.DB, env, actor: { adminId: props.adminId, via: "mcp" } },
-        args ?? {},
+      return await withScope({ env, wait: (p) => this.ctx.waitUntil(p) }, () =>
+        tool.handler(
+          { db: this.env.DB, env, actor: { adminId: props.adminId, via: "mcp" } },
+          args ?? {},
+        ),
       );
     } catch (e) {
       throw new Error(e instanceof ops.OpError ? e.message : `Internal error: ${errMessage(e)}`, {

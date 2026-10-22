@@ -11,6 +11,7 @@ import { registration } from "./oauth-clients";
 import { admin } from "./admin";
 import { account } from "./account";
 import { accountEmail } from "./account-email";
+import { recover } from "./recover";
 import { home } from "./home";
 import { pickup } from "./secret-pickup";
 import { mcp } from "./mcp";
@@ -22,9 +23,13 @@ import { uiFor } from "./ui/layout";
 import { runMaintenance } from "./maintenance";
 import { setup, setupPending } from "./setup";
 import { checkForUpdate } from "./upstream";
+import { withScope } from "./request-context";
+import { getInstanceSettings } from "./settings-cache";
+import { startNotifications } from "./notify";
 import { APP_CSS, APP_JS } from "./assets.gen";
 
 const app = new Hono<{ Bindings: Env }>();
+startNotifications();
 
 const TOKEN_ENDPOINTS = ["/token", "/revoke", "/register", "/userinfo", "/mcp"];
 
@@ -46,7 +51,8 @@ function limiterFor(env: Env, path: string): RateLimit | undefined {
     path === "/authorize/decision" ||
     path === "/setup" ||
     path === "/client-secret/pickup" ||
-    path.startsWith("/account/email")
+    path.startsWith("/account/email") ||
+    path === "/recover"
   )
     return env.AUTH_LIMITER;
   if (path === "/authorize" || path === "/token" || path === "/revoke" || path.startsWith("/mcp"))
@@ -128,7 +134,7 @@ app.use("*", async (c, next) => {
       );
   }
 
-  return next();
+  return withScope({ env: c.env, wait: (p) => c.executionCtx.waitUntil(p) }, () => next());
 });
 
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d5ef6"/><stop offset="1" stop-color="#3b3bb8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" transform="translate(4 4)"><path d="M12 10a2 2 0 0 0-2 2c0 1-.1 2.5-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></g></svg>`;
@@ -180,6 +186,7 @@ app.get("/login", async (c) => {
       app={await loginContext(c.env.DB, next)}
       reauth={reauth && !!session}
       signedOut={c.req.query("signed_out") === "1"}
+      recovery={(await getInstanceSettings(c.env.DB)).recoveryMode !== "off"}
     />,
   );
 });
@@ -224,6 +231,7 @@ app.route("/", oidc);
 app.route("/", tokens);
 app.route("/", account);
 app.route("/", accountEmail);
+app.route("/", recover);
 app.route("/", home);
 app.route("/", pickup);
 

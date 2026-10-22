@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { getInstanceSettings } from "../../settings-cache";
-import type { SignInUv, StepUpWindow } from "../../settings-cache";
+import { getInstanceSettings, RECOVERY_MODES, SETTING_KEYS } from "../../settings-cache";
+import type { RecoveryMode, SignInUv, StepUpWindow } from "../../settings-cache";
+import { emailStatus } from "../../email";
 import type { AdminVars } from "../shell";
 import { act, actor, field } from "../shell";
 import * as ops from "../../ops";
@@ -35,38 +36,95 @@ const UV: { value: SignInUv; label: string; sub: string; warn?: boolean }[] = [
   },
 ];
 
-signInSettings.get("/sign-in", async (c) => {
-  const s = await getInstanceSettings(c.env.DB);
-  return settingsPage(
-    c,
-    "sign-in",
-    <form method="post" action="/admin/settings/sign-in" class="stack-lg">
+const RECOVERY: { value: RecoveryMode; label: string; sub: string; warn?: boolean }[] = [
+  {
+    value: "off",
+    label: "An admin handles it",
+    sub: "No link on the sign-in page. People ask you directly, and you send them a new enrollment link.",
+  },
+  {
+    value: "approval",
+    label: "People ask, an admin approves",
+    sub: 'Sign-in shows "Lost your passkey?". Requests appear on the Overview and in admin alerts; approving sends a one-hour link.',
+  },
+  {
+    value: "auto",
+    label: "Email them a link right away",
+    sub: "Needs email. Anyone who can read a member's inbox can add a passkey to their account. Admins' requests still need another admin.",
+    warn: true,
+  },
+];
+
+function RecoveryCard(props: { mode: RecoveryMode; emailReady: boolean }) {
+  return (
+    <form method="post" action="/admin/settings/sign-in/recovery">
       <SettingsCard
-        icon="fingerprint"
-        title="Verify the person at sign-in"
-        sub="Whether a passkey sign-in also needs the device's biometric or PIN. Passkey rechecks and new passkeys always need it."
+        icon="key"
+        title="Lost passkeys"
+        sub="What happens when someone can't sign in because their passkeys are gone."
       >
-        <div class="card-body">
-          <ChoiceList name="signInUv" value={s.signInUv} options={UV} />
-        </div>
-      </SettingsCard>
-      <SettingsCard
-        icon="shield"
-        title="Recheck before sensitive admin actions"
-        sub="Inviting people, enrollment links, passkey resets, roles, emails, API tokens, OAuth clients, settings and admin MCP sign-ins ask the admin to use their passkey again if they haven't recently."
-      >
-        <div class="card-body">
-          <ChoiceList name="adminStepUp" value={s.adminStepUp} options={WINDOWS} />
-          {s.adminStepUp === "off" && s.signInUv === "discouraged" ? (
+        <div class="card-body stack">
+          <ChoiceList name="recoveryMode" value={props.mode} options={RECOVERY} />
+          {props.mode === "auto" && !props.emailReady ? (
             <Callout tone="warn">
-              With both relaxed, anyone holding an admin's unlocked device can do everything an
-              admin can.
+              Email isn't sending, so requests wait for an admin until it is.
             </Callout>
           ) : null}
         </div>
         <SaveFoot />
       </SettingsCard>
-    </form>,
+    </form>
+  );
+}
+
+signInSettings.get("/sign-in", async (c) => {
+  const s = await getInstanceSettings(c.env.DB);
+  return settingsPage(
+    c,
+    "sign-in",
+    <>
+      <form method="post" action="/admin/settings/sign-in" class="stack-lg">
+        <SettingsCard
+          icon="fingerprint"
+          title="Verify the person at sign-in"
+          sub="Whether a passkey sign-in also needs the device's biometric or PIN. Passkey rechecks and new passkeys always need it."
+        >
+          <div class="card-body">
+            <ChoiceList name="signInUv" value={s.signInUv} options={UV} />
+          </div>
+        </SettingsCard>
+        <SettingsCard
+          icon="shield"
+          title="Recheck before sensitive admin actions"
+          sub="Inviting people, enrollment links, passkey resets, roles, emails, API tokens, OAuth clients, settings and admin MCP sign-ins ask the admin to use their passkey again if they haven't recently."
+        >
+          <div class="card-body">
+            <ChoiceList name="adminStepUp" value={s.adminStepUp} options={WINDOWS} />
+            {s.adminStepUp === "off" && s.signInUv === "discouraged" ? (
+              <Callout tone="warn">
+                With both relaxed, anyone holding an admin's unlocked device can do everything an
+                admin can.
+              </Callout>
+            ) : null}
+          </div>
+          <SaveFoot />
+        </SettingsCard>
+      </form>
+      <RecoveryCard mode={s.recoveryMode} emailReady={emailStatus(c.env, s) === "ready"} />
+    </>,
+  );
+});
+
+signInSettings.post("/sign-in/recovery", async (c) => {
+  const form = await c.req.parseBody();
+  return act(c, "/admin/settings/sign-in", "Saved", () =>
+    ops.setChoiceSetting(
+      c.env.DB,
+      SETTING_KEYS.recoveryMode,
+      field(form, "recoveryMode"),
+      RECOVERY_MODES,
+      actor(c),
+    ),
   );
 });
 

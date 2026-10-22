@@ -128,6 +128,8 @@ const CATEGORIES: Record<string, string[]> = {
     "SETUP_REJECTED",
     "SECURITY_SETTINGS_CHANGED",
     "EMAIL_CHANGED",
+    "RECOVERY_REQUESTED",
+    "RECOVERY_LINK_SENT",
   ],
   passkeys: [
     "PASSKEY_REGISTERED",
@@ -136,6 +138,9 @@ const CATEGORIES: Record<string, string[]> = {
     "PASSKEYS_REVOKED",
     "ENROLLMENT_STARTED",
     "ENROLLMENT_REVOKED",
+    "RECOVERY_REQUESTED",
+    "RECOVERY_LINK_SENT",
+    "RECOVERY_DISMISSED",
   ],
   admin: [
     "SETUP_COMPLETED",
@@ -170,6 +175,8 @@ const CATEGORIES: Record<string, string[]> = {
     "SETTINGS_CHANGED",
     "SECURITY_SETTINGS_CHANGED",
     "EMAIL_SETTINGS_CHANGED",
+    "WEBHOOK_ADDED",
+    "WEBHOOK_REMOVED",
     "ENROLLMENT_REVOKED",
     "EMAIL_CHANGED",
     "CF_API_CONNECTED",

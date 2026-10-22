@@ -255,6 +255,27 @@ try {
     true,
   );
 
+  check("recovery is off by default: no help page", (await get("/recover")).status, 404);
+  const offPost = await fetch(`${base}/recover`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ email: "member@example.test" }),
+  });
+  check("…and no request is taken", offPost.status, 404);
+  check("…nor recorded", await scalar("SELECT COUNT(*) FROM recovery_requests"), 0);
+  for (const [url, why] of [
+    ["http://hooks.example.com/x", "plain http"],
+    ["https://10.1.2.3/x", "an IP literal"],
+    ["https://user:pw@hooks.example.com/x", "credentials in the URL"],
+  ]) {
+    await post("/admin/settings/notifications/webhooks", cookies.adminStepped, {
+      name: "Bad",
+      url,
+      format: "json",
+    });
+    check(`a webhook with ${why} is refused`, await scalar("SELECT COUNT(*) FROM webhooks"), 0);
+  }
+
   const enroll = await get("/enroll");
   check(
     "the enrollment page keeps no-referrer",

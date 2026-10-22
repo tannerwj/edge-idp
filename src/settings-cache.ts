@@ -15,6 +15,29 @@ export type StepUpWindow = (typeof STEP_UP_WINDOWS)[number];
 export const SIGN_IN_UV = ["required", "discouraged"] as const;
 export type SignInUv = (typeof SIGN_IN_UV)[number];
 
+export const RECOVERY_MODES = ["off", "approval", "auto"] as const;
+export type RecoveryMode = (typeof RECOVERY_MODES)[number];
+
+export const DEFAULT_ALERT_EVENTS = [
+  "REFRESH_REUSE_DETECTED",
+  "PASSKEY_COUNTER_REGRESSION",
+  "SETUP_REJECTED",
+  "ADMIN_GRANTED",
+  "API_TOKEN_CREATED",
+  "SECURITY_SETTINGS_CHANGED",
+  "RECOVERY_REQUESTED",
+];
+
+function stringList(raw: string | null, fallback: string[]): string[] {
+  if (raw === null) return fallback;
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export interface InstanceSettings {
   accent: string;
   name: string | null;
@@ -28,6 +51,10 @@ export interface InstanceSettings {
   emailFrom: string | null;
   emailFromName: string | null;
   selfEmailChange: boolean;
+  recoveryMode: RecoveryMode;
+  alertEvents: string[];
+  alertEmailAdmins: boolean;
+  userNotices: boolean;
 }
 
 export const SETTING_KEYS = {
@@ -43,6 +70,10 @@ export const SETTING_KEYS = {
   emailFrom: "email_from",
   emailFromName: "email_from_name",
   selfEmailChange: "self_email_change",
+  recoveryMode: "recovery_mode",
+  alertEvents: "alert_events",
+  alertEmailAdmins: "alert_email_admins",
+  userNotices: "user_notices",
 } as const;
 
 export function oneOf<T extends string>(list: readonly T[], v: string | null, fallback: T): T {
@@ -70,6 +101,10 @@ function parseSettings(rows: { key: string; value: string }[]): InstanceSettings
     emailFrom: get(K.emailFrom),
     emailFromName: get(K.emailFromName),
     selfEmailChange: flag(K.selfEmailChange, false),
+    recoveryMode: oneOf(RECOVERY_MODES, get(K.recoveryMode), "off"),
+    alertEvents: stringList(map.get(K.alertEvents) ?? null, DEFAULT_ALERT_EVENTS),
+    alertEmailAdmins: flag(K.alertEmailAdmins, false),
+    userNotices: flag(K.userNotices, true),
   };
 }
 

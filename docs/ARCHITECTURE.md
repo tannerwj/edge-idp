@@ -176,17 +176,23 @@ src/
   invites.ts            invite and enrollment-link emails, pending invites, bulk-invite parsing
   email-change.ts       self-service email change: confirmation link and notice
   account-email.tsx     /account/email routes (start, confirm)
+  recovery.ts           "lost my passkey" requests: automatic links, approval, dismissal
+  recover.tsx           public /recover pages
+  notify.ts             audit-event fan-out: admin alert emails, webhooks, security notices
+  ops-notify.ts         alert settings and webhook management
+  outbound.ts           guarded outbound POSTs (webhooks): URL rules, timeout, no redirects
+  request-context.ts    per-request scope (env + waitUntil) via AsyncLocalStorage
   cf-access.ts          optional read-only Cloudflare Access integration
   util.ts               small pure helpers (encoding, hashing, comparisons)
   account.tsx           Account & security routes
   account-sections.tsx  Account & security views
   home.tsx              home launcher: app-group sections, favorites, search
   pages.tsx             sign-in, enrollment, consent, sign-out, error pages
-  admin/                admin UI: index (router, middleware), shell, dashboard, users, invites, user-detail,
+  admin/                admin UI: index (router, middleware), shell, dashboard, users, invites, recovery, user-detail,
                         user-tabs, groups, apps (+ apps-form, apps-access grants and app groups,
                         apps-cloudflare import view), clients,
                         client-detail, audit, connect, tokens, metrics, settings/ (one module per tab
-                        plus shell: general, sign-in, email, clients, keys, cloudflare, about)
+                        plus shell: general, sign-in, email, notifications, clients, keys, cloudflare, about)
   ui/                   layout (document, flash), components, icons, activity feed
   client/               browser bundle: app.ts entry, ui.ts, dom.ts, passkeys.ts, palette.ts, app.css
   assets.gen.ts         generated: bundled app.js/app.css, build hash, version
@@ -588,6 +594,19 @@ server and emitted as `data-v`, with one stylesheet rule per bucket
 `[data-accent]`. Icons are inline SVG (24px grid, stroke-based, shapes after
 Lucide, ISC licensed), so they inherit `currentColor` and need no extra
 requests or CSP allowances (`src/ui/icons.tsx`).
+
+**Notifications.** `audit()` calls one registered listener after writing the
+row (`src/db.ts › onAudit`); `startNotifications` registers it at startup.
+The listener needs the resolved env and the request's `waitUntil`, which
+`audit()`'s callers don't pass around, so the global middleware runs every
+request inside a scope holding both (`src/request-context.ts › withScope`,
+AsyncLocalStorage from `nodejs_compat`). Sandbox tool calls open their own
+scope, since they arrive on a separate RPC invocation. Events written with
+`auditStmt` inside a batch (`CODE_ISSUED`, `TOKEN_ISSUED`) don't notify, and
+neither does the cron, which has no scope. `dispatch` reads the cached
+settings, then sends notices, admin emails and webhooks concurrently with
+`Promise.allSettled`, and records each webhook's last status for the
+settings page (`src/notify.ts`).
 
 **Settings pages.** Settings is a set of tabs, one module each under
 `src/admin/settings/`, sharing `settingsPage` for the layout: a sticky

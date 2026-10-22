@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { VERSION } from "../assets.gen";
 import { availableUpdate } from "../upstream";
+import { pendingRecovery } from "../recovery";
 import { count } from "../db";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
@@ -112,8 +113,24 @@ function attentionItems(x: {
   pending: string[];
   expiringTokens: number;
   denied: number;
+  recovery: number;
 }): Attention[] {
   const out: Attention[] = [];
+  if (x.recovery) {
+    out.push({
+      tone: "bad",
+      icon: "key",
+      text: (
+        <>
+          <b>
+            {x.recovery} {x.recovery === 1 ? "person needs" : "people need"} help signing in.
+          </b>{" "}
+          Approve to send a link for a new passkey.
+        </>
+      ),
+      href: "/admin/users/recovery",
+    });
+  }
   if (x.update) {
     out.push({
       tone: "accent",
@@ -350,6 +367,7 @@ dashboardAdmin.get("/", async (c) => {
     pending: noKeys.results.map((u) => u.name),
     expiringTokens,
     denied,
+    recovery: (await pendingRecovery(db)).length,
   });
 
   return await page(

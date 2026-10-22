@@ -1,6 +1,7 @@
 import { getUserGroups, listGroups, listUsers } from "../db";
 import * as ops from "../ops";
 import { deliverLink, pendingInvites, revokeInvites } from "../invites";
+import { approveRecovery, dismissRecovery, pendingRecovery } from "../recovery";
 import { USER_REF, groupByRef, obj, str, strList, userByRef } from "./common";
 import type { ToolDef } from "./common";
 
@@ -222,6 +223,36 @@ export const PEOPLE_TOOLS: ToolDef[] = [
     handler: async ({ db, actor }, args) => ({
       revoked: await revokeInvites(db, (await userByRef(db, args)).id, actor),
     }),
+  },
+  {
+    name: "recovery_requests_list",
+    write: false,
+    description:
+      "People who asked for help signing in after losing their passkeys (Settings › Sign-in › Lost passkeys).",
+    inputSchema: obj(),
+    handler: async ({ db }) => pendingRecovery(db),
+  },
+  {
+    name: "recovery_requests_resolve",
+    write: true,
+    description:
+      "Approve (mint a one-hour passkey link, optionally emailed) or dismiss a sign-in help request. Verify the request really came from the person before approving.",
+    inputSchema: obj(
+      {
+        id: { type: "string", description: "Request id from recovery_requests_list" },
+        action: { type: "string", enum: ["approve", "dismiss"] },
+        send_email: { type: "boolean" },
+      },
+      ["id", "action"],
+    ),
+    handler: async ({ db, env, actor }, args) => {
+      if (str(args.action) === "dismiss") {
+        await dismissRecovery(db, str(args.id), actor);
+        return { ok: true };
+      }
+      const r = await approveRecovery(env, str(args.id), args.send_email === true, actor);
+      return { enrollment_link: r.link, emailed: r.delivery?.emailed ?? false };
+    },
   },
   {
     name: "users_reset_passkeys",

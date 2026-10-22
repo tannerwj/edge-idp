@@ -12,9 +12,10 @@ is in [TESTING.md](TESTING.md).
 
 There is no password column, no password reset flow, and no fallback factor.
 That deletes credential stuffing, password spraying, and reset-token phishing
-in one move, at the cost that account recovery is admin-assisted (revoke keys,
-then send a fresh enrollment link). Users are nudged to enroll two passkeys
-(phone and laptop) so losing one device is a non-event.
+in one move, at the cost that account recovery goes through a fresh
+enrollment link, sent by an admin or, if an admin allows it, by email
+(see _Account recovery_). Users are nudged to enroll two passkeys (phone and
+laptop) so losing one device is a non-event.
 
 A user cannot remove their own last passkey from Account & security; the
 handler refuses a deletion that would leave zero credentials, so nobody can
@@ -307,6 +308,53 @@ it. The email carries the same bearer link, so whoever reads that inbox can
 enroll a passkey, exactly as if the admin had pasted the link into a chat;
 the admin still sees the link on screen as a fallback. Invites never go to a
 public account (it has no address) (`src/invites.ts › deliverLink`).
+
+## Account recovery (optional)
+
+"Lost your passkey?" is off by default; then the sign-in page doesn't offer
+it, `/recover` answers 404, and recovery is the admin sending a new
+enrollment link. Settings › Sign-in › Lost passkeys has two other modes:
+
+- **An admin approves.** The person enters their email at `/recover`; a
+  pending request appears on the Overview and goes to admin alerts.
+  Approving mints a one-hour enrollment link (emailed if email is on). The
+  admin is asked to confirm the request really came from that person,
+  because anyone can type an address in.
+- **Email a link right away.** The link goes straight to the address on the
+  account. This makes the inbox a way into the account: anyone who can read
+  a member's email can add a passkey. The setting says so. Admins are never
+  served automatically; their requests wait for another admin, and an admin
+  can't approve their own.
+
+Either way the answer at `/recover` is the same whether or not the address
+exists, so it can't be used to find accounts. Public accounts and disabled
+ones get nothing. The link is an ordinary enrollment link with a one-hour
+TTL, so it is single-use, hashed, and replaces any older unused link; the
+person's other passkeys keep working. Each person has at most one pending
+request. `/recover` is on the authentication rate limit, and every request,
+approval and email is audited (`src/recovery.ts`, `src/recover.tsx`).
+
+## Alerts, webhooks and notices
+
+Audited events can reach admins by email, any number of webhooks, and the
+person concerned (Settings › Notifications). Sending happens after the
+response, through `waitUntil`, so a slow or failing receiver never slows or
+fails the action it reports (`src/notify.ts › dispatch`).
+
+Webhook URLs are entered by admins but are still outbound requests from the
+root of trust, so they get the same treatment as client metadata fetches:
+https only, a public hostname (no IP literals, no localhost, no single-label
+names), no credentials in the URL, redirects not followed, a 5-second
+timeout, and the response body discarded. Plain-http loopback is accepted
+only when the issuer itself is local, for development
+(`src/outbound.ts › outboundUrlProblem`). A webhook can carry a signing
+secret; requests then include `x-edge-idp-signature: sha256=<HMAC of the
+body>`. The secret is shown to admins so the receiver can be configured.
+
+Payloads name the person (and their email) and the app involved, so choose
+where you send them. Security notices go only to the person concerned, never
+to public accounts, and skip the first passkey of a new account. All of
+these settings are behind the admin recheck.
 
 ## Public sign-up
 
