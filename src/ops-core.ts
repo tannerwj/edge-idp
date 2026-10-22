@@ -13,6 +13,8 @@ export const by = (a: Actor, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 export function parseRedirectUris(input: string | string[]): string[] {
   const list = (Array.isArray(input) ? input : input.split(/[\r\n,]+/))
     .map((s) => s.trim())

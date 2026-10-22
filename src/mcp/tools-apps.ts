@@ -1,9 +1,10 @@
-import { audit, getSetting, listApps, listClients, setSetting } from "../db";
+import { audit, listApps, listClients, setSetting } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
 import { listAppGroups } from "../access";
 import { createPickup, PICKUP_TTL } from "../secret-pickup";
 import { ACCENTS, getInstanceSettings, invalidateSettingsCache } from "../settings-cache";
+import { emailStatus } from "../email";
 import { clientByRef, obj, str, strList } from "./common";
 import type { ToolDef } from "./common";
 
@@ -303,17 +304,19 @@ export const APP_TOOLS: ToolDef[] = [
     description:
       "Instance settings: name, accent color, dynamic client registration, CIMD support, whether the read-only Cloudflare Access connection is set up, and the security settings (changed only in the admin UI).",
     inputSchema: obj(),
-    handler: async ({ db, env }) => ({
-      ...(await getInstanceSettings(db).then((s) => ({
+    handler: async ({ db, env }) => {
+      const s = await getInstanceSettings(db);
+      return {
+        name: env.RP_NAME,
+        accent: s.accent,
+        dcr_enabled: s.dcrEnabled,
+        cimd_enabled: s.cimdEnabled,
+        cloudflare_connected: !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID),
         admin_step_up: s.adminStepUp,
         sign_in_user_verification: s.signInUv,
-      }))),
-      name: env.RP_NAME,
-      cloudflare_connected: !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID),
-      accent: await getSetting(db, "accent", "indigo"),
-      dcr_enabled: (await getSetting(db, "dcr_enabled", "1")) === "1",
-      cimd_enabled: (await getSetting(db, "cimd_enabled", "1")) === "1",
-    }),
+        email: emailStatus(env, s),
+      };
+    },
   },
   {
     name: "settings_set",

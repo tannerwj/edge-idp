@@ -211,10 +211,11 @@ try {
     true,
   );
 
-  const security = await post("/admin/settings/security", cookies.adminStepped, {
+  const security = await post("/admin/settings/sign-in", cookies.adminStepped, {
     adminStepUp: "off",
+    signInUv: "required",
   });
-  check("the recheck window is a setting", location(security), "/admin/settings#security");
+  check("the recheck window is a setting", location(security), "/admin/settings/sign-in");
   const relaxed = await post("/admin/users/member-1/enrollment", cookies.admin);
   check("with the recheck off, the plain session may act", relaxed.status, 200);
   check(

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { getSetting, listClients } from "../db";
+import { getInstanceSettings } from "../settings-cache";
+import { listClients } from "../db";
 import { cfConfigured } from "../cf-access";
 import type { AdminVars } from "./shell";
 import { page } from "./shell";
@@ -166,7 +167,7 @@ function AccessSection(props: {
             ) : (
               <>
                 Add them under <a href="/admin/apps">Apps</a>, or{" "}
-                <a href="/admin/settings#cloudflare">connect Cloudflare</a> (read-only) to import
+                <a href="/admin/settings/cloudflare">connect Cloudflare</a> (read-only) to import
                 them and see their policies here.
               </>
             )}
@@ -212,11 +213,9 @@ connectAdmin.get("/", async (c) => {
     c.env.RP_NAME.toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "idp";
-  const [clients, dcr, cimd] = await Promise.all([
-    listClients(c.env.DB),
-    getSetting(c.env.DB, "dcr_enabled", "1"),
-    getSetting(c.env.DB, "cimd_enabled", "1"),
-  ]);
+  const [clients, s] = await Promise.all([listClients(c.env.DB), getInstanceSettings(c.env.DB)]);
+  const dcr = s.dcrEnabled ? "1" : "0";
+  const cimd = s.cimdEnabled ? "1" : "0";
   const accessClient = clients.find((x) =>
     x.redirect_uris.some((u) => u.includes("cloudflareaccess.com")),
   );

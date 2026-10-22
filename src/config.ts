@@ -12,6 +12,7 @@ export interface Env {
   API_LIMITER?: RateLimit;
   CF_API_TOKEN?: string;
   CF_ACCOUNT_ID?: string;
+  EMAIL?: SendEmail;
 }
 
 export function isLocalIssuer(issuer: string): boolean {

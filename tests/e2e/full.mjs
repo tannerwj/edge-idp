@@ -94,6 +94,15 @@ async function authorizeInBrowser(params, { approve } = {}) {
   return captured;
 }
 
+async function waitForMail(match) {
+  for (let i = 0; i < 40; i++) {
+    const mail = instance.outbox?.().find((m) => match(m) && m.text);
+    if (mail) return mail;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return instance.outbox?.().find(match) ?? null;
+}
+
 async function stepUp(next) {
   await page.goto(`${BASE}/login?reauth=1&next=${encodeURIComponent(next)}`);
   await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
@@ -174,6 +183,12 @@ try {
     "/admin/tokens",
     "/admin/metrics",
     "/admin/settings",
+    "/admin/settings/sign-in",
+    "/admin/settings/email",
+    "/admin/settings/clients",
+    "/admin/settings/keys",
+    "/admin/settings/cloudflare",
+    "/admin/settings/about",
     "/account",
   ]) {
     const r = await page.goto(BASE + p);
@@ -1011,6 +1026,7 @@ try {
     await page.fill("input[name=name]", "E2E Identity");
     await saveSettings();
 
+    await page.goto(`${BASE}/admin/settings/cloudflare`);
     check(
       "Cloudflare card offers to connect",
       !!(await page.$("#cloudflare form[action='/admin/settings/cloudflare']")),
@@ -1028,7 +1044,7 @@ try {
     await sql(
       "INSERT INTO instance_settings (key, value, updated_at) VALUES ('cf_api_token', 'seeded-token-value-0123456789', 0), ('cf_account_id', 'fedcba9876543210fedcba9876543210', 0)",
     );
-    await page.goto(`${BASE}/admin/settings`);
+    await page.goto(`${BASE}/admin/settings/cloudflare`);
     const card = (await page.textContent("#cloudflare")) ?? "";
     check(
       "a saved connection shows as connected, never the token",
@@ -1042,6 +1058,36 @@ try {
     check(
       "disconnect clears the stored credentials",
       (await setting("cf_api_token")) === null && (await setting("cf_account_id")) === null,
+    );
+  }
+
+  step("email");
+  if (!instance.remote) {
+    await stepUp("/admin/settings/email");
+    check(
+      "with a binding but no sender, email asks for one",
+      (await page.textContent(".settings-nav")).includes("Not set up") ||
+        (await page.textContent("body")).includes("Needs a sender"),
+    );
+    await page.fill("input[name=from]", "id@example.test");
+    await page.check("input[name=enabled]", { force: true });
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action='/admin/settings/email'] button[type=submit]"),
+    ]);
+    check("email shows as sending", (await page.textContent(".settings-nav")).includes("On"));
+    await Promise.all([
+      page.waitForNavigation(),
+      page.click("form[action='/admin/settings/email/test'] button[type=submit]"),
+    ]);
+    const flash = await page.getAttribute("body", "data-flash");
+    const test = await waitForMail((m) => m.subject.startsWith("Test email from"));
+    check(
+      "a test email goes to the admin, from the configured sender",
+      test?.to.includes("ada@example.test") &&
+        test?.from.includes("id@example.test") &&
+        test?.text.includes("Email works"),
+      { test, flash },
     );
   }
 
@@ -1059,7 +1105,7 @@ try {
         check("…and recorded upstream's version", /^\d+\.\d+\.\d+/.test(seen ?? ""), String(seen));
       }
     }
-    await page.goto(`${BASE}/admin/settings`);
+    await page.goto(`${BASE}/admin/settings/about`);
     const bug = await page.getAttribute("#about a[href*='template=bug.yml']", "href");
     const version = (await page.textContent("#about .badge.mono"))?.replace(/^v/, "");
     check(
@@ -1081,7 +1127,7 @@ try {
       "overview says a newer version is out",
       (await page.textContent("body")).includes("v999.0.0 is available"),
     );
-    await page.goto(`${BASE}/admin/settings`);
+    await page.goto(`${BASE}/admin/settings/about`);
     check(
       "settings links to how to update",
       !!(await page.$("#about a[href$='DEPLOY.md#staying-up-to-date']")),

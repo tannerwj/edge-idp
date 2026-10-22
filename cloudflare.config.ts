@@ -49,6 +49,7 @@ export default defineConfig(({ mode }) => {
           simple: { limit: 300, period: 60 },
         }),
         LOADER: bindings.workerLoader(),
+        EMAIL: bindings.sendEmail(),
       },
     },
   };

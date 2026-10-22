@@ -2683,3 +2683,95 @@ a.group-card:hover {
     display: none;
   }
 }
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.settings-nav {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-nav .nav-link .badge {
+  margin-left: auto;
+}
+.settings-intro h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.settings-intro p {
+  margin: 0;
+}
+.badge.sm {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+.choice:hover {
+  background: var(--surface-hover);
+}
+.choice input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.choice b {
+  display: block;
+  font-weight: 600;
+}
+.choice .sub {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+.choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.choice.warn:has(input:checked) {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+@media (max-width: 860px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+  }
+  .settings-nav .nav-link {
+    white-space: nowrap;
+  }
+  .settings-nav .nav-link .badge {
+    display: none;
+  }
+}

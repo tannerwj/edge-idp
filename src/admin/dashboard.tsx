@@ -123,7 +123,7 @@ function attentionItems(x: {
           <b>edge-idp v{x.update} is available.</b> You're on v{VERSION}.
         </>
       ),
-      href: "/admin/settings#about",
+      href: "/admin/settings/about",
     });
   }
   if (x.admins < 2) {

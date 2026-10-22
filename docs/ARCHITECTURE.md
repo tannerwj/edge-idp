@@ -171,7 +171,8 @@ src/
   signup.ts             public sign-up: /webauthn/signup/* for clients open to the public
   maintenance.ts        hourly retention and cleanup
   upstream.ts           daily upstream version check and feedback links
-  settings-cache.ts     per-isolate cache of instance settings (name, accent, Cloudflare connection, security)
+  settings-cache.ts     per-isolate cache of every instance setting, parsed with defaults
+  email.ts              optional outgoing email: status, rendering, sending through the EMAIL binding
   cf-access.ts          optional read-only Cloudflare Access integration
   util.ts               small pure helpers (encoding, hashing, comparisons)
   account.tsx           Account & security routes
@@ -181,7 +182,8 @@ src/
   admin/                admin UI: index (router, middleware), shell, dashboard, users, user-detail,
                         user-tabs, groups, apps (+ apps-form, apps-access grants and app groups,
                         apps-cloudflare import view), clients,
-                        client-detail, audit, connect, tokens, metrics, settings (+ settings-security)
+                        client-detail, audit, connect, tokens, metrics, settings/ (one module per tab
+                        plus shell: general, sign-in, email, clients, keys, cloudflare, about)
   ui/                   layout (document, flash), components, icons, activity feed
   client/               browser bundle: app.ts entry, ui.ts, dom.ts, passkeys.ts, palette.ts, app.css
   assets.gen.ts         generated: bundled app.js/app.css, build hash, version
@@ -533,9 +535,23 @@ DCR cleanup scan (`refresh_tokens.client_id`, `auth_codes.user_id` and
 `app_favorites.app_id`, `audit_log.client_id`) and `lower(users.email)`, the
 expression `getUserByEmail` looks up.
 
-**Caches.** Instance settings (name, accent, Cloudflare connection) change only
-by admin action, so they are cached per isolate for 10 seconds instead of costing a D1 read on every request; a change
-can take up to 10 seconds to reach other isolates (`src/settings-cache.ts`).
+**Caches.** Instance settings change only by admin action, so the whole
+`instance_settings` table (a few dozen rows at most) is read in one query,
+parsed into typed values with defaults, and cached per isolate for 10 seconds
+instead of costing a D1 read on every request; a change can take up to 10
+seconds to reach other isolates (`src/settings-cache.ts › parseSettings,
+getInstanceSettings`). Every reader goes through it, including the DCR and
+CIMD switches.
+
+**Email** (`src/email.ts`) is optional and goes through the `EMAIL`
+`send_email` binding. `emailStatus` is one of `no-binding`, `no-sender`,
+`off` and `ready`; only `ready` sends. `sendMail` never throws: it returns
+`{ ok: false, error }` so callers can fall back to showing a link. Messages
+are built with Hono's `html` template, which escapes every interpolated
+value, and always carry a plain-text part. Email HTML uses inline styles
+because mail clients ignore stylesheets; the no-inline-style rule is about
+pages served under the CSP. Under `cf dev` the binding is simulated and the
+e2e harness reads messages back from the log (TESTING.md).
 
 ## UI conventions
 
@@ -562,6 +578,16 @@ server and emitted as `data-v`, with one stylesheet rule per bucket
 `[data-accent]`. Icons are inline SVG (24px grid, stroke-based, shapes after
 Lucide, ISC licensed), so they inherit `currentColor` and need no extra
 requests or CSP allowances (`src/ui/icons.tsx`).
+
+**Settings pages.** Settings is a set of tabs, one module each under
+`src/admin/settings/`, sharing `settingsPage` for the layout: a sticky
+sub-navigation on the left (a scrolling strip on phones) with a status badge
+per tab (Email on/off/not set up, Sign-in "Relaxed", Cloudflare connected),
+and the tab's cards on the right. Each card is its own form posting to its
+own route, so saving one never resets another. Mutually exclusive options
+are `ChoiceList` radio cards with a sentence per option, and options that
+weaken security are marked `warn` (amber when selected). Every POST under
+`/admin/settings` needs the admin recheck (`src/admin/index.ts › SENSITIVE`).
 
 **Small decisions worth knowing.**
 
