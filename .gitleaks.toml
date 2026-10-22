@@ -16,7 +16,9 @@ paths = ["\\.wrangler/.*"]
 
 [[allowlists]]
 description = "passkey provider AAGUIDs are public authenticator model ids, not secrets"
+condition = "AND"
 paths = ["src/aaguid\\.ts"]
+regexes = ['''[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''']
 
 [[allowlists]]
 description = "cf build output/types are gitignored and regenerated"

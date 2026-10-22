@@ -19,6 +19,8 @@ export async function mintEnrollmentLink(
   userId: string,
   a: Actor,
 ): Promise<string> {
+  if (userId === a.adminId)
+    throw new OpError("Add your own passkeys from Account & security, not with a link.");
   const token = randomToken(32);
   await db
     .prepare(
@@ -39,6 +41,7 @@ export async function createUser(
   const name = input.name.trim().slice(0, 120);
   const email = input.email.trim().slice(0, 254);
   if (!name) throw new OpError("Name is required.");
+  if (/[\p{Cc}\p{Cf}]/u.test(name)) throw new OpError("Names can't contain control characters.");
   if (!EMAIL_RE.test(email)) throw new OpError("Enter a valid email address.");
   if (await getUserByEmail(db, email)) throw new OpError("A user with that email already exists.");
   const id = newId();
@@ -55,6 +58,17 @@ export async function createUser(
   return { id, enrollmentLink };
 }
 
+async function checkNewEmail(db: D1Database, email: string, id: string): Promise<void> {
+  if (!EMAIL_RE.test(email)) throw new OpError("Enter a valid email address.");
+  if (email.toLowerCase().endsWith("@public.invalid"))
+    throw new OpError("Enter the person's real email address.");
+  const clash = await db
+    .prepare("SELECT id FROM users WHERE lower(email) = lower(?1) AND id != ?2")
+    .bind(email, id)
+    .first();
+  if (clash) throw new OpError("That email is already in use.");
+}
+
 export async function updateUser(
   db: D1Database,
   id: string,
@@ -66,14 +80,8 @@ export async function updateUser(
   const name = input.name === undefined ? user.name : input.name.trim().slice(0, 120);
   const email = input.email === undefined ? user.email : input.email.trim().slice(0, 254);
   if (!name) throw new OpError("Name is required.");
-  if (!EMAIL_RE.test(email)) throw new OpError("Enter a valid email address.");
-  if (email.toLowerCase() !== user.email.toLowerCase()) {
-    const clash = await db
-      .prepare("SELECT id FROM users WHERE lower(email) = lower(?1) AND id != ?2")
-      .bind(email, id)
-      .first();
-    if (clash) throw new OpError("That email is already in use.");
-  }
+  if (/[\p{Cc}\p{Cf}]/u.test(name)) throw new OpError("Names can't contain control characters.");
+  if (email.toLowerCase() !== user.email.toLowerCase()) await checkNewEmail(db, email, id);
   await db
     .prepare("UPDATE users SET name = ?1, email = ?2, updated_at = ?3 WHERE id = ?4")
     .bind(name, email, nowSec(), id)
@@ -140,6 +148,7 @@ export async function deleteUser(db: D1Database, id: string, a: Actor): Promise<
 }
 
 export async function revokePasskeys(db: D1Database, id: string, a: Actor): Promise<void> {
+  if (id === a.adminId) throw new OpError("Manage your own passkeys from Account & security.");
   await db.batch([
     db.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?1").bind(id),
     db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(id),
@@ -274,13 +283,38 @@ export async function setGroupMember(
   });
 }
 
-export async function makeMember(db: D1Database, id: string, a: Actor): Promise<void> {
+export async function removePasskey(
+  db: D1Database,
+  userId: string,
+  credentialId: string,
+  a: Actor,
+): Promise<void> {
+  if (userId === a.adminId) throw new OpError("Manage your own passkeys from Account & security.");
+  const removed = await db
+    .prepare("DELETE FROM webauthn_credentials WHERE id = ?1 AND user_id = ?2 RETURNING name")
+    .bind(credentialId, userId)
+    .first<{ name: string }>();
+  if (!removed) throw new OpError("Passkey not found.");
+  await audit(db, "PASSKEY_REMOVED", {
+    userId,
+    detail: by(a, { credential: credentialId, name: removed.name }),
+  });
+}
+
+export async function makeMember(
+  db: D1Database,
+  id: string,
+  rawEmail: string,
+  a: Actor,
+): Promise<void> {
   const user = await getUser(db, id);
   if (!user) throw new OpError("User not found.");
   if (!user.public) return;
+  const email = rawEmail.trim().slice(0, 254);
+  await checkNewEmail(db, email, id);
   await db
-    .prepare("UPDATE users SET public = 0, updated_at = ?1 WHERE id = ?2")
-    .bind(nowSec(), id)
+    .prepare("UPDATE users SET public = 0, email = ?1, updated_at = ?2 WHERE id = ?3")
+    .bind(email, nowSec(), id)
     .run();
   await audit(db, "USER_MADE_MEMBER", { userId: id, detail: by(a) });
 }

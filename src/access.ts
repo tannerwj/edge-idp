@@ -1,5 +1,5 @@
-import { listApps } from "./db";
-import type { App } from "./db";
+import { getUser, listApps } from "./db";
+import type { App, User } from "./db";
 
 export interface Grant {
   id: string;
@@ -98,49 +98,42 @@ export async function listAppGroups(db: D1Database): Promise<AppGroup[]> {
   return results;
 }
 
-export async function subjectOf(db: D1Database, userId: string): Promise<Subject> {
-  const [{ results }, user] = await Promise.all([
-    db
-      .prepare("SELECT group_id FROM group_members WHERE user_id = ?1")
-      .bind(userId)
-      .all<{ group_id: string }>(),
-    db.prepare("SELECT public FROM users WHERE id = ?1").bind(userId).first<{ public: number }>(),
-  ]);
-  return { userId, groupIds: results.map((r) => r.group_id), isPublic: user?.public === 1 };
+export interface UserContext {
+  user: User;
+  groups: string[];
+  apps: App[];
+  grants: Grant[];
+  subject: Subject;
+  access: Map<string, string[]>;
 }
 
-export async function userAccess(
-  db: D1Database,
-  userId: string,
-): Promise<{ apps: App[]; access: Map<string, string[]> }> {
-  const [apps, grants, subject] = await Promise.all([
+export async function loadUserContext(db: D1Database, userId: string): Promise<UserContext | null> {
+  const [user, { results: memberships }, apps, grants] = await Promise.all([
+    getUser(db, userId),
+    db
+      .prepare(
+        `SELECT g.id AS id, g.name AS name FROM groups g
+         JOIN group_members m ON m.group_id = g.id
+         WHERE m.user_id = ?1 ORDER BY g.name ASC`,
+      )
+      .bind(userId)
+      .all<{ id: string; name: string }>(),
     listApps(db),
     listGrants(db),
-    subjectOf(db, userId),
   ]);
-  return { apps, access: resolveAccess(apps, grants, subject) };
-}
-
-export async function clientAccessClaims(
-  db: D1Database,
-  userId: string,
-  clientId: string,
-): Promise<{ apps?: string[]; roles?: string[] }> {
-  const { apps, access } = await userAccess(db, userId);
-  return claimsForClient(apps, access, clientId);
-}
-
-export async function linkedAppAccess(
-  db: D1Database,
-  userId: string,
-  clientId: string,
-): Promise<boolean | null> {
-  const { apps, access } = await userAccess(db, userId);
-  const linked = apps.filter((a) => a.client_id === clientId);
-  return linked.length ? linked.some((a) => access.has(a.id)) : null;
+  if (!user) return null;
+  const subject = { userId, groupIds: memberships.map((m) => m.id), isPublic: user.public === 1 };
+  return {
+    user,
+    groups: memberships.map((m) => m.name),
+    apps,
+    grants,
+    subject,
+    access: resolveAccess(apps, grants, subject),
+  };
 }
 
 export async function appsForUser(db: D1Database, userId: string): Promise<App[]> {
-  const { apps, access } = await userAccess(db, userId);
-  return apps.filter((a) => access.has(a.id));
+  const ctx = await loadUserContext(db, userId);
+  return ctx ? ctx.apps.filter((a) => ctx.access.has(a.id)) : [];
 }

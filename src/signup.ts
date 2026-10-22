@@ -4,7 +4,7 @@ import type { RegistrationResponseJSON } from "@simplewebauthn/server";
 import type { Env } from "./config";
 import { audit, getClient } from "./db";
 import type { OidcClient } from "./db";
-import { createSession, getSession, setSessionCookie } from "./session";
+import { createSession, destroySession, getSession, setSessionCookie } from "./session";
 import { newId, nowSec, rpIdFromIssuer, sha256Hex } from "./util";
 import { challengeFromResponse, storeChallenge, takeChallenge } from "./webauthn-challenges";
 import { clientIp, credentialInsert, credentialName } from "./webauthn";
@@ -71,6 +71,8 @@ signup.post("/signup/verify", async (c) => {
   const client = await getClient(c.env.DB, text(stored.data["clientId"]));
   if (!userId || !name || !client || client.source !== "admin" || !client.public_signup)
     return c.json({ error: "signup_closed" }, 403);
+  if (body.response.clientExtensionResults?.credProps?.rk === false)
+    return c.json({ error: "passkey_not_discoverable" }, 400);
   let verification;
   try {
     verification = await verifyRegistrationResponse({
@@ -115,6 +117,7 @@ signup.post("/signup/verify", async (c) => {
     ipHash,
     userAgent: c.req.header("user-agent"),
   });
+  await destroySession(c);
   const raw = await createSession(db, userId, c.req.header("user-agent") ?? null, ip, cred.id);
   setSessionCookie(c, raw);
   return c.json({ ok: true });

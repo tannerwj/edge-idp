@@ -4,7 +4,7 @@ import type { Group } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
 import type { ACtx, AdminVars } from "./shell";
-import { act, actor, field, fields, page } from "./shell";
+import { act, actor, field, fields, page, failBack } from "./shell";
 import {
   Callout,
   CopyField,
@@ -279,11 +279,7 @@ clientsAdmin.post("/", async (c) => {
     );
     return revealSecret(c, { id: r.id, name }, r.secret, false);
   } catch (e) {
-    if (e instanceof ops.OpError)
-      return act(c, "/admin/clients?new=1", "", async () => {
-        throw e;
-      });
-    throw e;
+    return failBack(c, "/admin/clients?new=1", e);
   }
 });
 
@@ -365,11 +361,7 @@ clientsAdmin.post("/:id/rotate", async (c) => {
     const secret = await ops.rotateClientSecret(c.env.DB, client, actor(c));
     return revealSecret(c, client, secret, true);
   } catch (e) {
-    if (e instanceof ops.OpError)
-      return act(c, detailHref(client.id), "", async () => {
-        throw e;
-      });
-    throw e;
+    return failBack(c, detailHref(client.id), e);
   }
 });
 

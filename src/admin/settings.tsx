@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { audit, getSetting, setSetting } from "../db";
 import { jwksDocument } from "../crypto";
 import { cfConfigured } from "../cf-access";
-import { ACCENTS, invalidateSettingsCache } from "../settings-cache";
+import { ACCENTS, getInstanceSettings, invalidateSettingsCache } from "../settings-cache";
+import { SecurityCard } from "./settings-security";
 import { rpIdFromIssuer } from "../util";
 import type { Env } from "../config";
 import type { AdminVars } from "./shell";
@@ -317,7 +318,7 @@ function CloudflareForm(props: { connected: boolean; accountId: string | null })
 
 settingsAdmin.get("/", async (c) => {
   const db = c.env.DB;
-  const [name, storedToken, accountId, accent, dcr, cimd, jwks, update, checkedAt] =
+  const [name, storedToken, accountId, accent, dcr, cimd, jwks, update, checkedAt, security] =
     await Promise.all([
       getSetting(db, SETTING_KEYS.name, ""),
       getSetting(db, SETTING_KEYS.cfApiToken, ""),
@@ -328,6 +329,7 @@ settingsAdmin.get("/", async (c) => {
       jwksDocument(c.env),
       availableUpdate(c.env),
       getSetting(db, "upstream_checked_at", ""),
+      getInstanceSettings(db),
     ]);
   const repo = upstreamRepo(c.env);
   return await page(
@@ -340,6 +342,8 @@ settingsAdmin.get("/", async (c) => {
       />
       <div class="stack-lg">
         <SettingsForm name={name || c.env.RP_NAME} accent={accent} dcr={dcr} cimd={cimd} />
+
+        <SecurityCard adminStepUp={security.adminStepUp} signInUv={security.signInUv} />
 
         <CloudflareCard
           source={storedToken ? "settings" : c.env.CF_API_TOKEN ? "secret" : null}
@@ -372,6 +376,20 @@ settingsAdmin.post("/", async (c) => {
     invalidateSettingsCache();
     await audit(c.env.DB, "SETTINGS_CHANGED", { userId: c.get("admin").id, detail: { accent } });
   });
+});
+
+settingsAdmin.post("/security", async (c) => {
+  const form = await c.req.parseBody();
+  return act(c, "/admin/settings#security", "Security settings saved", () =>
+    ops.setSecuritySettings(
+      c.env.DB,
+      {
+        adminStepUp: field(form, "adminStepUp"),
+        signInUv: field(form, "signInUv") === "discouraged" ? "discouraged" : "required",
+      },
+      actor(c),
+    ),
+  );
 });
 
 settingsAdmin.post("/cloudflare", async (c) => {

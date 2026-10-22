@@ -4,7 +4,7 @@ import type { User } from "../db";
 import { listAppGroups, listGrants } from "../access";
 import * as ops from "../ops";
 import type { AdminVars } from "./shell";
-import { act, actor, field, page } from "./shell";
+import { act, actor, field, page, failBack } from "./shell";
 import { Avatar, Dialog, Empty, PageHead, PostButton } from "../ui/components";
 import { Icon } from "../ui/icons";
 
@@ -335,11 +335,7 @@ groupsAdmin.post("/:id/delete", async (c) => {
   try {
     await ops.deleteGroup(c.env.DB, id, actor(c));
   } catch (e) {
-    if (e instanceof ops.OpError)
-      return act(c, `/admin/groups/${id}`, "", async () => {
-        throw e;
-      });
-    throw e;
+    return failBack(c, `/admin/groups/${id}`, e);
   }
   return act(c, "/admin/groups", "Group deleted", async () => {});
 });

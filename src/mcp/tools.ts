@@ -4,6 +4,40 @@ import { PEOPLE_TOOLS } from "./tools-people";
 import { APP_TOOLS } from "./tools-apps";
 import { ACCESS_TOOLS } from "./tools-access";
 
+function percentile(sorted: number[], p: number): number {
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
+}
+
+function summarize(
+  calls: { tool_name: string; duration_ms: number; success: number }[],
+  errors: { tool_name: string; error: string; n: number }[],
+) {
+  const byTool = new Map<string, { durations: number[]; errors: number }>();
+  for (const c of calls) {
+    const t = byTool.get(c.tool_name) ?? { durations: [], errors: 0 };
+    t.durations.push(c.duration_ms);
+    if (c.success === 0) t.errors++;
+    byTool.set(c.tool_name, t);
+  }
+  return [...byTool]
+    .map(([tool, t]) => ({
+      tool,
+      calls: t.durations.length,
+      errors: t.errors,
+      latency_ms: {
+        avg: Math.round(t.durations.reduce((a, b) => a + b, 0) / t.durations.length),
+        p50: percentile(t.durations, 0.5),
+        p95: percentile(t.durations, 0.95),
+        max: t.durations[t.durations.length - 1] ?? 0,
+      },
+      top_errors: errors
+        .filter((e) => e.tool_name === tool)
+        .slice(0, 3)
+        .map((e) => ({ error: e.error, n: e.n })),
+    }))
+    .sort((a, b) => b.calls - a.calls);
+}
+
 const METRICS_TOOL: ToolDef = {
   name: "metrics_summary",
   description:
@@ -15,70 +49,36 @@ const METRICS_TOOL: ToolDef = {
   write: false,
   handler: async ({ db }) => {
     const dayAgo = Math.floor(Date.now() / 1000) - 86400;
-    const perTool = await db
-      .prepare(
-        `SELECT tool_name, COUNT(*) AS calls, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS errors,
-                AVG(duration_ms) AS avg_ms, MAX(duration_ms) AS max_ms
-         FROM mcp_calls WHERE started_at >= ?1 AND tool_name != 'execute'
-         GROUP BY tool_name ORDER BY calls DESC`,
-      )
-      .bind(dayAgo)
-      .all<{ tool_name: string; calls: number; errors: number; avg_ms: number; max_ms: number }>();
-    const withPercentiles = await Promise.all(
-      perTool.results.map(async (r) => {
-        const pct = async (p: number) => {
-          if (!r.calls) return 0;
-          const row = await db
-            .prepare(
-              `SELECT duration_ms FROM mcp_calls
-               WHERE started_at >= ?1 AND tool_name = ?2 ORDER BY duration_ms ASC LIMIT 1 OFFSET ?3`,
-            )
-            .bind(dayAgo, r.tool_name, Math.min(r.calls - 1, Math.floor(r.calls * p)))
-            .first<{ duration_ms: number }>();
-          return row?.duration_ms ?? 0;
-        };
-        const topErrors = await db
-          .prepare(
-            `SELECT error, COUNT(*) AS n FROM mcp_calls
-             WHERE started_at >= ?1 AND tool_name = ?2 AND success = 0 AND error IS NOT NULL
-             GROUP BY error ORDER BY n DESC LIMIT 3`,
-          )
-          .bind(dayAgo, r.tool_name)
-          .all<{ error: string; n: number }>();
-        return {
-          tool: r.tool_name,
-          calls: r.calls,
-          errors: r.errors,
-          latency_ms: {
-            avg: Math.round(r.avg_ms),
-            p50: await pct(0.5),
-            p95: await pct(0.95),
-            max: r.max_ms,
-          },
-          top_errors: topErrors.results,
-        };
-      }),
-    );
-    const execStats = await db
-      .prepare(
-        `SELECT COUNT(*) AS runs FROM mcp_calls
-         WHERE started_at >= ?1 AND tool_name = 'execute' AND success = 1`,
-      )
-      .bind(dayAgo)
-      .first<{ runs: number }>();
-    const innerCalls = await db
-      .prepare(
-        `SELECT tool_name, COUNT(*) AS n FROM mcp_calls
-         WHERE started_at >= ?1 AND tool_name != 'execute'
-         GROUP BY tool_name ORDER BY n DESC LIMIT 5`,
-      )
-      .bind(dayAgo)
-      .all<{ tool_name: string; n: number }>();
+    const [calls, errors, execStats] = await Promise.all([
+      db
+        .prepare(
+          `SELECT tool_name, duration_ms, success FROM mcp_calls
+           WHERE started_at >= ?1 AND tool_name != 'execute' ORDER BY tool_name, duration_ms`,
+        )
+        .bind(dayAgo)
+        .all<{ tool_name: string; duration_ms: number; success: number }>(),
+      db
+        .prepare(
+          `SELECT tool_name, error, COUNT(*) AS n FROM mcp_calls
+           WHERE started_at >= ?1 AND tool_name != 'execute' AND success = 0 AND error IS NOT NULL
+           GROUP BY tool_name, error ORDER BY n DESC`,
+        )
+        .bind(dayAgo)
+        .all<{ tool_name: string; error: string; n: number }>(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS runs FROM mcp_calls
+           WHERE started_at >= ?1 AND tool_name = 'execute' AND success = 1`,
+        )
+        .bind(dayAgo)
+        .first<{ runs: number }>(),
+    ]);
+    const perTool = summarize(calls.results, errors.results);
     return {
       window: "last 24h",
-      per_tool: withPercentiles,
+      per_tool: perTool,
       execute_runs: execStats?.runs ?? 0,
-      most_chained_tools: innerCalls.results,
+      most_chained_tools: perTool.slice(0, 5).map((t) => ({ tool_name: t.tool, n: t.calls })),
     };
   },
 };

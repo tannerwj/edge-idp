@@ -47,7 +47,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   one admin, people without a passkey, expiring tokens, security events)
 - Audit log with categories, search and CSV export
 - Settings: rename the instance, pick an accent color, control how AI tools
-  register, and connect a read-only Cloudflare token for the Access import
+  register, choose how often admins recheck their passkey for sensitive
+  actions and whether sign-in needs Face ID / Touch ID / a PIN, and connect a
+  read-only Cloudflare token for the Access import
 - ⌘K command palette, light and dark modes
 
 **Standards**
@@ -65,7 +67,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   - RFC 9207 `iss` in the authorization response
 - Admin MCP server (works with both the current and the 2026-07-28 protocol
   versions):
-  - about 30 tools
+  - about 40 tools
   - a sandboxed `execute` code mode
   - read-only tokens, with step-up to write access when needed
 
@@ -85,8 +87,9 @@ npm run db:migrate:local          # local D1
 npm run dev                       # cf dev on http://localhost:8787 (see DEPLOY.md → Local development)
 ```
 
-Checks, all self-contained (each boots a throwaway local instance and leaves
-nothing behind):
+Checks. Everything except `npm run smoke` is self-contained (each boots a
+throwaway local instance and leaves nothing behind); smoke sends read-only
+requests to the live deployment:
 
 ```bash
 npm run typecheck && npm run gates   # types, lint, complexity, dead code, secrets, …
@@ -114,7 +117,7 @@ src/
   webauthn.ts        passkey ceremonies + enrollment
   session.ts         __Host- cookie sessions (hashed at rest)
   crypto.ts          RS256 ID/access tokens, JWKS with rotation
-  mcp.ts             admin MCP server + code-mode sandbox
+  mcp.ts             admin MCP server (code-mode sandbox in mcp/sandbox.ts)
   ops.ts             domain operations shared by the admin UI and MCP
   account.tsx        account & security routes (views in account-sections.tsx)
   home.tsx           home launcher

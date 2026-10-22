@@ -115,7 +115,9 @@ try {
     events,
   );
 
-  await page.goto(`${BASE}/admin/tokens`);
+  await page.goto(`${BASE}/login?reauth=1&next=${encodeURIComponent("/admin/tokens")}`);
+  await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+  await page.waitForURL(`${BASE}/admin/tokens`, { timeout: 15000 });
   await page.click("button[data-open='new-token']");
   await page.fill("#new-token input[name=name]", "setup bot");
   await page.check("#new-token input[name=scope][value=admin]");

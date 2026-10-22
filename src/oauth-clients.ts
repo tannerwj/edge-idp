@@ -25,7 +25,7 @@ function hostOf(u: string): string {
   }
 }
 
-function isLoopbackHost(host: string): boolean {
+export function isLoopbackHost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
 
@@ -211,6 +211,18 @@ export async function resolveClient(
 
 export const registration = new Hono<{ Bindings: Env }>();
 
+const MAX_PENDING_DCR = 1000;
+
+async function tooManyPendingClients(db: D1Database): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM oidc_clients WHERE source = 'dcr'
+       AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oidc_clients.id)`,
+    )
+    .first<{ n: number }>();
+  return (row?.n ?? 0) >= MAX_PENDING_DCR;
+}
+
 registration.post("/register", async (c) => {
   const fail = (error: string, description: string) =>
     c.json({ error, error_description: description }, 400);
@@ -218,6 +230,15 @@ registration.post("/register", async (c) => {
     return c.json(
       { error: "access_denied", error_description: "Dynamic registration is disabled." },
       403,
+    );
+  }
+  if (await tooManyPendingClients(c.env.DB)) {
+    return c.json(
+      {
+        error: "temporarily_unavailable",
+        error_description: "Too many unused registrations; try again later.",
+      },
+      503,
     );
   }
   let body: Record<string, unknown>;

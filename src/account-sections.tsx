@@ -48,20 +48,15 @@ export function ProfileSection({ user }: { user: User }) {
             <span class="label">Name</span>
             <input name="name" required maxLength={120} value={user.name} autocomplete="name" />
           </label>
-          <label class="field">
+          <div class="field">
             <span class="label">Email</span>
-            <input
-              name="email"
-              type="email"
-              required
-              maxLength={254}
-              value={user.email}
-              autocomplete="email"
-            />
+            <input value={user.public ? "None" : user.email} readonly disabled />
             <span class="hint">
-              Apps see this as your email. Your passkeys keep working if you change it.
+              {user.public
+                ? "Accounts made through a public app have no email."
+                : "Apps see this as your email. Ask an admin to change it."}
             </span>
-          </label>
+          </div>
         </div>
         <div class="card-foot">
           <button class="btn primary right" type="submit">

@@ -1,5 +1,11 @@
 import { listApps } from "../db";
-import { DEFAULT_ROLES, listAppGroups, listGrants, resolveAccess, subjectOf } from "../access";
+import {
+  DEFAULT_ROLES,
+  listAppGroups,
+  listGrants,
+  loadUserContext,
+  resolveAccess,
+} from "../access";
 import type { Grant } from "../access";
 import { cfConfigured, listAccessApps } from "../cf-access";
 import * as ops from "../ops";
@@ -246,13 +252,9 @@ export const ACCESS_TOOLS: ToolDef[] = [
       "Effective access for one user: every app they can open, their roles there, and the grants that give it. Cloudflare Access gets the app list as the `apps` claim; an app connected with its own client gets only its roles as `roles`.",
     inputSchema: obj(USER_REF),
     handler: async ({ db }, args) => {
-      const user = await userByRef(db, args);
-      const [apps, grants, subject] = await Promise.all([
-        listApps(db),
-        listGrants(db),
-        subjectOf(db, user.id),
-      ]);
-      const access = resolveAccess(apps, grants, subject);
+      const ctx = await loadUserContext(db, (await userByRef(db, args)).id);
+      if (!ctx) throw new ops.OpError("User not found.");
+      const { apps, grants, subject, access } = ctx;
       const views = new Map((await grantView(db, grants)).map((v) => [v.id, v]));
       return apps
         .filter((a) => access.has(a.id))

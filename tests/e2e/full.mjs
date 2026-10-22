@@ -94,6 +94,12 @@ async function authorizeInBrowser(params, { approve } = {}) {
   return captured;
 }
 
+async function stepUp(next) {
+  await page.goto(`${BASE}/login?reauth=1&next=${encodeURIComponent(next)}`);
+  await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+  await page.waitForURL((u) => u.pathname === next.split(/[?#]/)[0], { timeout: 15000 });
+}
+
 async function mcpCall(token, method, params = {}, headers = {}) {
   const r = await fetch(MCP, {
     method: "POST",
@@ -109,7 +115,7 @@ async function mcpCall(token, method, params = {}, headers = {}) {
 
 try {
   step("enroll + sign in with a passkey");
-  await page.goto(`${BASE}/enroll/${adminToken}`);
+  await page.goto(`${BASE}/enroll#${adminToken}`);
   await page.fill("#key-name", "E2E key");
   await page.click("#enroll-btn");
   await page.waitForURL(`${BASE}/?**`, { timeout: 15000 }).catch(() => {});
@@ -120,8 +126,14 @@ try {
     "authenticator holds one resident credential",
     creds.credentials.length === 1 && creds.credentials[0].isResidentCredential,
   );
-  const reuse = await page.request.get(`${BASE}/enroll/${adminToken}`);
-  check("enrollment link is single-use", reuse.status() === 400);
+  const reuse = await fetch(`${BASE}/webauthn/register/options`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enrollmentToken: adminToken }),
+  });
+  check("enrollment link is single-use", reuse.status === 400);
+  const legacy = await fetch(`${BASE}/enroll/${adminToken}`);
+  check("path-style enrollment links are gone", legacy.status === 404);
 
   await page.click("form[action='/logout'] button");
   await page.waitForURL(/\/login/);
@@ -402,6 +414,7 @@ try {
   }
 
   step("MCP via dynamic client registration (Cursor/Claude Code style)");
+  await stepUp("/admin");
   const reg = await fetch(`${BASE}/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -745,7 +758,13 @@ try {
     code_challenge: p5.challenge,
     code_challenge_method: "S256",
   });
-  const refusedPub = await gpage.goto(`${BASE}/authorize?${membersAuth}`);
+  const gotoSettled = (url) =>
+    gpage.goto(url).catch(async (e) => {
+      if (!String(e).includes("interrupted by another navigation")) throw e;
+      await gpage.waitForLoadState("load").catch(() => {});
+      return gpage.goto(url);
+    });
+  const refusedPub = await gotoSettled(`${BASE}/authorize?${membersAuth}`);
   check(
     "a public account is refused at a members-only app",
     refusedPub?.status() === 403 && (await gpage.textContent("body")).includes("members only"),
@@ -764,7 +783,7 @@ try {
     arguments: { user_id: pub?.id, is_admin: true },
   });
   check("a public account can't be made admin", promote.body?.result?.isError === true);
-  await tool("users_make_member", { user_id: pub?.id });
+  await tool("users_make_member", { user_id: pub?.id, email: "pat@example.test" });
   const membersCode = codeFor("https://members.example.test");
   await gpage.goto(`${BASE}/authorize?${membersAuth}`).catch(() => {});
   for (let i = 0; i < 50 && !membersCode(); i++) await gpage.waitForTimeout(100);
@@ -879,7 +898,20 @@ try {
 
   step("API tokens");
   {
+    await sql("UPDATE sessions SET step_up_at = step_up_at - 3600 WHERE step_up_at IS NOT NULL");
     await page.goto(`${BASE}/admin/tokens`);
+    await page.click("button[data-open='new-token']");
+    await page.fill("#new-token input[name=name]", "read bot");
+    await page.click("#new-token button[type=submit]");
+    await page.waitForURL(/\/login\?reauth=1/, { timeout: 15000 }).catch(() => {});
+    check(
+      "a sensitive admin action without a recent recheck asks for the passkey",
+      page.url().includes("reauth=1") && page.url().includes(encodeURIComponent("/admin/tokens")),
+      page.url(),
+    );
+    await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
+    await page.waitForURL(`${BASE}/admin/tokens`, { timeout: 15000 }).catch(() => {});
+    check("…and comes back to the page", new URL(page.url()).pathname === "/admin/tokens");
     await page.click("button[data-open='new-token']");
     await page.fill("#new-token input[name=name]", "read bot");
     await page.click("#new-token button[type=submit]");
@@ -954,6 +986,7 @@ try {
   }
 
   step("instance settings");
+  await stepUp("/admin/settings");
   {
     const setting = async (key) =>
       (await sql(`SELECT value FROM instance_settings WHERE key = '${key}'`))[0]?.value ?? null;

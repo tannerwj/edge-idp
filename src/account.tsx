@@ -112,7 +112,7 @@ account.post("/account/profile", async (c) => {
     await ops.updateUser(
       c.env.DB,
       s.user.id,
-      { name: field(form, "name"), email: field(form, "email") },
+      { name: field(form, "name") },
       { adminId: s.user.id, via: "ui" },
     );
   } catch (e) {

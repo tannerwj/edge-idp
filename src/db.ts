@@ -87,7 +87,7 @@ function strArray(v: unknown): string[] {
   return out;
 }
 
-function rowToUser(r: Row): User {
+export function rowToUser(r: Row): User {
   return {
     id: str(r.id),
     created_at: num(r.created_at),
@@ -284,7 +284,7 @@ export async function getApp(db: D1Database, id: string): Promise<App | null> {
   return r ? rowToApp(r) : null;
 }
 
-export async function audit(
+export function auditStmt(
   db: D1Database,
   event: string,
   opts: {
@@ -294,8 +294,8 @@ export async function audit(
     userAgent?: string | null;
     detail?: Record<string, unknown>;
   } = {},
-): Promise<void> {
-  await db
+): D1PreparedStatement {
+  return db
     .prepare(
       `INSERT INTO audit_log (created_at, event, user_id, client_id, ip_hash, user_agent, detail)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
@@ -308,8 +308,15 @@ export async function audit(
       opts.ipHash ?? null,
       (opts.userAgent ?? null)?.slice(0, 300) ?? null,
       opts.detail ? JSON.stringify(opts.detail) : null,
-    )
-    .run();
+    );
+}
+
+export async function audit(
+  db: D1Database,
+  event: string,
+  opts: Parameters<typeof auditStmt>[2] = {},
+): Promise<void> {
+  await auditStmt(db, event, opts).run();
 }
 
 export async function getSetting(db: D1Database, key: string, fallback: string): Promise<string> {

@@ -8,7 +8,9 @@ import { Icon } from "./ui/icons";
 import { newId, nowSec, randomToken, sha256Hex, timingSafeEqualHex } from "./util";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const MIN_TOKEN = 43;
+function strongSetupToken(token: string): boolean {
+  return /^[A-Za-z0-9_-]{43,}$/.test(token) && new Set(token).size >= 16;
+}
 
 let done = false;
 
@@ -73,9 +75,9 @@ function SetupPage(props: {
         </>
       ) : (
         <Callout tone="warn">
-          Set a <code>SETUP_TOKEN</code> secret ({MIN_TOKEN}+ characters) on this Worker, then
-          reload. Or create the first admin from a terminal with{" "}
-          <code>node scripts/seed-admin.mjs</code> (see DEPLOY.md).
+          Set a <code>SETUP_TOKEN</code> secret generated with{" "}
+          <code>node scripts/gen-setup-token.mjs</code> on this Worker, then reload. Or create the
+          first admin from a terminal with <code>node scripts/seed-admin.mjs</code> (see DEPLOY.md).
         </Callout>
       )}
     </AuthLayout>
@@ -86,7 +88,7 @@ export const setup = new Hono<{ Bindings: Env }>();
 
 setup.get("/setup", async (c) => {
   if (!(await setupPending(c.env.DB))) return c.notFound();
-  const ready = (c.env.SETUP_TOKEN ?? "").length >= MIN_TOKEN;
+  const ready = strongSetupToken(c.env.SETUP_TOKEN ?? "");
   return c.html(<SetupPage ui={await uiFor(c)} ready={ready} />, 200, {
     "referrer-policy": "no-referrer",
   });
@@ -95,7 +97,7 @@ setup.get("/setup", async (c) => {
 setup.post("/setup", async (c) => {
   if (!(await setupPending(c.env.DB))) return c.notFound();
   const expected = c.env.SETUP_TOKEN ?? "";
-  if (expected.length < MIN_TOKEN) return c.notFound();
+  if (!strongSetupToken(expected)) return c.notFound();
   const form = await c.req.parseBody();
   const str = (k: string) => (typeof form[k] === "string" ? form[k].trim() : "");
   const name = str("name").slice(0, 120);

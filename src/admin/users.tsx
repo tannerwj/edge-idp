@@ -3,7 +3,7 @@ import { getUser, listGroups, listUsers } from "../db";
 import type { Group, User } from "../db";
 import * as ops from "../ops";
 import type { AdminVars, ACtx } from "./shell";
-import { act, actor, field, fields, page } from "./shell";
+import { act, actor, failBack, field, fields, page } from "./shell";
 import {
   Avatar,
   CopyField,
@@ -158,7 +158,10 @@ usersAdmin.get("/", async (c) => {
       .all<{ user_id: string; name: string }>(),
   ]);
   const keyCount = new Map(keys.map((k) => [k.user_id, k.n]));
-  const groupsOf = (id: string) => members.filter((m) => m.user_id === id).map((m) => m.name);
+  const memberGroups = new Map<string, string[]>();
+  for (const m of members)
+    memberGroups.set(m.user_id, [...(memberGroups.get(m.user_id) ?? []), m.name]);
+  const groupsOf = (id: string) => memberGroups.get(id) ?? [];
   const shown = users.filter((u) => {
     if (filter === "admins") return !!u.is_admin;
     if (filter === "pending") return !keyCount.get(u.id) && !u.disabled;
@@ -301,11 +304,7 @@ usersAdmin.post("/", async (c) => {
     );
     return revealEnrollment(c, r.id, r.enrollmentLink, true);
   } catch (e) {
-    if (e instanceof ops.OpError)
-      return act(c, "/admin/users?invite=1", "", async () => {
-        throw e;
-      });
-    throw e;
+    return failBack(c, "/admin/users?invite=1", e);
   }
 });
 
@@ -341,12 +340,20 @@ usersAdmin.post("/:id/role", async (c) => {
 
 usersAdmin.post("/:id/member", async (c) => {
   const id = c.req.param("id");
-  return act(c, `/admin/users/${id}`, "Now a member", () => ops.makeMember(c.env.DB, id, actor(c)));
+  const form = await c.req.parseBody();
+  return act(c, `/admin/users/${id}`, "Now a member", () =>
+    ops.makeMember(c.env.DB, id, field(form, "email"), actor(c)),
+  );
 });
 
 usersAdmin.post("/:id/enrollment", async (c) => {
   const id = c.req.param("id");
-  const link = await ops.mintEnrollmentLink(c.env.DB, c.env.ISSUER, id, actor(c));
+  let link: string;
+  try {
+    link = await ops.mintEnrollmentLink(c.env.DB, c.env.ISSUER, id, actor(c));
+  } catch (e) {
+    return failBack(c, `/admin/users/${id}`, e);
+  }
   return revealEnrollment(c, id, link, false);
 });
 
@@ -373,11 +380,9 @@ usersAdmin.post("/:id/revoke-keys", async (c) => {
 
 usersAdmin.post("/:id/keys/:kid/remove", async (c) => {
   const id = c.req.param("id");
-  return act(c, `/admin/users/${id}?tab=passkeys`, "Passkey removed", async () => {
-    await c.env.DB.prepare("DELETE FROM webauthn_credentials WHERE id = ?1 AND user_id = ?2")
-      .bind(c.req.param("kid"), id)
-      .run();
-  });
+  return act(c, `/admin/users/${id}?tab=passkeys`, "Passkey removed", () =>
+    ops.removePasskey(c.env.DB, id, c.req.param("kid"), actor(c)),
+  );
 });
 
 usersAdmin.post("/:id/disable", async (c) => {
@@ -399,11 +404,7 @@ usersAdmin.post("/:id/delete", async (c) => {
   try {
     await ops.deleteUser(c.env.DB, id, actor(c));
   } catch (e) {
-    if (e instanceof ops.OpError)
-      return act(c, `/admin/users/${id}`, "", async () => {
-        throw e;
-      });
-    throw e;
+    return failBack(c, `/admin/users/${id}`, e);
   }
   return act(c, "/admin/users", "User deleted", async () => {});
 });

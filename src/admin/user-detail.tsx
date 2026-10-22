@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { getCredentialsForUser, getUser, getUserGroups, listGroups } from "../db";
+import { getCredentialsForUser, getUser, listGroups } from "../db";
 import type { User } from "../db";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
 import { page } from "./shell";
-import { Avatar, PageHead, PostButton } from "../ui/components";
-import { userAccess } from "../access";
+import { Avatar, Dialog, PageHead, PostButton } from "../ui/components";
+import { Icon } from "../ui/icons";
+import { loadUserContext } from "../access";
 import {
   ActivityTab,
   AppAccessTab,
@@ -33,9 +34,9 @@ async function loadTabData(
   user: User,
   self: boolean,
 ): Promise<TabData> {
-  const [creds, groups, allGroups, sessions, grants, activity, access] = await Promise.all([
+  const [creds, ctx, allGroups, sessions, grants, activity] = await Promise.all([
     getCredentialsForUser(db, id),
-    getUserGroups(db, id),
+    loadUserContext(db, id),
     listGroups(db),
     db
       .prepare(
@@ -68,8 +69,9 @@ async function loadTabData(
       )
       .bind(id)
       .all<{ event: string; created_at: number; client_name: string | null }>(),
-    userAccess(db, id),
   ]);
+  const groups = ctx?.groups ?? [];
+  const access = { apps: ctx?.apps ?? [], access: ctx?.access ?? new Map<string, string[]>() };
   return {
     id,
     self,
@@ -115,20 +117,33 @@ function UserActions({
   return (
     <>
       {user.public ? (
-        <PostButton
-          action={`/admin/users/${id}/member`}
-          label="Make member"
-          icon="userPlus"
-          class="btn"
-          confirm={`Make ${user.name} a member? Members can open apps granted to everyone and sign in to members-only apps, subject to their grants.`}
-        />
+        <>
+          <button class="btn" type="button" data-open="make-member">
+            <Icon name="userPlus" size="sm" />
+            <span>Make member</span>
+          </button>
+          <Dialog
+            id="make-member"
+            title={`Make ${user.name} a member`}
+            lede="Members can open apps granted to everyone and sign in to members-only apps, subject to their grants. Apps will see this email as verified."
+            action={`/admin/users/${id}/member`}
+            submit="Make member"
+          >
+            <label class="field">
+              <span class="label">Their email</span>
+              <input name="email" type="email" required maxLength={254} autocomplete="off" />
+            </label>
+          </Dialog>
+        </>
       ) : null}
-      <PostButton
-        action={`/admin/users/${id}/enrollment`}
-        label={hasPasskey ? "New enrollment link" : "Get invite link"}
-        icon="link"
-        class="btn"
-      />
+      {self ? null : (
+        <PostButton
+          action={`/admin/users/${id}/enrollment`}
+          label={hasPasskey ? "New enrollment link" : "Get invite link"}
+          icon="link"
+          class="btn"
+        />
+      )}
       {self ? null : user.disabled ? (
         <PostButton action={`/admin/users/${id}/enable`} label="Enable" icon="check" class="btn" />
       ) : (
