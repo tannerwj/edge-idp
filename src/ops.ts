@@ -1,6 +1,6 @@
 import { audit, getUser, getUserByEmail, listClients } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
-import { by, OpError } from "./ops-core";
+import { by, EMAIL_RE, OpError } from "./ops-core";
 import type { Actor } from "./ops-core";
 
 export { OpError } from "./ops-core";
@@ -9,7 +9,6 @@ export * from "./ops-access";
 export * from "./ops-connect";
 export * from "./ops-settings";
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const GROUP_RE = /^[a-z0-9_-]{1,60}$/;
 const ENROLL_TTL = 7 * 86400;
 

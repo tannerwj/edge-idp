@@ -47,10 +47,11 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - Overview: sign-in trends, most-used apps, and "needs attention" items (only
   one admin, people without a passkey, expiring tokens, security events)
 - Audit log with categories, search and CSV export
-- Settings: rename the instance, pick an accent color, control how AI tools
-  register, choose how often admins recheck their passkey for sensitive
-  actions and whether sign-in needs Face ID / Touch ID / a PIN, and connect a
-  read-only Cloudflare token for the Access import
+- Settings, one tab per area: name and accent color; sign-in and security
+  (how often admins recheck their passkey, whether sign-in needs Face ID /
+  Touch ID / a PIN); optional email through Cloudflare Email Service; how AI
+  tools may register; the issuer and signing keys; the Cloudflare Access
+  import; version and runtime
 - ⌘K command palette, light and dark modes
 
 **Standards**

@@ -130,6 +130,7 @@ export async function resolveEnv(env: Env, requestUrl: string): Promise<Env> {
   const issuer = env.ISSUER || pinned || new URL(requestUrl).origin;
   return {
     ...env,
+    EMAIL: env.EMAIL,
     ISSUER: issuer,
     RP_NAME: settings.name || env.RP_NAME || "Identity",
     CF_API_TOKEN: env.CF_API_TOKEN || settings.cfApiToken || undefined,

@@ -307,8 +307,30 @@ are traced):
 npx cf workers secrets update SENTRY_DSN --worker identity --type secret_text --text "<your DSN>"
 ```
 
-Admin → Settings shows whether Sentry is on. Without the secret, errors still
-go to Workers Logs.
+Admin → Settings › About shows whether Sentry is on. Without the secret,
+errors still go to Workers Logs.
+
+## 13. Optional: email
+
+With email, the server can send invites, sign-in links, recovery links and
+security notices itself instead of handing links to an admin to share.
+Everything works without it.
+
+1. In the Cloudflare dashboard open **Compute → Email Service → Email
+   Sending** and onboard the domain you'll send from. It must use Cloudflare
+   DNS; Cloudflare adds the SPF, DKIM and DMARC records. Sending to any
+   address needs the Workers Paid plan. Until a domain is onboarded,
+   Cloudflare delivers only to verified destination addresses in your
+   account.
+2. Bind it as `EMAIL`. The reference `cloudflare.config.ts` already has
+   `EMAIL: bindings.sendEmail()`; in `wrangler.jsonc` add
+   `"send_email": [{ "name": "EMAIL" }]`. Redeploy.
+3. In Admin → Settings › Email choose the sender address (on the onboarded
+   domain) and an optional sender name, turn sending on, and send yourself a
+   test. A refusal from Cloudflare is shown as it came back.
+
+Under `cf dev` and `wrangler dev` the binding is simulated: nothing is sent,
+the message is logged and its body saved under `.wrangler/tmp/email/`.
 
 ## Configuration reference
 
@@ -330,6 +352,7 @@ and are never committed.
 | `UPSTREAM_REPO`               | var                   | no                                              | `owner/repo` for feedback links and the update check, or `off`. Defaults to the upstream project.                                                |
 | `DB`                          | D1 binding            | yes                                             | The database.                                                                                                                                    |
 | `AUTH_LIMITER`, `API_LIMITER` | rate-limit bindings   | recommended                                     | See section 9. `/setup` and `/register` return 503 without `AUTH_LIMITER`.                                                                       |
+| `EMAIL`                       | send_email binding    | no                                              | Outgoing email (section 13). Without it, Settings › Email explains how to add it and links are shown to admins instead.                          |
 | `LOADER`                      | Worker Loader binding | no                                              | MCP code mode (`execute`). The reference config always binds it; `wrangler.jsonc` doesn't (see One click). Without it, `execute` is not offered. |
 
 The Worker refuses to serve if `ISSUER`, `RP_NAME` or the signing key is still

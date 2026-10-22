@@ -219,7 +219,7 @@ function HeadActions(props: { cf: boolean; autoOpen: boolean }) {
           Import from Cloudflare
         </a>
       ) : (
-        <a class="btn ghost" href="/admin/settings#cloudflare">
+        <a class="btn ghost" href="/admin/settings/cloudflare">
           <Icon name="cloud" size="sm" />
           Connect Cloudflare
         </a>

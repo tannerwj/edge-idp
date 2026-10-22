@@ -112,7 +112,9 @@ virtual authenticator through:
 - refresh token rotation and reuse detection, and revoking consent;
 - API tokens;
 - CIMD, using Claude Code's real metadata document;
-- the audit trail, the maintenance cron, and the feedback and update notice.
+- the audit trail, the maintenance cron, every settings tab rendering, email
+  settings (a sender, the on switch, and a test message read back from the
+  outbox), and the feedback and update notice.
 
 ### OIDC API (`tests/e2e/api.mjs`)
 
@@ -215,6 +217,12 @@ Each suite gets its own throwaway instance, so tests never touch your
   `.wrangler/state`. `startPortable` uses `wrangler.jsonc` with
   `wrangler dev`.
 - A server counts as up when `/healthz` answers OK, with a 90-second deadline.
+- **`outbox()`** (local instances) returns the emails the simulated `EMAIL`
+  binding was asked to send, parsed from the dev server's log: `from`, `to`,
+  `subject`, and the plain-text body read from the file the simulator wrote
+  (`outboxFrom`). Suites take links out of that text, so invite, sign-in and
+  recovery flows are tested end to end without a mail server. Remote
+  (staging) runs skip email steps.
 - **`startRemote`** is the staging-only path. It refuses any stage other than
   `staging`, requires `/healthz` to be up (otherwise run
   `npm run staging:deploy`), then deletes every row from every table except

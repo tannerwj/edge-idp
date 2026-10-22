@@ -1,7 +1,8 @@
 import { Hono } from "hono";
+import { getInstanceSettings } from "./settings-cache";
 import { readBodyLimited } from "./http-body";
 import type { Env } from "./config";
-import { audit, getClient, getSetting, rowToClient } from "./db";
+import { audit, getClient, rowToClient } from "./db";
 import type { OidcClient } from "./db";
 import { nowSec, randomToken, sha256Hex } from "./util";
 
@@ -169,7 +170,7 @@ export async function resolveClient(
     stored && (stored.source !== "cimd" || (stored.metadata_expires_at ?? 0) > nowSec());
   if (stored && fresh) return { client: stored };
   if (!isCimdClientId(clientId)) return stored ? { client: stored } : null;
-  if ((await getSetting(db, "cimd_enabled", "1")) !== "1") {
+  if (!(await getInstanceSettings(db)).cimdEnabled) {
     return { error: "This server doesn't accept URL-based client IDs." };
   }
   let meta;
@@ -226,7 +227,7 @@ async function tooManyPendingClients(db: D1Database): Promise<boolean> {
 registration.post("/register", async (c) => {
   const fail = (error: string, description: string) =>
     c.json({ error, error_description: description }, 400);
-  if ((await getSetting(c.env.DB, "dcr_enabled", "1")) !== "1") {
+  if (!(await getInstanceSettings(c.env.DB)).dcrEnabled) {
     return c.json(
       { error: "access_denied", error_description: "Dynamic registration is disabled." },
       403,

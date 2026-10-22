@@ -416,6 +416,17 @@ account. SQLite's `lower()` folds only ASCII, so the app's key does the same
 must match exactly, and the stored address always finds itself
 (`src/db.ts › getUserByEmail`).
 
+## Email (optional)
+
+Email is a delivery channel, never a credential on its own: what it carries
+and when is described with each feature that sends it. The sender address
+and the on/off switch are settings, so changing them needs the admin
+recheck. Messages are rendered with escaping on every value, so a display
+name can't inject markup into someone's inbox (`src/email.ts › renderMail`).
+A failed send is reported to the admin as Cloudflare returned it and never
+retried silently; nothing that needs a link depends on email arriving,
+because the same link is always available to an admin as a fallback.
+
 ## Cloudflare API token (optional)
 
 The read-only Access integration needs a Cloudflare API token. Admins can

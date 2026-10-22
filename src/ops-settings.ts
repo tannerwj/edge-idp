@@ -1,6 +1,6 @@
 import { audit, deleteSettings, setSetting } from "./db";
 import { detectAccountId, verifyAccessRead } from "./cf-access";
-import { by, OpError } from "./ops-core";
+import { by, EMAIL_RE, OpError } from "./ops-core";
 import type { Actor } from "./ops-core";
 import {
   invalidateSettingsCache,
@@ -76,5 +76,25 @@ export async function setSecuritySettings(
   await audit(db, "SECURITY_SETTINGS_CHANGED", {
     userId: a.adminId,
     detail: by(a, { adminStepUp, signInUv }),
+  });
+}
+
+export async function setEmailSettings(
+  db: D1Database,
+  input: { enabled: boolean; from: string; fromName: string },
+  a: Actor,
+): Promise<void> {
+  const from = input.from.trim();
+  const fromName = input.fromName.replace(/\s+/g, " ").trim();
+  if (!EMAIL_RE.test(from)) throw new OpError("Enter the sender's email address.");
+  if (fromName.length > NAME_MAX || /\p{Cc}/u.test(fromName))
+    throw new OpError(`Keep the sender name to ${NAME_MAX} plain characters.`);
+  await setSetting(db, SETTING_KEYS.emailFrom, from);
+  await setSetting(db, SETTING_KEYS.emailFromName, fromName);
+  await setSetting(db, SETTING_KEYS.emailEnabled, input.enabled ? "1" : "0");
+  invalidateSettingsCache();
+  await audit(db, "EMAIL_SETTINGS_CHANGED", {
+    userId: a.adminId,
+    detail: by(a, { enabled: input.enabled, from }),
   });
 }
