@@ -289,6 +289,31 @@ try {
   check("an unknown sign-in link signs nobody in", junkLink.status, 400);
   check("…and sets no session", junkLink.headers.get("set-cookie"), null);
 
+  const evil = {
+    format: "edge-idp-backup",
+    version: 1,
+    issuer: base,
+    rp_id: "localhost",
+    tables: {
+      webhooks: [
+        { id: "w-evil", name: "x", url: "https://10.0.0.1/hook", format: "json", created_at: now },
+      ],
+    },
+  };
+  const form = new FormData();
+  form.append("file", new Blob([JSON.stringify(evil)], { type: "application/json" }), "b.json");
+  await fetch(`${base}/admin/settings/backup/import`, {
+    method: "POST",
+    redirect: "manual",
+    headers: cookie(cookies.adminStepped),
+    body: form,
+  });
+  check(
+    "a restore can't bring in a webhook the URL rules refuse",
+    await scalar("SELECT COUNT(*) FROM webhooks WHERE id = 'w-evil'"),
+    0,
+  );
+
   const enroll = await get("/enroll");
   check(
     "the enrollment page keeps no-referrer",

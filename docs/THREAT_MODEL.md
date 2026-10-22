@@ -553,7 +553,10 @@ base64url blob, and only columns that exist in the live table are written
 ones with the same id; people, memberships, favorites and passkeys are only
 added, so a restore never changes or removes anyone who is already here.
 Passkeys are restored only when the backup's passkey domain matches, since a
-credential bound to another RP ID could never verify here.
+credential bound to another RP ID could never verify here. Webhook URLs and
+back-channel logout URLs go through the same outbound URL rules as when an
+admin enters them: a webhook that fails is skipped, a back-channel URL that
+fails is cleared (`src/backup.ts › safeOutbound`).
 
 ## Admin surface
 
