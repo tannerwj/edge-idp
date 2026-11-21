@@ -730,6 +730,18 @@ CPU and a 10 s wall-clock limit. The wall-clock limit stops waiting for the
 run; Dynamic Workers have no cancel, so calls already in flight finish, each
 still checked by the host.
 
+`feedback_submit` is the one tool that inserts rows yet is marked
+`write: false`, so read-only callers (the ones most likely to hit a wall) can
+report problems. Closing a report (`feedback_resolve`) is an ordinary write
+tool and needs the `mcp` scope. What `feedback_submit` can write is bounded: an append-only row in
+`mcp_feedback` with length-capped fields, tied to the calling admin, no
+effect on users, clients or access, and pruned by the cron to 180 days and
+1,000 rows (`src/mcp/tools-feedback.ts`, `src/maintenance.ts`). The text is
+model-written: `feedback_list` says to treat it as data, not instructions, and
+the admin page renders it escaped like any other value. The tool description
+tells agents not to include secrets or personal data, but that is a request,
+not a guarantee, so treat stored feedback with the same care as the audit log.
+
 ## What v1 does NOT do (and why that's fine)
 
 - **Rate limiting is layered.** The Workers Rate Limiting bindings (per IP,

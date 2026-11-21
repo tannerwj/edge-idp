@@ -13,6 +13,49 @@ interface ToolRow {
   max_ms: number;
 }
 
+interface FeedbackRow {
+  id: number;
+  created_at: number;
+  kind: string;
+  tool_name: string | null;
+  summary: string;
+  details: string | null;
+  server_version: string;
+}
+
+function Feedback({ rows }: { rows: FeedbackRow[] }) {
+  return (
+    <section class="card">
+      <div class="card-head">
+        <h2>Open agent feedback</h2>
+      </div>
+      {rows.length ? (
+        <ul class="list">
+          {rows.map((r) => (
+            <li key={String(r.id)} class="stack-sm">
+              <div class="row between">
+                <span class="small">
+                  <span class="badge">{r.kind}</span>{" "}
+                  {r.tool_name ? <span class="mono small">{r.tool_name}</span> : null}
+                </span>
+                <span class="muted small nowrap">
+                  v{r.server_version} · <Time ts={r.created_at} />
+                </span>
+              </div>
+              <span class="title">{r.summary}</span>
+              {r.details ? <p class="muted small pre-wrap">{r.details}</p> : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Empty icon="bot" title="No open feedback">
+          Agents report problems here with the <span class="mono">feedback_submit</span> tool.
+        </Empty>
+      )}
+    </section>
+  );
+}
+
 function ByTool({ rows, maxCalls }: { rows: ToolRow[]; maxCalls: number }) {
   return (
     <section class="card">
@@ -43,12 +86,9 @@ function ByTool({ rows, maxCalls }: { rows: ToolRow[]; maxCalls: number }) {
   );
 }
 
-export const metricsAdmin = new Hono<AdminVars>();
-
-metricsAdmin.get("/", async (c) => {
-  const db = c.env.DB;
+function loadMetrics(db: D1Database) {
   const dayAgo = nowSec() - 86400;
-  const [perTool, recent, totals] = await Promise.all([
+  return Promise.all([
     db
       .prepare(
         `SELECT tool_name, COUNT(*) AS calls, SUM(success) AS ok, AVG(duration_ms) AS avg_ms, MAX(duration_ms) AS max_ms
@@ -76,7 +116,18 @@ metricsAdmin.get("/", async (c) => {
       )
       .bind(dayAgo)
       .first<{ total: number; errors: number | null; avg_ms: number | null }>(),
+    db
+      .prepare(
+        "SELECT id, created_at, kind, tool_name, summary, details, server_version FROM mcp_feedback WHERE resolved_at IS NULL ORDER BY id DESC LIMIT 20",
+      )
+      .all<FeedbackRow>(),
   ]);
+}
+
+export const metricsAdmin = new Hono<AdminVars>();
+
+metricsAdmin.get("/", async (c) => {
+  const [perTool, recent, totals, feedback] = await loadMetrics(c.env.DB);
   const total = totals?.total ?? 0;
   const errRate = total ? (((totals?.errors ?? 0) / total) * 100).toFixed(1) : "0";
   const maxCalls = Math.max(1, ...perTool.results.map((r) => r.calls));
@@ -158,6 +209,7 @@ metricsAdmin.get("/", async (c) => {
             )}
           </section>
         </div>
+        <Feedback rows={feedback.results} />
       </div>
     </>,
   );

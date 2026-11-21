@@ -126,7 +126,13 @@ virtual authenticator through:
   app's role and no app list, and the same sign-in refused once its grants are
   removed;
 - refresh token rotation and reuse detection, and revoking consent;
-- API tokens;
+- API tokens, including that a read-only token can file `feedback_submit` but
+  not `feedback_resolve`;
+- agent feedback: a report round-trips through `feedback_list` with its
+  server version and shows on the admin MCP activity page; `feedback_resolve`
+  moves it from the open list to `status: "resolved"`; an unknown kind or an
+  over-long summary or tool name is refused with a tool error;
+- `audit_query` honoring `limit`;
 - CIMD, using Claude Code's real metadata document;
 - the audit trail, the maintenance cron, every settings tab rendering, email
   settings (a sender, the on switch, and a test message read back from the

@@ -253,6 +253,10 @@ code {
 .nowrap {
   white-space: nowrap;
 }
+.pre-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;

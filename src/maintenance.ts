@@ -4,6 +4,8 @@ const DAY = 86400;
 const AUDIT_MAX_ROWS = 50_000;
 const AUDIT_MAX_AGE = 365 * DAY;
 const MCP_CALLS_MAX_AGE = 30 * DAY;
+const MCP_FEEDBACK_MAX_AGE = 180 * DAY;
+const MCP_FEEDBACK_MAX_ROWS = 1000;
 const DCR_UNUSED_TTL = 30 * DAY;
 
 export async function runMaintenance(db: D1Database): Promise<Record<string, number>> {
@@ -33,6 +35,12 @@ export async function runMaintenance(db: D1Database): Promise<Record<string, num
     mcp_calls: db
       .prepare("DELETE FROM mcp_calls WHERE started_at < ?1")
       .bind(now - MCP_CALLS_MAX_AGE),
+    mcp_feedback_age: db
+      .prepare("DELETE FROM mcp_feedback WHERE created_at < ?1")
+      .bind(now - MCP_FEEDBACK_MAX_AGE),
+    mcp_feedback_cap: db.prepare(
+      `DELETE FROM mcp_feedback WHERE id <= (SELECT MAX(id) FROM mcp_feedback) - ${MCP_FEEDBACK_MAX_ROWS}`,
+    ),
     dcr_clients: db
       .prepare(
         `DELETE FROM oidc_clients WHERE source = 'dcr' AND created_at < ?1

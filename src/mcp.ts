@@ -65,7 +65,9 @@ const SERVER_INFO = { name: "edge-idp", title: "edge-idp admin", version: VERSIO
 const INSTRUCTIONS =
   "Administer this identity provider: users, groups, OAuth/OIDC clients, launcher apps, audit log. " +
   "Prefer the `execute` tool: one JS snippet against the typed `id` proxy (see its description), chaining calls and " +
-  "filtering in code — only the return value comes back. Use individual tools for single calls.";
+  "filtering in code — only the return value comes back. Use individual tools for single calls. " +
+  "If a tool fails unexpectedly, misleads you, or lacks something you need, report it with `feedback_submit` " +
+  "(no secrets or personal data).";
 
 type RpcId = string | number | null;
 interface RpcBody {

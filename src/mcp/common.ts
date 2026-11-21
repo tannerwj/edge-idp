@@ -1,6 +1,7 @@
 import { getClient, getUser, getUserByEmail } from "../db";
 import type { Env } from "../config";
 import * as ops from "../ops";
+import { nowSec } from "../util";
 
 export interface Actor {
   adminId: string;
@@ -24,6 +25,10 @@ export type ToolDef = {
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
 export const strList = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+export const sinceArg = (v: unknown, defaultHours: number): number =>
+  nowSec() - Math.round((typeof v === "number" ? v : defaultHours) * 3600);
+export const limitArg = (v: unknown, fallback: number, max: number): number =>
+  Math.min(max, Math.max(1, typeof v === "number" ? Math.floor(v) : fallback));
 export const obj = (properties: Record<string, unknown> = {}, required: string[] = []) => ({
   type: "object",
   properties,

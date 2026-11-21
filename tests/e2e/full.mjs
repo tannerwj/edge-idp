@@ -921,6 +921,52 @@ try {
     probe?.calls === 1200 && probe?.latency_ms?.p50 === 601 && probe?.latency_ms?.p95 === 1141,
     probe,
   );
+  const filed = await tool("feedback_submit", {
+    kind: "confusing",
+    tool_name: "groups_list",
+    summary: "e2e feedback probe",
+    details: "expected X, got Y",
+  });
+  check("feedback_submit records a report", filed?.recorded === true && !!filed?.id, filed);
+  const feedback = await tool("feedback_list", { tool_name: "groups_list" });
+  check(
+    "feedback_list returns the report",
+    (feedback ?? []).some((f) => f.id === filed?.id && f.summary === "e2e feedback probe"),
+    feedback,
+  );
+  await page.goto(`${BASE}/admin/metrics`);
+  check(
+    "admin MCP activity page shows the feedback",
+    (await page.textContent("body")).includes("e2e feedback probe"),
+  );
+  check("feedback records the server version", !!feedback?.[0]?.server_version, feedback);
+  const resolved = await tool("feedback_resolve", { id: filed?.id, resolution: "fixed in e2e" });
+  check("feedback_resolve closes the report", resolved?.resolved === true, resolved);
+  const openAfter = await tool("feedback_list", { tool_name: "groups_list" });
+  const closed = await tool("feedback_list", { tool_name: "groups_list", status: "resolved" });
+  check(
+    "resolved feedback leaves the open list and shows under status resolved",
+    !(openAfter ?? []).some((f) => f.id === filed?.id) &&
+      (closed ?? []).some((f) => f.id === filed?.id && f.resolution === "fixed in e2e"),
+    { openAfter, closed },
+  );
+  const recentAudit = await tool("audit_query", { limit: 1 });
+  check(
+    "audit_query honors limit and adds an ISO time",
+    recentAudit?.length === 1 && !!recentAudit[0]?.at,
+    recentAudit,
+  );
+  for (const [label, args] of [
+    ["unknown kind", { kind: "rant", summary: "x" }],
+    ["over-long summary", { kind: "bug", summary: "x".repeat(201) }],
+    ["over-long tool_name", { kind: "bug", summary: "x", tool_name: "t".repeat(101) }],
+  ]) {
+    const bad = await mcpCall(mt.access_token, "tools/call", {
+      name: "feedback_submit",
+      arguments: args,
+    });
+    check(`feedback_submit refuses ${label}`, bad.body?.result?.isError === true, bad.body);
+  }
   const modern = await mcpCall(
     mt.access_token,
     "tools/call",
@@ -1045,6 +1091,20 @@ try {
       write.status === 403 && (write.www ?? "").includes("insufficient_scope"),
       write,
     );
+    const roFeedback = await mcpCall(ro, "tools/call", {
+      name: "feedback_submit",
+      arguments: { kind: "missing", summary: "read-only feedback probe" },
+    });
+    check(
+      "read-only token can file feedback",
+      roFeedback.status === 200 && !roFeedback.body?.result?.isError,
+      roFeedback.body,
+    );
+    const roResolve = await mcpCall(ro, "tools/call", {
+      name: "feedback_resolve",
+      arguments: { id: 1, resolution: "nope" },
+    });
+    check("read-only token can't resolve feedback", roResolve.status === 403, roResolve.body);
     const listed = await mcpCall(ro, "tools/list");
     check(
       "read-only tools/list hides write tools",
