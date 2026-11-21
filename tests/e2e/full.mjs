@@ -827,15 +827,11 @@ try {
     code_challenge: p5.challenge,
     code_challenge_method: "S256",
   };
-  const codeFor = (origin) => {
-    let code = null;
-    gpage.on("request", (r) => {
-      const u = new URL(r.url());
-      if (u.origin === origin && u.searchParams.get("code")) code = u.searchParams.get("code");
-    });
-    return () => code;
-  };
-  const gameCode = codeFor("https://game.example.test");
+  for (const host of ["game", "members"]) {
+    await gpage.route(`https://${host}.example.test/cb?**`, (route) =>
+      route.fulfill({ contentType: "text/html", body: "<title>Callback</title>" }),
+    );
+  }
   await gpage.goto(`${BASE}/authorize?${new URLSearchParams(gameAuth)}`);
   check(
     "sign-in for a public app offers Create an account",
@@ -844,16 +840,14 @@ try {
   await gpage.click("a:has-text('Create an account')");
   await gpage.fill("#signup-name", "Pat Player");
   await gpage.click("#signup-btn");
-  for (let i = 0; i < 80 && !gameCode(); i++) await gpage.waitForTimeout(100);
-  check("sign-up lands back in the app with a code", !!gameCode());
-  await gpage
-    .waitForURL((u) => u.href.startsWith("chrome-error:"), { timeout: 5000 })
-    .catch(() => {});
+  await gpage.waitForURL("https://game.example.test/cb?**");
+  const gameCode = new URL(gpage.url()).searchParams.get("code");
+  check("sign-up lands back in the app with a code", !!gameCode);
   const pt = await (
     await tokenReq(
       {
         grant_type: "authorization_code",
-        code: gameCode(),
+        code: gameCode,
         redirect_uri: "https://game.example.test/cb",
         code_verifier: p5.verifier,
       },
@@ -879,13 +873,7 @@ try {
     code_challenge: p5.challenge,
     code_challenge_method: "S256",
   });
-  const gotoSettled = (url) =>
-    gpage.goto(url).catch(async (e) => {
-      if (!String(e).includes("interrupted by another navigation")) throw e;
-      await gpage.waitForLoadState("load").catch(() => {});
-      return gpage.goto(url);
-    });
-  const refusedPub = await gotoSettled(`${BASE}/authorize?${membersAuth}`);
+  const refusedPub = await gpage.goto(`${BASE}/authorize?${membersAuth}`);
   check(
     "a public account is refused at a members-only app",
     refusedPub?.status() === 403 && (await gpage.textContent("body")).includes("members only"),
@@ -905,10 +893,12 @@ try {
   });
   check("a public account can't be made admin", promote.body?.result?.isError === true);
   await tool("users_make_member", { user_id: pub?.id, email: "pat@example.test" });
-  const membersCode = codeFor("https://members.example.test");
-  await gpage.goto(`${BASE}/authorize?${membersAuth}`).catch(() => {});
-  for (let i = 0; i < 50 && !membersCode(); i++) await gpage.waitForTimeout(100);
-  check("after Make member the same account is admitted", !!membersCode());
+  await gpage.goto(`${BASE}/authorize?${membersAuth}`);
+  await gpage.waitForURL("https://members.example.test/cb?**");
+  check(
+    "after Make member the same account is admitted",
+    !!new URL(gpage.url()).searchParams.get("code"),
+  );
   await gctx.close();
 
   await sql(
