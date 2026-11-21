@@ -15,8 +15,10 @@
   },
   "size": {
     "worker": {
-      "max": 409600
-    }
+      "max": 409600,
+      "wranglerArgs": ["--config", "wrangler.jsonc"]
+    },
+    "budgets": []
   },
   "ratchet": {
     "file": "abacus.ratchet.json",

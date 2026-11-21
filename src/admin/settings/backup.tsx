@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { exportBackup, importBackup, MAX_BACKUP_BYTES, parseBackup } from "../../backup";
 import type { AdminVars } from "../shell";
 import { actor, failBack } from "../shell";
-import { setFlash } from "../../ui/layout";
+import { sha256Hex } from "../../util";
 import { Callout } from "../../ui/components";
 import { Icon } from "../../ui/icons";
 import { OpError } from "../../ops-core";
@@ -41,10 +41,9 @@ backupSettings.get("/backup", async (c) =>
       >
         <form
           method="post"
-          action="/admin/settings/backup/import"
+          action="/admin/settings/backup/preview"
           enctype="multipart/form-data"
           class="card-body stack"
-          data-confirm="Restore from this backup? Groups, apps, grants, clients, webhooks and settings in the file replace the ones here with the same id; people and passkeys are only added."
         >
           <ul class="small stack-sm">
             <li>
@@ -67,7 +66,7 @@ backupSettings.get("/backup", async (c) =>
           <div>
             <button class="btn" type="submit">
               <Icon name="upload" size="sm" />
-              <span>Restore</span>
+              <span>Preview restore</span>
             </button>
           </div>
         </form>
@@ -86,18 +85,92 @@ backupSettings.post("/backup/export", async (c) => {
   });
 });
 
-backupSettings.post("/backup/import", async (c) => {
+backupSettings.post("/backup/:operation", async (c) => {
+  const operation = c.req.param("operation");
+  if (operation !== "preview" && operation !== "import") return c.notFound();
+  const preview = operation === "preview";
   try {
     const form = await c.req.parseBody();
     const file = form.file;
     if (!(file instanceof File)) throw new OpError("Choose a backup file.");
     if (file.size > MAX_BACKUP_BYTES) throw new OpError("That file is larger than 5 MB.");
-    const r = await importBackup(c.env, parseBackup(await file.text()), actor(c));
-    setFlash(
+    const raw = await file.text();
+    const digest = await sha256Hex(raw);
+    if (!preview && form.digest !== undefined && form.digest !== digest)
+      throw new OpError("The file differs from the preview. Preview it again.");
+    const r = await importBackup(c.env, parseBackup(raw), actor(c), preview);
+    return settingsPage(
       c,
-      `Restored ${r.applied} rows${r.skipped ? `, skipped ${r.skipped} that didn't fit` : ""}${r.passkeys ? "" : ". Passkeys weren't restored: different passkey domain"}.`,
+      "backup",
+      <SettingsCard icon="upload" title={preview ? "Restore preview" : "Restore receipt"}>
+        <div class="card-body stack">
+          <p>
+            {r.passkeys
+              ? "Passkey domain matches."
+              : "Different passkey domain. Credentials will need new enrollment."}
+          </p>
+          {preview ? (
+            <p>
+              Planned changes use the current database. Constraints are checked when you restore.
+            </p>
+          ) : (
+            <p>
+              Applied {r.applied} {r.applied === 1 ? "row" : "rows"}. Skipped {r.skipped}.
+            </p>
+          )}
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th>Planned additions</th>
+                  <th>Planned replacements</th>
+                  {!preview && <th>Applied</th>}
+                  <th>Skipped</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.tables.map((t) => (
+                  <tr key={t.table}>
+                    <td>{t.table}</td>
+                    <td>{t.additions}</td>
+                    <td>{t.replacements}</td>
+                    {!preview && <td>{t.applied}</td>}
+                    <td>{t.skipped}</td>
+                    <td>
+                      {Object.entries(t.reasons).map(([reason, count]) => (
+                        <div key={reason}>
+                          {reason}: {count}
+                        </div>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {preview && (
+            <form
+              method="post"
+              action="/admin/settings/backup/import"
+              enctype="multipart/form-data"
+              class="stack-sm"
+            >
+              <input type="hidden" name="digest" value={digest} />
+              <label>
+                Select the reviewed file to apply it{" "}
+                <input type="file" name="file" accept=".json" required />
+              </label>
+              <button class="btn primary" type="submit">
+                Apply restore
+              </button>
+            </form>
+          )}
+          <a href="/admin/settings/backup">Back to backups</a>
+        </div>
+      </SettingsCard>,
     );
-    return c.redirect("/admin/settings/backup", 303);
   } catch (e) {
     return failBack(c, "/admin/settings/backup", e);
   }

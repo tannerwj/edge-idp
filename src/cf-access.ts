@@ -74,6 +74,7 @@ interface CfPolicy {
   decision: string;
   include?: Rule[];
   require?: Rule[];
+  exclude?: Rule[];
 }
 
 interface CfApp {
@@ -112,6 +113,7 @@ function toApp(r: Record<string, unknown>): CfApp | null {
       decision: optStr(p.decision) ?? "",
       include: toRules(p.include),
       require: toRules(p.require),
+      exclude: toRules(p.exclude),
     })),
   };
 }
@@ -188,11 +190,21 @@ export async function listAccessApps(
               groups.add(o.claim_value);
             }
           }
-          if (p.decision === "allow") {
-            policies.push(
-              `${p.name}: ${(p.include ?? []).map((r) => describeRule(r, ourId)).join(" or ") || "—"}`,
-            );
-          }
+          const clauses = (["include", "require", "exclude"] as const).flatMap((kind) => {
+            const rules = p[kind] ?? [];
+            return rules.length
+              ? [
+                  kind +
+                    " " +
+                    rules
+                      .map((r) => describeRule(r, ourId))
+                      .join(kind === "require" ? " and " : " or "),
+                ]
+              : [];
+          });
+          policies.push(
+            [p.name || "Policy", p.decision || "Decision unavailable", ...clauses].join(" · "),
+          );
         }
         return {
           id: a.id,

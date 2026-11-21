@@ -478,11 +478,21 @@ describe each app: its callback paths, whether it can do PKCE, and its
 settings, as environment variables (Grafana, Open WebUI, LiteLLM, Paperless-ngx; Grafana
 also gets its SSO settings API body) or form fields (Immich, any OIDC app). Roles map
 onto each app's own model, for example `admin`/`writer` to Grafana
-Admin/Editor and everything else to Viewer. Running it again on a connected
-app rotates the secret and refreshes the redirect URIs, so a failed setup can
-simply be retried. A new tile gets the groups passed in as grants; with none,
+Admin/Editor and everything else to Viewer. The connection plan validates redirect URIs and group names before writing.
+Admin → Connect and MCP use the same operation. Preview returns the proposed
+configuration. For a new connection one D1 batch commits the tile, grants,
+client, link, pickup and audit event. A normalized base URL identifies a new
+tile across retries. Existing tiles can also be selected explicitly. Concurrent
+calls converge on the linked client. A repeat returns configuration with no
+pickup, and conflicting redirect or PKCE requirements need an explicit client
+edit. Use client rotation to replace a lost pickup. A new tile gets the groups passed in as grants; with none,
 an app group's grants cover it, or everyone if it has no app group. Tiles open in a
 new tab so the launcher stays put as a home base (`src/home.tsx › AppTile`).
+Admin → People → App access and MCP `access_explain` with an app use
+`src/access-inspection.ts › inspectAccess`, the same client eligibility and
+claim functions as sign-in. The app catalog's editor links select one
+server-rendered dialog per request.
+
 The launcher shows one section per app group (in the admin's order), then
 ungrouped apps, with the user's favorites first; a favorite is a per-user row
 that can only be set on an app the user can see, and it goes away with the app
@@ -499,7 +509,9 @@ bookmarks keep working.
 
 **Cloudflare Access integration** (`src/cf-access.ts`) is read-only. It lists
 Access applications, shows which ones sign in through this IdP and which
-groups their policies require, and imports them into the launcher. The MCP
+policy conditions appear in their rules. Import shows the selected audience
+and qualifying people. The operator explicitly chooses local groups, all
+members or nobody. Unrecognized conditions never seed grants. The MCP
 tool `cloudflare_access_apps` returns the same listing; the token itself never
 leaves the server. An import
 records the Access app id on the tile (`cf_app_id`), which is how the list
@@ -674,14 +686,15 @@ and `deploy` (`scripts/build-client.mjs`).
   tsc, dead code, secrets, import cycles, duplicates, TODOs, and a ratchet
   that keeps size and complexity from growing), and oxfmt for formatting. CI runs typecheck, `typecheck:e2e`,
   `fmt:check`, unit tests, gates, `npm run db:check` and
-  `npm audit --omit=dev --audit-level=high` on push and PRs; the e2e suites
-  run locally (see TESTING.md). Actions are pinned to commit SHAs
+  `npm audit --audit-level=high` on push and PRs. CI also checks generated assets, the portable Worker bundle size,
+  browser and API flows, one-click setup, security regressions and local smoke. Actions are pinned to commit SHAs
   (`actions/checkout` v5.1.0, `actions/setup-node` v5.0.0), and
   `@tjohnson/abacus` and `cf` to exact versions, so a moved tag or a new
   prerelease can't change what CI runs. Update a pin by resolving the new tag
   with `git ls-remote --tags https://github.com/actions/<name>`.
 - **Gate configs.** The import-cycle gate uses `.dependency-cruiser.cjs` with
-  one rule, `no-circular`, resolving modules through `tsconfig.json`. The
+  rules for cycles and unresolved imports. Package exports resolve with the import
+  condition. The runtime-provided `cloudflare:workers` module is an external leaf. The
   secrets gate reads `.gitleaks.toml`, which extends gitleaks' default rules
   with allowlists for `<redacted>` placeholders, the gitignored `.wrangler/`
   and `.cloudflare/` build output, and AAGUID-shaped UUIDs in

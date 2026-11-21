@@ -1,10 +1,9 @@
 import { Hono } from "hono";
 import type { Env } from "./config";
-import { getCredentialsForUser } from "./db";
 import { appsForUser, listAppGroups, loadUserContext } from "./access";
 import type { AppGroup } from "./access";
 import { setFavorite } from "./ops";
-import type { App, WebAuthnCredential } from "./db";
+import type { App } from "./db";
 import { getSession } from "./session";
 import { AppShell, uiFor } from "./ui/layout";
 import { Callout, Empty, hueOf, PageHead, Time } from "./ui/components";
@@ -21,10 +20,6 @@ async function favoritesOf(db: D1Database, userId: string): Promise<Set<string>>
     .bind(userId)
     .all<{ app_id: string }>();
   return new Set(results.map((r) => r.app_id));
-}
-
-function greeting(): string {
-  return "Welcome back";
 }
 
 function host(u: string): string {
@@ -102,10 +97,10 @@ function BackupPasskeyCallout({ count }: { count: number }) {
     <Callout tone="accent" icon="shieldCheck">
       <div class="row wrap between">
         <div>
-          <b>Add a backup passkey.</b>{" "}
+          <b>{count ? "Add a backup passkey." : "Set up a passkey."}</b>{" "}
           <span class="text-2">
-            You have {count === 0 ? "no passkeys" : "one passkey"}. A second device (say, your
-            phone) means losing one is never a lockout.
+            You have {count === 0 ? "no passkeys" : "one passkey"}. Keep a spare somewhere you can
+            reach if you lose this device.
           </span>
         </div>
         <a class="btn sm" href="/account#passkeys">
@@ -179,7 +174,7 @@ function AppsSection({ l, isAdmin }: { l: Launcher; isAdmin: boolean }) {
             type="search"
             placeholder="Find an app"
             aria-label="Find an app"
-            data-filter-table="#launcher"
+            data-filter-table="launcher"
           />
         ) : null}
       </div>
@@ -248,7 +243,12 @@ function RecentActivityCard({ rows }: { rows: FeedRow[] }) {
   );
 }
 
-function SecurityCard({ creds, authTime }: { creds: WebAuthnCredential[]; authTime: number }) {
+interface PasskeySummary {
+  count: number;
+  synced: number;
+}
+
+function SecurityCard({ passkeys, authTime }: { passkeys: PasskeySummary; authTime: number }) {
   return (
     <div class="card">
       <div class="card-head">
@@ -263,12 +263,14 @@ function SecurityCard({ creds, authTime }: { creds: WebAuthnCredential[]; authTi
           <div class="grow">
             <div class="title">Passkeys</div>
             <div class="meta">
-              {creds.length} registered
-              {creds.some((k) => k.backup_state) ? " · synced across devices" : ""}
+              {passkeys.count} registered
+              {passkeys.synced ? " · synced across devices" : ""}
             </div>
           </div>
-          {creds.length >= 2 ? (
-            <span class="badge ok dot">Good</span>
+          {passkeys.count >= 2 ? (
+            <a class="badge" href="/account#passkeys">
+              Test a spare
+            </a>
           ) : (
             <span class="badge warn dot">Add a backup</span>
           )}
@@ -291,11 +293,16 @@ home.get("/", async (c) => {
   const s = await getSession(c);
   if (!s) return c.redirect("/login", 302);
   const db = c.env.DB;
-  const [ctx, appGroups, favorites, creds, recent] = await Promise.all([
+  const [ctx, appGroups, favorites, passkeys, recent] = await Promise.all([
     loadUserContext(db, s.user.id),
     listAppGroups(db),
     favoritesOf(db, s.user.id),
-    getCredentialsForUser(db, s.user.id),
+    db
+      .prepare(
+        "SELECT COUNT(*) AS count, COALESCE(MAX(backup_state), 0) AS synced FROM webauthn_credentials WHERE user_id = ?1",
+      )
+      .bind(s.user.id)
+      .first<PasskeySummary>(),
     db
       .prepare(
         `SELECT a.event, a.created_at, c.name AS client_name FROM audit_log a
@@ -306,6 +313,7 @@ home.get("/", async (c) => {
       .bind(s.user.id)
       .all<{ event: string; created_at: number; client_name: string | null }>(),
   ]);
+  const summary = passkeys ?? { count: 0, synced: 0 };
   const groups = ctx?.groups ?? [];
   const apps = ctx ? ctx.apps.filter((a) => ctx.access.has(a.id)) : [];
   const first = s.user.name.split(" ")[0];
@@ -318,15 +326,15 @@ home.get("/", async (c) => {
       flash={c.req.query("ok")}
     >
       <PageHead
-        title={`${greeting()}, ${first}`}
+        title={`Welcome back, ${first}`}
         lede={groups.length ? <GroupsLede groups={groups} /> : "Here's everything you can open."}
       />
       <div class="stack-lg">
-        {creds.length < 2 ? <BackupPasskeyCallout count={creds.length} /> : null}
+        {summary.count < 2 ? <BackupPasskeyCallout count={summary.count} /> : null}
         <AppsSection l={{ apps, appGroups, favorites }} isAdmin={!!s.user.is_admin} />
         <section class="grid-2">
           <RecentActivityCard rows={recent.results} />
-          <SecurityCard creds={creds} authTime={s.authTime} />
+          <SecurityCard passkeys={summary} authTime={s.authTime} />
         </section>
       </div>
     </AppShell>,

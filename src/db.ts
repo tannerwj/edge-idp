@@ -24,6 +24,7 @@ export interface WebAuthnCredential {
   backup_state: number;
   aaguid: string | null;
   created_at: number;
+  checked_at: number | null;
   last_used_at: number | null;
 }
 
@@ -172,6 +173,7 @@ export async function getCredentialsForUser(
     backup_state: num(r.backup_state),
     aaguid: strOrNull(r.aaguid),
     created_at: num(r.created_at),
+    checked_at: numOrNull(r.checked_at),
     last_used_at: numOrNull(r.last_used_at),
   }));
 }

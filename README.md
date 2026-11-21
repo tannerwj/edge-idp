@@ -19,6 +19,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - Passkeys first: no passwords. Optionally, members can sign in with an
   emailed one-time link (never admins), and each app can insist on a passkey
   or a recent sign-in
+- Test a named spare passkey and see the recovery options for your account
 - A home screen of the apps they're allowed to use
 - Account & security: passkeys (with provider names like iCloud Keychain or
   YubiKey), where they're signed in, connected apps and AI tools, recent activity
@@ -33,16 +34,18 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 - Groups in ID tokens (third-party clients only when they ask for the
   `groups` scope) and in access tokens granted that scope, so Access policies
   and authorized apps can match on them
-- Access grants: give a user, a group or everyone access to an app or an app
+- Access grants: give a user, a group or all members access to an app or an app
   group, with an optional role; Cloudflare Access receives an `apps` claim to
   match its policies on, and each app that signs in here receives only its own
   `roles`
+- Explain access for a person and app, including a hidden tile or denied sign-in
+- Preview a backup restore and inspect the per-table receipt
 - Public sign-up per app: open one app (say, a game) to the public and anyone
   can create a name-and-passkey account for it, contained to apps you opened
-- Connect an app in one step (MCP `apps_connect`): templates for Grafana, Open
+- Preview or connect an app (Admin → Connect or MCP `apps_connect`): templates for Grafana, Open
   WebUI, LiteLLM, Immich, Paperless-ngx and any OIDC app create the client, link it to
-  the launcher and return the app-side settings; the client secret is handed
-  over through a one-time pickup instead of the response
+  the launcher and return the app-side settings; a new client secret is handed
+  over through a one-time pickup. Retrying keeps the working credential
 - Apps: the launcher, organized into app groups, with favorites and search;
   optional import of your Cloudflare Access apps and their policies (read-only)
 - Lost passkeys: off (you send a new link), or a "Lost your passkey?" request
@@ -85,7 +88,7 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
 
 ## What it deliberately doesn't do
 
-Passwords, TOTP, magic links, SAML, LDAP, social logins. See
+Passwords, TOTP, SAML, LDAP, social logins. See
 [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the reasoning behind every
 auth decision.
 

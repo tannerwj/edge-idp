@@ -417,7 +417,11 @@ rebuild somewhere else, download a backup from Admin → Settings › Backup
 (people, passkeys' public keys, groups, apps, grants, clients, webhooks and
 settings; no sessions, tokens or keys). Restoring adds people and replaces
 configuration with the same ids; passkeys come back only on the same
-passkey domain.
+passkey domain. Preview the backup, check the additions, replacements, exclusions
+and domain, then select the same file to apply it. Database constraints are
+evaluated at apply time. Review the per-table receipt, sign in with a restored
+passkey and open a connected app. Take a D1 Time Travel bookmark before
+restoring into an existing database so you can undo the data changes.
 
 **Rollback:** point the Worker back at the previous version. Cloudflare keeps
 every uploaded version, so no rebuild is needed, and the schema stays:

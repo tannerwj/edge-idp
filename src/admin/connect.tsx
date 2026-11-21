@@ -1,3 +1,4 @@
+import { ConnectionForm, appConnectionAdmin } from "./connect-app";
 import { Hono } from "hono";
 import { getInstanceSettings } from "../settings-cache";
 import { listClients } from "../db";
@@ -207,6 +208,8 @@ function OidcSection({ iss }: { iss: string }) {
   );
 }
 
+connectAdmin.route("/", appConnectionAdmin);
+
 connectAdmin.get("/", async (c) => {
   const iss = c.env.ISSUER;
   const slug =
@@ -231,6 +234,7 @@ connectAdmin.get("/", async (c) => {
         <a href="#mcp">AI assistants</a>
       </nav>
       <div class="stack-lg">
+        <ConnectionForm />
         <AccessSection iss={iss} accessClient={accessClient} cfConnected={cfConfigured(c.env)} />
 
         <OidcSection iss={iss} />

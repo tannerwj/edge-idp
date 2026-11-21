@@ -18,10 +18,20 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm run typecheck:e2e
       - run: npm run fmt:check
       - run: npm test
       - run: npm run gates
       - run: npm run db:check
+      - run: npm run build:client
+      - run: git diff --exit-code -- src/assets.gen.ts
+      - run: npm run size
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          E2E_OFFLINE: "1"
+      - run: npm run test:e2e:setup
+      - run: npm run test:security
+      - run: npm run smoke:local

@@ -11,7 +11,7 @@ import { act, actor, field, fields, page } from "./shell";
 import { Dialog, Empty, PageHead, PostButton } from "../ui/components";
 import { AppForm, Glyph } from "./apps-form";
 import { Icon } from "../ui/icons";
-import { CloudflareSection } from "./apps-cloudflare";
+import { CloudflareSection, importAdmin } from "./apps-cloudflare";
 import {
   AccessDialog,
   AppGroupForm,
@@ -23,11 +23,35 @@ import type { AccessData } from "./apps-access";
 
 export const appsAdmin = new Hono<AdminVars>();
 appsAdmin.route("/", appsAccessAdmin);
+appsAdmin.route("/import", importAdmin);
 
 interface PageData extends AccessData {
+  editor: string;
   apps: App[];
   clients: OidcClient[];
   clientById: Map<string, OidcClient>;
+}
+
+function EditorLink({
+  id,
+  active,
+  label,
+  className,
+}: {
+  id: string;
+  active: string;
+  label: string;
+  className: string;
+}) {
+  return id === active ? (
+    <button type="button" class={className} data-open={id} data-autoopen>
+      {label}
+    </button>
+  ) : (
+    <a class={className} data-open={id} href={`/admin/apps?editor=${encodeURIComponent(id)}`}>
+      {label}
+    </a>
+  );
 }
 
 function AppRow(props: { a: App; data: PageData }) {
@@ -55,12 +79,13 @@ function AppRow(props: { a: App; data: PageData }) {
       <div class="hide-sm">
         <GrantChips grants={[...own, ...inherited]} d={data} />
       </div>
-      <button class="btn ghost sm" type="button" data-open={`access-${a.id}`}>
-        Access
-      </button>
-      <button class="btn ghost sm" type="button" data-open={`edit-${a.id}`}>
-        Edit
-      </button>
+      <EditorLink
+        id={`access-${a.id}`}
+        active={data.editor}
+        label="Access"
+        className="btn ghost sm"
+      />
+      <EditorLink id={`edit-${a.id}`} active={data.editor} label="Edit" className="btn ghost sm" />
       <PostButton
         action={`/admin/apps/${a.id}/delete`}
         label=""
@@ -69,17 +94,21 @@ function AppRow(props: { a: App; data: PageData }) {
         title="Remove"
         confirm={`Remove ${a.name} from the launcher? Its access grants go with it.`}
       />
-      <Dialog id={`edit-${a.id}`} sheet title={`Edit ${a.name}`} action={`/admin/apps/${a.id}`}>
-        <AppForm app={a} groups={data.groups} clients={data.clients} appGroups={data.appGroups} />
-      </Dialog>
-      <AccessDialog
-        id={`access-${a.id}`}
-        title={`Access to ${a.name}`}
-        action={`/admin/apps/${a.id}/grants`}
-        own={own}
-        inherited={group ? { from: group.name, grants: inherited } : undefined}
-        d={data}
-      />
+      {data.editor === `edit-${a.id}` ? (
+        <Dialog id={`edit-${a.id}`} sheet title={`Edit ${a.name}`} action={`/admin/apps/${a.id}`}>
+          <AppForm app={a} groups={data.groups} clients={data.clients} appGroups={data.appGroups} />
+        </Dialog>
+      ) : null}
+      {data.editor === `access-${a.id}` ? (
+        <AccessDialog
+          id={`access-${a.id}`}
+          title={`Access to ${a.name}`}
+          action={`/admin/apps/${a.id}/grants`}
+          own={own}
+          inherited={group ? { from: group.name, grants: inherited } : undefined}
+          d={data}
+        />
+      ) : null}
     </li>
   );
 }
@@ -97,12 +126,18 @@ function GroupHead(props: { g: AppGroup; data: PageData }) {
           <GrantChips grants={grants} d={data} empty="No group-wide access" />
         </div>
       </div>
-      <button class="btn ghost sm" type="button" data-open={`access-group-${g.id}`}>
-        Access
-      </button>
-      <button class="btn ghost sm" type="button" data-open={`edit-group-${g.id}`}>
-        Edit
-      </button>
+      <EditorLink
+        id={`access-group-${g.id}`}
+        active={data.editor}
+        label="Access"
+        className="btn ghost sm"
+      />
+      <EditorLink
+        id={`edit-group-${g.id}`}
+        active={data.editor}
+        label="Edit"
+        className="btn ghost sm"
+      />
       <PostButton
         action={`/admin/apps/groups/${g.id}/delete`}
         label=""
@@ -111,20 +146,24 @@ function GroupHead(props: { g: AppGroup; data: PageData }) {
         title="Delete app group"
         confirm={`Delete ${g.name}? Its apps stay, ungrouped; access granted on the group is removed.`}
       />
-      <Dialog
-        id={`edit-group-${g.id}`}
-        title={`Edit ${g.name}`}
-        action={`/admin/apps/groups/${g.id}`}
-      >
-        <AppGroupForm group={g} />
-      </Dialog>
-      <AccessDialog
-        id={`access-group-${g.id}`}
-        title={`Access to everything in ${g.name}`}
-        action={`/admin/apps/groups/${g.id}/grants`}
-        own={grants}
-        d={data}
-      />
+      {data.editor === `edit-group-${g.id}` ? (
+        <Dialog
+          id={`edit-group-${g.id}`}
+          title={`Edit ${g.name}`}
+          action={`/admin/apps/groups/${g.id}`}
+        >
+          <AppGroupForm group={g} />
+        </Dialog>
+      ) : null}
+      {data.editor === `access-group-${g.id}` ? (
+        <AccessDialog
+          id={`access-group-${g.id}`}
+          title={`Access to everything in ${g.name}`}
+          action={`/admin/apps/groups/${g.id}/grants`}
+          own={grants}
+          d={data}
+        />
+      ) : null}
     </div>
   );
 }
@@ -165,9 +204,9 @@ function AppSections(props: { data: PageData }) {
           icon="grid"
           title="No apps yet"
           action={
-            <button class="btn primary" type="button" data-open="new-app">
+            <a class="btn primary" href="/admin/apps?editor=new-app">
               Add your first app
-            </button>
+            </a>
           }
         >
           Add the things you and your people use — Home Assistant, Immich, Jellyfin, your router.
@@ -190,7 +229,7 @@ function AppSections(props: { data: PageData }) {
   );
 }
 
-async function pageData(db: D1Database): Promise<PageData> {
+async function pageData(db: D1Database, editor: string): Promise<PageData> {
   const [apps, groups, clients, users, appGroups, grants] = await Promise.all([
     listApps(db),
     listGroups(db),
@@ -206,11 +245,12 @@ async function pageData(db: D1Database): Promise<PageData> {
     users,
     appGroups,
     grants,
+    editor,
     clientById: new Map(clients.map((x) => [x.id, x])),
   };
 }
 
-function HeadActions(props: { cf: boolean; autoOpen: boolean }) {
+function HeadActions(props: { cf: boolean; editor: string }) {
   return (
     <>
       {props.cf ? (
@@ -224,25 +264,17 @@ function HeadActions(props: { cf: boolean; autoOpen: boolean }) {
           Connect Cloudflare
         </a>
       )}
-      <button class="btn" type="button" data-open="new-app-group">
-        <Icon name="layers" size="sm" />
-        New app group
-      </button>
-      <button
-        class="btn primary"
-        type="button"
-        data-open="new-app"
-        {...(props.autoOpen ? { "data-autoopen": "" } : {})}
-      >
-        <Icon name="plus" size="sm" />
-        Add app
-      </button>
+      <EditorLink id="new-app-group" active={props.editor} label="New app group" className="btn" />
+      <EditorLink id="new-app" active={props.editor} label="Add app" className="btn primary" />
     </>
   );
 }
 
 appsAdmin.get("/", async (c) => {
-  const data = await pageData(c.env.DB);
+  const data = await pageData(
+    c.env.DB,
+    c.req.query("editor") ?? (c.req.query("new") ? "new-app" : ""),
+  );
   const showCf = cfConfigured(c.env) && c.req.query("cf") === "1";
   let cf: Awaited<ReturnType<typeof listAccessApps>> | null = null;
   let cfError: string | null = null;
@@ -261,30 +293,36 @@ appsAdmin.get("/", async (c) => {
       <PageHead
         title="Apps"
         lede="The home screen everyone sees after signing in. Group apps into sections, then grant people or groups access — with a role when the app cares."
-        actions={<HeadActions cf={cfConfigured(c.env)} autoOpen={!!c.req.query("new")} />}
+        actions={<HeadActions cf={cfConfigured(c.env)} editor={data.editor} />}
       />
       <AppSections data={data} />
-      {showCf ? <CloudflareSection cf={cf} cfError={cfError} imported={imported} /> : null}
+      {showCf ? (
+        <CloudflareSection groups={data.groups} cf={cf} cfError={cfError} imported={imported} />
+      ) : null}
       <RoleSuggestions />
-      <Dialog
-        id="new-app"
-        sheet
-        title="Add an app"
-        lede="It appears on the home screen of everyone allowed to open it."
-        action="/admin/apps"
-        submit="Add app"
-      >
-        <AppForm groups={data.groups} clients={data.clients} appGroups={data.appGroups} />
-      </Dialog>
-      <Dialog
-        id="new-app-group"
-        title="New app group"
-        lede="A section on the home screen. Granting access to the group grants every app in it."
-        action="/admin/apps/groups"
-        submit="Create"
-      >
-        <AppGroupForm />
-      </Dialog>
+      {data.editor === "new-app" ? (
+        <Dialog
+          id="new-app"
+          sheet
+          title="Add an app"
+          lede="It appears on the home screen of everyone allowed to open it."
+          action="/admin/apps"
+          submit="Add app"
+        >
+          <AppForm groups={data.groups} clients={data.clients} appGroups={data.appGroups} />
+        </Dialog>
+      ) : null}
+      {data.editor === "new-app-group" ? (
+        <Dialog
+          id="new-app-group"
+          title="New app group"
+          lede="A section on the home screen. Granting access to the group grants every app in it."
+          action="/admin/apps/groups"
+          submit="Create"
+        >
+          <AppGroupForm />
+        </Dialog>
+      ) : null}
     </>,
   );
 });
@@ -306,26 +344,6 @@ function input(form: Record<string, string | File | (string | File)[] | undefine
 appsAdmin.post("/", async (c) => {
   const form = await c.req.parseBody({ all: true });
   return act(c, "/admin/apps", "App added", () => ops.createApp(c.env.DB, input(form), actor(c)));
-});
-
-appsAdmin.post("/import", async (c) => {
-  const form = await c.req.parseBody();
-  const known = new Set((await listGroups(c.env.DB)).map((g) => g.name));
-  const groups = field(form, "groups")
-    .split(",")
-    .filter((g) => known.has(g));
-  return act(c, "/admin/apps?cf=1#cloudflare", "Added to launcher", () =>
-    ops.createApp(
-      c.env.DB,
-      {
-        name: field(form, "name"),
-        url: field(form, "url"),
-        allowedGroups: groups,
-        cfAppId: field(form, "cfAppId"),
-      },
-      actor(c),
-    ),
-  );
 });
 
 appsAdmin.post("/:id", async (c) => {

@@ -22,11 +22,12 @@ export interface ClientInput {
   description?: string;
 }
 
-export async function createClient(
+export async function prepareClient(
   db: D1Database,
   input: ClientInput,
   a: Actor,
-): Promise<{ id: string; secret: string | null }> {
+  unlinkedApp?: string,
+) {
   const name = input.name.trim().slice(0, 120);
   if (!name) throw new OpError("Name is required.");
   const uris = parseRedirectUris(input.redirectUris);
@@ -35,12 +36,13 @@ export async function createClient(
   const env = knownEnv(input.environment) ? input.environment : "production";
   const id = randomToken(18);
   const secret = isPublic ? null : randomToken(32);
-  await db
+  const statement = db
     .prepare(
       `INSERT INTO oidc_clients
          (id, name, redirect_uris, secret_hash, secret_prefix, allowed_groups, require_pkce,
           environment, created_at, created_by, client_type, source, skip_consent, description)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'admin', 1, ?12)`,
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'admin', 1, ?12
+       WHERE ?13 IS NULL OR EXISTS (SELECT 1 FROM apps WHERE id = ?13 AND client_id IS NULL)`,
     )
     .bind(
       id,
@@ -55,9 +57,18 @@ export async function createClient(
       a.adminId,
       isPublic ? "public" : "confidential",
       input.description?.trim().slice(0, 300) || null,
-    )
-    .run();
-  await audit(db, "CLIENT_CREATED", { clientId: id, detail: by(a, { name }) });
+      unlinkedApp ?? null,
+    );
+  return { id, secret, statement };
+}
+
+export async function createClient(db: D1Database, input: ClientInput, a: Actor) {
+  const { id, secret, statement } = await prepareClient(db, input, a);
+  await statement.run();
+  await audit(db, "CLIENT_CREATED", {
+    clientId: id,
+    detail: by(a, { name: input.name.trim().slice(0, 120) }),
+  });
   return { id, secret };
 }
 

@@ -160,22 +160,43 @@ function rowStatement(db: D1Database, t: TableSpec, cols: Set<string>, row: Row)
     .bind(...names.map((n) => importCell(row[n] ?? null)));
 }
 
-async function applyChunk(db: D1Database, stmts: D1PreparedStatement[]) {
+function constraintReason(error: unknown) {
+  const message = String(error);
+  if (/FOREIGN KEY constraint/i.test(message)) return "Missing referenced row";
+  if (/UNIQUE constraint/i.test(message)) return "Conflicting unique value";
+  if (/NOT NULL constraint/i.test(message)) return "Required field missing";
+  if (/CHECK constraint|datatype mismatch/i.test(message)) return "Invalid field value";
+  return null;
+}
+
+async function applyChunk(
+  db: D1Database,
+  stmts: D1PreparedStatement[],
+  reasons: Record<string, number>,
+  table: string,
+) {
+  const interrupted = () =>
+    new OpError(
+      `Restore interrupted in ${table}. Earlier batches may have been applied. Preview the backup again before retrying.`,
+    );
+  let changes: number[];
   try {
-    const results = await db.batch(stmts);
-    return { applied: results.reduce((n, r) => n + (r.meta.changes ?? 0), 0), skipped: 0 };
-  } catch {
-    let applied = 0;
-    let skipped = 0;
-    for (const s of stmts) {
+    changes = (await db.batch(stmts)).map((r) => r.meta.changes ?? 0);
+  } catch (e) {
+    if (!constraintReason(e)) throw interrupted();
+    changes = [];
+    for (const stmt of stmts) {
       try {
-        applied += (await s.run()).meta.changes ?? 0;
-      } catch {
-        skipped++;
+        changes.push((await stmt.run()).meta.changes ?? 0);
+      } catch (rowError) {
+        const reason = constraintReason(rowError);
+        if (!reason) throw interrupted();
+        countReason(reasons, reason);
       }
     }
-    return { applied, skipped };
   }
+  countReason(reasons, "Conflict kept existing row", changes.filter((n) => n === 0).length);
+  return changes.filter((n) => n > 0).length;
 }
 
 function safeOutbound(table: string, row: Row, issuer: string): Row | null {
@@ -185,33 +206,87 @@ function safeOutbound(table: string, row: Row, issuer: string): Row | null {
   return table === "webhooks" ? null : { ...row, backchannel_logout_uri: null };
 }
 
-export async function importBackup(
-  env: Env,
-  backup: Backup,
-  a: Actor,
-): Promise<{ applied: number; skipped: number; passkeys: boolean }> {
-  const passkeys = backup.rp_id === rpIdFromIssuer(env.ISSUER);
-  let applied = 0;
-  let skipped = 0;
-  for (const t of TABLES) {
-    if (t.name === "webauthn_credentials" && !passkeys) continue;
-    const cols = await columnsOf(env.DB, t.name);
-    const rows: Row[] = [];
-    for (const r of backup.tables[t.name] ?? []) {
-      const safe = settingRow(t.name, r) ? safeOutbound(t.name, r, env.ISSUER) : null;
-      if (safe) rows.push(safe);
+function rowKey(t: TableSpec, row: Record<string, unknown>) {
+  return JSON.stringify(t.key.map((k) => row[k]));
+}
+
+function countReason(counts: Record<string, number>, reason: string, n = 1) {
+  if (n) counts[reason] = (counts[reason] ?? 0) + n;
+}
+
+async function restoreTable(
+  db: D1Database,
+  t: TableSpec,
+  rows: Row[],
+  issuer: string,
+  passkeys: boolean,
+  preview: boolean,
+) {
+  const reasons: Record<string, number> = {};
+  const report = { table: t.name, additions: 0, replacements: 0, applied: 0, skipped: 0, reasons };
+  if (!rows.length) return report;
+  if (t.name === "webauthn_credentials" && !passkeys) {
+    countReason(reasons, "Different passkey domain", rows.length);
+    return { ...report, skipped: rows.length };
+  }
+  const cols = await columnsOf(db, t.name);
+  const existing = await db.prepare(`SELECT ${t.key.join(",")} FROM ${t.name}`).all();
+  const keys = new Set(existing.results.map((row) => rowKey(t, row)));
+  const statements: D1PreparedStatement[] = [];
+  for (const row of rows) {
+    const safe = settingRow(t.name, row) ? safeOutbound(t.name, row, issuer) : null;
+    if (!safe) {
+      countReason(reasons, "Excluded setting or outbound URL");
+      continue;
     }
-    const stmts = rows.flatMap((r) => rowStatement(env.DB, t, cols, r) ?? []);
-    for (let i = 0; i < stmts.length; i += 50) {
-      const r = await applyChunk(env.DB, stmts.slice(i, i + 50));
-      applied += r.applied;
-      skipped += r.skipped;
+    if (safe !== row) countReason(reasons, "Excluded back-channel URL");
+    const key = rowKey(t, row);
+    if (t.mode === "keep" && keys.has(key)) {
+      countReason(reasons, "Existing row kept");
+      continue;
+    }
+    let statement;
+    try {
+      statement = rowStatement(db, t, cols, safe);
+    } catch {
+      statement = null;
+    }
+    if (!statement) {
+      countReason(reasons, "Missing key or invalid value");
+      continue;
+    }
+    if (keys.has(key)) report.replacements++;
+    else report.additions++;
+    keys.add(key);
+    statements.push(statement);
+  }
+  report.skipped = rows.length - statements.length;
+  if (!preview) {
+    for (let i = 0; i < statements.length; i += 50) {
+      const chunk = statements.slice(i, i + 50);
+      const applied = await applyChunk(db, chunk, reasons, t.name);
+      report.applied += applied;
+      report.skipped += chunk.length - applied;
     }
   }
-  invalidateSettingsCache();
-  await audit(env.DB, "BACKUP_IMPORTED", {
-    userId: a.adminId,
-    detail: by(a, { from: backup.issuer, applied, skipped, passkeys }),
-  });
-  return { applied, skipped, passkeys };
+  return report;
+}
+
+export async function importBackup(env: Env, backup: Backup, a: Actor, preview = false) {
+  const passkeys = backup.rp_id === rpIdFromIssuer(env.ISSUER);
+  const tables = [];
+  for (const t of TABLES)
+    tables.push(
+      await restoreTable(env.DB, t, backup.tables[t.name] ?? [], env.ISSUER, passkeys, preview),
+    );
+  const applied = tables.reduce((n, t) => n + t.applied, 0);
+  const skipped = tables.reduce((n, t) => n + t.skipped, 0);
+  if (!preview) {
+    invalidateSettingsCache();
+    await audit(env.DB, "BACKUP_IMPORTED", {
+      userId: a.adminId,
+      detail: by(a, { from: backup.issuer, applied, skipped, passkeys, tables }),
+    });
+  }
+  return { tables, applied, skipped, passkeys };
 }

@@ -5,6 +5,7 @@ const tsConfigPath = path.join(process.cwd(), "tsconfig.json");
 
 module.exports = {
   forbidden: [
+    { name: "unresolved-import", severity: "error", from: {}, to: { couldNotResolve: true } },
     {
       name: "no-circular",
       comment:
@@ -16,6 +17,8 @@ module.exports = {
     },
   ],
   options: {
+    exclude: { path: "^cloudflare:workers$" },
+    enhancedResolveOptions: { exportsFields: ["exports"], conditionNames: ["import", "default"] },
     doNotFollow: { path: "node_modules" },
     ...(fs.existsSync(tsConfigPath) ? { tsConfig: { fileName: tsConfigPath } } : {}),
   },

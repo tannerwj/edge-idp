@@ -18,7 +18,7 @@ export interface AccessData {
 export const appsAccessAdmin = new Hono<AdminVars>();
 
 function subjectLabel(g: Grant, d: AccessData): string {
-  if (g.everyone) return "Everyone";
+  if (g.everyone) return "All members";
   if (g.user_id) return d.users.find((u) => u.id === g.user_id)?.name ?? "Unknown person";
   return d.groups.find((x) => x.id === g.group_id)?.name ?? "Unknown group";
 }
@@ -81,7 +81,7 @@ function GrantRow(props: { g: Grant; d: AccessData; via?: string }) {
 function SubjectSelect(props: { d: AccessData }) {
   return (
     <select name="subject" required>
-      <option value="everyone">Everyone who can sign in</option>
+      <option value="everyone">All members (excludes public accounts)</option>
       <optgroup label="Groups">
         {props.d.groups.map((g) => (
           <option key={g.id} value={`group:${g.id}`}>
@@ -114,7 +114,7 @@ export function AccessDialog(props: {
       id={props.id}
       sheet
       title={props.title}
-      lede="Who can open it, and with which role. Apps receive roles as roles: [“slug:role”] and decide what each one allows."
+      lede="Who can open it, and with which role. Linked apps receive role names such as “reader” and decide what each role allows."
     >
       <div class="stack">
         {props.own.length + inherited.length ? (

@@ -12,11 +12,7 @@ async function pickupKey(token: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
-export async function createPickup(
-  db: D1Database,
-  clientId: string,
-  secret: string,
-): Promise<string> {
+export async function preparePickup(db: D1Database, clientId: string, secret: string) {
   const token = randomToken(32);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const sealed = await crypto.subtle.encrypt(
@@ -24,7 +20,7 @@ export async function createPickup(
     await pickupKey(token),
     new TextEncoder().encode(secret),
   );
-  await db
+  const statement = db
     .prepare(
       "INSERT INTO secret_pickups (token_hash, client_id, ciphertext, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
     )
@@ -34,8 +30,13 @@ export async function createPickup(
       `${base64url(iv)}:${base64url(sealed)}`,
       nowSec(),
       nowSec() + PICKUP_TTL,
-    )
-    .run();
+    );
+  return { token, statement };
+}
+
+export async function createPickup(db: D1Database, clientId: string, secret: string) {
+  const { token, statement } = await preparePickup(db, clientId, secret);
+  await statement.run();
   return token;
 }
 

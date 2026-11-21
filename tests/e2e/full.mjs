@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
+import { restoreDrill } from "./restore-drill.mjs";
 import { chromium } from "playwright";
 import { startLocal, startRemote } from "./instances.mjs";
 import { createRemoteJWKSet, jwtVerify, decodeJwt } from "jose";
@@ -183,6 +184,13 @@ try {
   );
 
   step("credential changes require a fresh passkey recheck");
+  await page.goto(BASE + "/account");
+  await page.click("[data-check-key]");
+  await page.getByText(/^Tested /).waitFor();
+  check(
+    "testing a named passkey keeps the current session",
+    (await ctx.cookies(BASE)).find((c) => c.name === "__Host-idp_session")?.value === sess.value,
+  );
   const beforeStepUp = await page.request.post(`${BASE}/webauthn/register/options`, { data: {} });
   check(
     "fresh login session alone cannot add a passkey",
@@ -237,6 +245,12 @@ try {
 
   step("app groups, grants and the launcher");
   await page.goto(`${BASE}/admin/apps`);
+  check(
+    "catalog omits inactive app and group editors",
+    (await page
+      .locator("dialog[id^='edit-'],dialog[id^='access-'],#new-app,#new-app-group")
+      .count()) === 0,
+  );
   await page.click("[data-open='new-app-group']");
   await page.fill("#new-app-group input[name=name]", "Home");
   await page.click("#new-app-group button[type=submit]");
@@ -284,6 +298,31 @@ try {
     await page.isVisible(
       ".launcher-section:has(h3:has-text('Favorites')) .tile:has-text('Solar Panel')",
     ),
+  );
+
+  await sql(
+    Array.from(
+      { length: 6 },
+      (_, i) =>
+        `INSERT INTO apps (id, name, url, created_at) VALUES ('search-${i}', 'Library ${i}', 'https://library.example.test', ${now});
+       INSERT INTO app_grants (id, app_id, user_id, created_at) VALUES ('search-${i}', 'search-${i}', 'admin-1', ${now});`,
+    ).join("\n"),
+  );
+  await page.reload();
+  const search = page.getByRole("searchbox", { name: "Find an app" });
+  await search.fill("LIBRARY");
+  check(
+    "launcher search filters tiles and hides empty sections",
+    (await page.locator("#launcher [data-filter-text]:visible").count()) === 6 &&
+      (await page.locator("#launcher [data-filter-section]:visible").count()) === 1,
+  );
+  await search.fill("");
+  check(
+    "clearing search restores groups and favorites",
+    (await page.locator("#launcher [data-filter-section]:visible").count()) === 3,
+  );
+  await sql(
+    "DELETE FROM apps WHERE id IN ('search-0','search-1','search-2','search-3','search-4','search-5')",
   );
 
   await page.goto(`${BASE}/admin/users`);
@@ -645,12 +684,30 @@ try {
     const r = await mcpCall(mt.access_token, "tools/call", { name, arguments: args });
     return JSON.parse(r.body?.result?.content?.[0]?.text ?? "null");
   };
-  const conn = await tool("apps_connect", {
+  const connection = {
     template: "grafana",
     base_url: "https://grafana.example.test/",
     name: "Grafana",
     groups: ["family"],
-  });
+  };
+  const planned = await tool("apps_connect", { ...connection, preview: true });
+  check(
+    "connection preview leaves the catalog untouched",
+    planned?.status === "preview" &&
+      !(await sql("SELECT id FROM apps WHERE name='Grafana'")).length,
+  );
+  const connections = await Promise.all([
+    tool("apps_connect", connection),
+    tool("apps_connect", connection),
+  ]);
+  const conn = connections.find((x) => x?.status === "created");
+  check(
+    "simultaneous connections share one client and one pickup",
+    connections.some(
+      (x) =>
+        x?.status === "connected" && x.client_id === conn?.client_id && x.secret_pickup === null,
+    ),
+  );
   const grafanaRedirect = "https://grafana.example.test/login/generic_oauth";
   check(
     "apps_connect registers the template's redirect URI and returns a pickup",
@@ -671,6 +728,24 @@ try {
     !JSON.stringify(conn).includes(grafanaSecret),
   );
   await tool("grants_add", { app: conn?.app?.slug, group: "family", role: "writer" });
+  const retry = await tool("apps_connect", connection);
+  check(
+    "retry preserves the installed credential",
+    retry?.client_id === conn?.client_id && retry?.secret_pickup === null,
+  );
+  const why = await tool("access_explain", { user_id: "admin-1", app: conn.app.id });
+  check(
+    "inspector uses the linked client's actual roles",
+    why.visible && why.roles.includes("writer") && why.sign_in === "Eligible",
+  );
+  await page.goto(BASE + "/admin/users/admin-1?tab=access&app=" + conn.app.id);
+  check(
+    "people view explains the same grant",
+    await page
+      .getByLabel("Access explanation")
+      .innerText()
+      .then((s) => s.includes("writer") && s.includes("family")),
+  );
   const p4 = pkce();
   const grafanaAuth = {
     client_id: conn?.client_id,
@@ -711,6 +786,13 @@ try {
     String(refused?.status()),
   );
 
+  const inspectionDenied = await tool("access_explain", { user_id: "admin-1", app: conn.app.id });
+  check(
+    "inspector explains the denied sign-in and hidden tile",
+    !inspectionDenied.visible &&
+      inspectionDenied.sign_in === "app access was removed" &&
+      !inspectionDenied.roles.length,
+  );
   step("public sign-up: open app, contained account");
   const game = await tool("clients_create", {
     name: "Game",
@@ -1518,6 +1600,7 @@ try {
     await sql(
       `INSERT INTO groups (id, name, description, created_at) VALUES ('g-restore', 'restore-me', 'from backup', ${now})`,
     );
+    await tool("grants_add", { app: conn.app.id, user_id: "admin-1", role: "reader" });
     const res = await page.request.post(`${BASE}/admin/settings/backup/export`);
     const backup = await res.json();
     check(
@@ -1530,6 +1613,20 @@ try {
         !backup.tables.instance_settings.some((r) => r.key === "cf_api_token"),
     );
     await sql("DELETE FROM groups WHERE id = 'g-restore'");
+    const preview = await page.request.post(BASE + "/admin/settings/backup/preview", {
+      multipart: {
+        file: {
+          name: "backup.json",
+          mimeType: "application/json",
+          buffer: Buffer.from(JSON.stringify(backup)),
+        },
+      },
+    });
+    check(
+      "restore preview predicts changes without writing",
+      (await preview.text()).includes("Restore preview") &&
+        !(await sql("SELECT id FROM groups WHERE id='g-restore'")).length,
+    );
     const restored = await page.request.post(`${BASE}/admin/settings/backup/import`, {
       multipart: {
         file: {
@@ -1543,6 +1640,9 @@ try {
     check("restoring brings the group back", restored.ok && back[0]?.name === "restore-me", back);
     const admins = (await sql("SELECT COUNT(*) AS n FROM users WHERE id = 'admin-1'"))[0]?.n;
     check("…and leaves existing people alone", admins === 1);
+    const currentKeys = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+    await restoreDrill(browser, backup, currentKeys.credentials, conn, grafanaSecret);
+    check("fresh database accepts restored passkey and authorizes restored Grafana", true);
   }
 
   step("feedback + update notice");

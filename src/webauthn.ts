@@ -1,3 +1,4 @@
+import { passkeyCheck } from "./passkey-check";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
@@ -240,6 +241,8 @@ webauthn.post("/register/verify", async (c) => {
   return c.json({ ok: true });
 });
 
+webauthn.route("/", passkeyCheck);
+
 webauthn.post("/auth/options", async (c) => {
   const body = await c.req.json<{ email?: string; stepUp?: boolean; requireUv?: boolean }>();
   let user: User | null = null;
@@ -374,9 +377,26 @@ webauthn.post("/auth/verify", async (c) => {
   const cred = creds.find((k) => credIdB64(k) === body.response.id);
   if (!cred) return c.json({ error: "auth_failed" }, 401);
 
+  if (stored.data.checkKey !== undefined) {
+    const session = await getSession(c);
+    if (
+      stored.data.checkKey !== cred.id ||
+      !session ||
+      session.idHash !== stored.data.session ||
+      session.user.id !== user.id
+    )
+      return c.json({ error: "auth_failed" }, 401);
+  }
   const problem = await assertionProblem(c, user, cred, body.response, challenge, stored);
   if (problem) return c.json({ error: problem }, 401);
-
+  if (stored.data.checkKey !== undefined) {
+    await c.env.DB.prepare(
+      "UPDATE webauthn_credentials SET checked_at=?1 WHERE id=?2 AND user_id=?3",
+    )
+      .bind(nowSec(), cred.id, user.id)
+      .run();
+    return c.json({ ok: true, checked: true });
+  }
   const ip = clientIp(c);
   await destroySession(c);
   await audit(c.env.DB, "SIGN_IN", {

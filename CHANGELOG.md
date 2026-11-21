@@ -3,6 +3,32 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.3.0 — 2026-11-21
+
+**Upgrade:** Apply migration 0020 before deploying to record passkey checks.
+Callers of `apps_connect` should redeem a pickup only when `status` is
+`created`. A retry returns the installed configuration with a null pickup.
+Use the explicit client secret rotation action when replacing a credential.
+
+- Preview and connect an app in Admin → Connect or through MCP. Creation,
+  linking, initial grants and secret pickup commit together. Reconnecting
+  preserves the installed credential and redirects.
+- Inspect any person's access to any app, including hidden tiles and denied
+  sign-ins, in People → App access or with `access_explain`.
+- Cloudflare imports show policy conditions and require an explicit launcher
+  audience. Review the people covered before adding the tile.
+- The app catalog loads the selected editor on demand.
+- Preview backup changes and receive per-table restore counts and reasons.
+- Test a named spare passkey from Account & security. The account page records
+  the check and explains the instance's recovery options.
+
+- Fixed launcher search for people with seven or more apps. The home screen
+  also reads only a passkey count and sync indicator for its security card.
+- The app access editor now labels the all-members grant explicitly. Public
+  accounts remain outside that grant. The app form and MCP tool descriptions
+  now explain which grants control linked clients and how roles appear in tokens.
+- Updated Hono to 4.13.19.
+
 ## 2.2.0 — 2026-10-22
 
 ### Upgrade notes

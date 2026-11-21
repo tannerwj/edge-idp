@@ -1,3 +1,4 @@
+import { inspectAccess } from "../access-inspection";
 import { listApps } from "../db";
 import {
   DEFAULT_ROLES,
@@ -47,7 +48,7 @@ const TARGET = {
 const SUBJECT = {
   ...USER_REF,
   group: { type: "string", description: "…or a user group name" },
-  everyone: { type: "boolean", description: "…or everyone who can sign in" },
+  everyone: { type: "boolean", description: "…or all members (excludes public accounts)" },
 };
 
 async function grantInput(db: D1Database, args: Record<string, unknown>): Promise<ops.GrantInput> {
@@ -80,13 +81,14 @@ const CONNECT_TOOLS: ToolDef[] = [
     name: "apps_connect",
     write: true,
     description:
-      "Connect an app so it signs in with Johnson ID: creates (or reuses) its launcher tile, registers an OIDC client linked to it with the template's redirect URIs, and returns the app-side config. Who may sign in = the tile's grants; the app's token carries only its own roles. The client secret is NOT returned: POST token=<secret_pickup.token> to secret_pickup.url once (10 minutes) and pipe the response into the app, replacing ${CLIENT_SECRET} in config. Re-running on a connected app rotates the secret and refreshes redirect URIs.",
+      "Connect an app so it signs in with Johnson ID: creates (or reuses) its launcher tile, registers an OIDC client linked to it with the template's redirect URIs, and returns the app-side config. Who may sign in = the tile's grants; the app's token carries only its own roles. The client secret is NOT returned: POST token=<secret_pickup.token> to secret_pickup.url once (10 minutes) and pipe the response into the app, replacing ${CLIENT_SECRET} in config. Retrying preserves the client and secret. A connected result has no pickup. Set preview to inspect the proposed configuration.",
     inputSchema: obj(
       {
         template: {
           type: "string",
           description: "From app_templates_list, e.g. grafana or generic",
         },
+        preview: { type: "boolean", description: "Show proposed changes without writing." },
         base_url: {
           type: "string",
           description: "The app's URL, e.g. https://grafana.example.com",
@@ -102,7 +104,7 @@ const CONNECT_TOOLS: ToolDef[] = [
           type: "array",
           items: { type: "string" },
           description:
-            "Groups to grant on a new tile (default: the app group's grants, or everyone)",
+            "Groups to grant on a new tile (default: the app group's grants, or all members)",
         },
         redirect_uris: {
           type: "array",
@@ -117,6 +119,7 @@ const CONNECT_TOOLS: ToolDef[] = [
         db,
         env.ISSUER,
         {
+          preview: args.preview === true,
           template: str(args.template),
           baseUrl: str(args.base_url),
           app: str(args.app) || undefined,
@@ -201,7 +204,7 @@ export const ACCESS_TOOLS: ToolDef[] = [
     name: "grants_list",
     write: false,
     description:
-      "List access grants. Each grant gives one user, one user group or everyone access to one app or one app group, optionally with a role. Filter by app or app group.",
+      "List access grants. Each grant gives one user, one user group or all members access to one app or one app group, optionally with a role. Filter by app or app group.",
     inputSchema: obj(TARGET),
     handler: async ({ db }, args) => {
       let grants = await listGrants(db);
@@ -222,7 +225,7 @@ export const ACCESS_TOOLS: ToolDef[] = [
     name: "grants_add",
     write: true,
     description:
-      "Grant access: pick one target (app or app_group) and one subject (user_id/email, group, or everyone). Optional role (e.g. admin, writer, reader) appears in tokens as roles: ['<app-slug>:<role>']; apps decide what a role means. Idempotent.",
+      "Grant access: pick one target (app or app_group) and one subject (user_id/email, group, or everyone). A linked app receives its own role names, e.g. roles: ['reader']. Idempotent.",
     inputSchema: obj({
       ...TARGET,
       ...SUBJECT,
@@ -249,11 +252,12 @@ export const ACCESS_TOOLS: ToolDef[] = [
     name: "access_explain",
     write: false,
     description:
-      "Effective access for one user: every app they can open, their roles there, and the grants that give it. Cloudflare Access gets the app list as the `apps` claim; an app connected with its own client gets only its roles as `roles`.",
-    inputSchema: obj(USER_REF),
+      "Pass app for a targeted explanation including denials, or omit it for effective access for one user: every app they can open, their roles there, and the grants that give it. Cloudflare Access gets the app list as the `apps` claim; an app connected with its own client gets only its roles as `roles`.",
+    inputSchema: obj({ ...USER_REF, app: TARGET.app }),
     handler: async ({ db }, args) => {
       const ctx = await loadUserContext(db, (await userByRef(db, args)).id);
       if (!ctx) throw new ops.OpError("User not found.");
+      if (str(args.app)) return inspectAccess(db, ctx, await ops.appByRef(db, str(args.app)));
       const { apps, grants, subject, access } = ctx;
       const views = new Map((await grantView(db, grants)).map((v) => [v.id, v]));
       return apps

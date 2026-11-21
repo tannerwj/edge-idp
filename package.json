@@ -1,6 +1,6 @@
 {
   "name": "edge-idp",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "description": "Personal passkey-first OIDC identity provider on Cloudflare Workers + D1",
   "license": "MIT",
@@ -9,10 +9,11 @@
     "dev": "npm run build:client && cf dev",
     "build:client": "node scripts/build-client.mjs",
     "test": "vitest run",
-    "test:e2e": "node tests/e2e/full.mjs && node tests/e2e/api.mjs",
+    "test:e2e": "node tests/e2e/full.mjs && node tests/e2e/api.mjs && node tests/e2e/catalog.mjs",
     "test:e2e:setup": "node tests/e2e/setup.mjs",
     "test:e2e:staging": "E2E_STAGE=staging node tests/e2e/full.mjs",
     "test:security": "for f in tests/security/*.mjs; do node \"$f\" || exit 1; done",
+    "smoke:local": "node tests/e2e/smoke-local.mjs",
     "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json",
@@ -42,7 +43,7 @@
     "@sentry/cloudflare": "^11.4.0",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.2",
-    "hono": "^4.7.0",
+    "hono": "^4.13.19",
     "jose": "^6.0.0"
   },
   "devDependencies": {
@@ -62,7 +63,11 @@
     "wrangler": "^4.0.0"
   },
   "overrides": {
-    "sharp": "^0.35.5"
+    "miniflare@5.20261006.0-alpha": {
+      "undici": "7.30.1"
+    },
+    "sharp": "^0.35.5",
+    "zod@>=4 <4.6.6": "4.6.7"
   },
   "cloudflare": {
     "bindings": {

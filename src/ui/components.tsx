@@ -120,7 +120,7 @@ export function Dialog(props: {
     <>
       <div class="dlg-head">
         <div class="grow">
-          <h2>{props.title}</h2>
+          <h2 id={`${props.id}-t`}>{props.title}</h2>
           {props.lede ? <p>{props.lede}</p> : null}
         </div>
         <button class="btn ghost icon sm" type="button" data-close aria-label="Close">

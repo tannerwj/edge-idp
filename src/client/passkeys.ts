@@ -183,7 +183,28 @@ async function onEnrollClick(btn: HTMLElement, token: string): Promise<void> {
   }
 }
 
+async function checkPasskey(btn: HTMLElement) {
+  setBusy(btn, true);
+  try {
+    const options = await postJSON("/webauthn/check/options", { key: btn.dataset.checkKey });
+    if (!isAuthOptions(options)) throw new Error("bad_response");
+    const response = await startAuthentication({ optionsJSON: options });
+    const result = await postJSON("/webauthn/auth/verify", { response });
+    if (result.checked === true) {
+      history.replaceState(null, "", "/account#passkeys");
+      window.location.reload();
+    }
+  } catch (e) {
+    status("account-status", friendlyError(e), "error");
+  } finally {
+    setBusy(btn, false);
+  }
+}
+
 export function initAccount(): void {
+  $$("[data-check-key]").forEach((btn) =>
+    btn.addEventListener("click", () => void checkPasskey(btn)),
+  );
   const btn = $("add-key-btn");
   btn?.addEventListener("click", () => void onAddKeyClick(btn));
 }

@@ -19,6 +19,12 @@ enrollment link, sent by an admin or, if an admin allows it, by email
 (see _Account recovery_). Users are nudged to enroll two passkeys (phone and
 laptop) so losing one device is a non-event.
 
+A signed-in user can test a selected passkey. The server requires user
+verification and binds the challenge to the session hash, owner and credential
+ID. A successful assertion records the check without issuing a session or
+updating the session's step-up time (`src/passkey-check.ts`,
+`src/webauthn.ts › /auth/verify`).
+
 A user cannot remove their own last passkey from Account & security; the
 handler refuses a deletion that would leave zero credentials, so nobody can
 lock themselves out by accident (`src/account.tsx › /account/keys/:id/remove`).
@@ -170,7 +176,9 @@ consumes it, so two racing pickups can't both get the secret), expires after
 10 minutes, and travels in the POST body, never a URL. The row stores the
 secret AES-GCM-encrypted under a key derived from the token, and only the
 token's hash, so a D1 read during those 10 minutes yields nothing usable. The
-endpoint is rate-limited with the authentication budget, unused rows are
+initial pickup and connection are written atomically. A repeat connection
+cannot recover a spent pickup or rotate credentials. The pickup endpoint
+is rate-limited with the authentication budget, unused rows are
 purged by the hourly cron, and each pickup is audited
 (`src/secret-pickup.ts`). The admin UI still shows a new secret once, on
 screen, to the admin.
@@ -556,7 +564,10 @@ Passkeys are restored only when the backup's passkey domain matches, since a
 credential bound to another RP ID could never verify here. Webhook URLs and
 back-channel logout URLs go through the same outbound URL rules as when an
 admin enters them: a webhook that fails is skipped, a back-channel URL that
-fails is cleared (`src/backup.ts › safeOutbound`).
+fails is cleared (`src/backup.ts › safeOutbound`). A preview reads existing
+keys without applying SQL writes. The browser requires the same file digest
+when applying the reviewed file. The receipt and import audit give counts
+per table without storing the backup or any of its field values.
 
 ## Admin surface
 

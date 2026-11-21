@@ -1,3 +1,4 @@
+import { inspectAccess } from "../access-inspection";
 import { Hono } from "hono";
 import { getCredentialsForUser, getUser, listGroups } from "../db";
 import type { User } from "../db";
@@ -34,6 +35,7 @@ async function loadTabData(
   id: string,
   user: User,
   self: boolean,
+  inspect?: string,
 ): Promise<TabData> {
   const [creds, ctx, allGroups, sessions, grants, activity] = await Promise.all([
     getCredentialsForUser(db, id),
@@ -73,7 +75,10 @@ async function loadTabData(
   ]);
   const groups = ctx?.groups ?? [];
   const access = { apps: ctx?.apps ?? [], access: ctx?.access ?? new Map<string, string[]>() };
+  const chosen = ctx?.apps.find((app) => app.id === inspect);
   return {
+    apps: access.apps,
+    inspection: ctx && chosen ? await inspectAccess(db, ctx, chosen) : null,
     id,
     self,
     user,
@@ -171,7 +176,13 @@ userDetailAdmin.get("/", async (c) => {
   if (!user) return c.notFound();
   const tab = TABS.find((t) => t.id === c.req.query("tab"))?.id ?? "overview";
   const self = id === c.get("admin").id;
-  const data = await loadTabData(db, id, user, self);
+  const data = await loadTabData(
+    db,
+    id,
+    user,
+    self,
+    tab === "access" ? c.req.query("app") : undefined,
+  );
   const { creds } = data;
   const counts: Record<string, number> = {
     passkeys: creds.length,

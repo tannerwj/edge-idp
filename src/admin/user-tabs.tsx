@@ -1,3 +1,4 @@
+import type { inspectAccess } from "../access-inspection";
 import type { getCredentialsForUser, Group, User } from "../db";
 import { Empty, GroupPicker, PostButton, Time } from "../ui/components";
 import { deviceLabel, Feed } from "../ui/feed";
@@ -26,6 +27,8 @@ export interface TabData {
     name: string;
   }[];
   activity: FeedRow[];
+  apps: { id: string; name: string }[];
+  inspection: Awaited<ReturnType<typeof inspectAccess>> | null;
   access: { name: string; slug: string | null; roles: string[] }[];
 }
 
@@ -272,7 +275,7 @@ export function SessionsTab({ id, user, sessions }: TabData) {
   );
 }
 
-export function AppAccessTab({ user, access }: TabData) {
+export function AppAccessTab({ user, access, apps, inspection }: TabData) {
   return (
     <div class="card">
       <div class="card-head">
@@ -281,6 +284,48 @@ export function AppAccessTab({ user, access }: TabData) {
           Manage access
         </a>
       </div>
+      <form method="get" class="card-body row wrap">
+        <input type="hidden" name="tab" value="access" />
+        <label>
+          Inspect app{" "}
+          <select name="app" required>
+            {apps.map((a) => (
+              <option key={a.id} value={a.id} selected={a.id === inspection?.app_id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button class="btn" type="submit">
+          Explain access
+        </button>
+      </form>
+      {inspection ? (
+        <div class="card-body stack-sm" aria-label="Access explanation">
+          <h3>{inspection.app}</h3>
+          <p>
+            Launcher: {inspection.visible ? "Visible" : "Hidden"} · {inspection.launcher_reason}
+          </p>
+          <p>Sign-in: {inspection.sign_in}</p>
+          {inspection.also_granted_through.length > 0 && (
+            <p>Other granted tiles for this client: {inspection.also_granted_through.join(", ")}</p>
+          )}
+          {inspection.require_passkey && <p>This client requires passkey sign-in.</p>}
+          {inspection.max_auth_age && (
+            <p>This client requires sign-in within {inspection.max_auth_age} seconds.</p>
+          )}
+          <p>Token roles: {inspection.roles.join(", ") || "None"}</p>
+          <ul>
+            {inspection.via.map((g) => (
+              <li key={g.id}>
+                {g.subject} · {g.target}
+                {g.role ? " · " + g.role : ""}
+              </li>
+            ))}
+          </ul>
+          <p>{inspection.enforcement}</p>
+        </div>
+      ) : null}
       {access.length ? (
         <ul class="list">
           {access.map((a) => (

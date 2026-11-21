@@ -22,6 +22,7 @@ import { settingsAdmin } from "./settings";
 export const admin = new Hono<AdminVars>();
 
 const SENSITIVE = [
+  /^\/admin\/connect\/apply$/,
   /^\/admin\/users$/,
   /^\/admin\/users\/[^/]+\/(profile|role|member|enrollment|revoke-keys)$/,
   /^\/admin\/users\/[^/]+\/keys\/[^/]+\/remove$/,

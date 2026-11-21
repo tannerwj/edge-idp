@@ -1,3 +1,5 @@
+import { getInstanceSettings } from "./settings-cache";
+import { emailStatus } from "./email";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
@@ -63,6 +65,30 @@ function loadAccount(db: D1Database, userId: string) {
   ]);
 }
 
+async function recoveryHelp(c: C, s: Session) {
+  const settings = await getInstanceSettings(c.env.DB);
+  if (s.user.public)
+    return "Public accounts cannot request an email recovery link. Keep a spare passkey you can reach.";
+  if (
+    s.user.is_admin &&
+    !(await c.env.DB.prepare(
+      "SELECT 1 FROM users WHERE id!=?1 AND is_admin=1 AND disabled=0 LIMIT 1",
+    )
+      .bind(s.user.id)
+      .first())
+  )
+    return "You are the only active administrator. Set up a spare passkey or invite a second administrator who can help with recovery.";
+  if (settings.recoveryMode === "off")
+    return "If you lose every passkey, ask another administrator for an enrollment link.";
+  if (
+    !s.user.is_admin &&
+    settings.recoveryMode === "auto" &&
+    emailStatus(c.env, settings) === "ready"
+  )
+    return "Use Lost your passkey on the sign-in page to request a link at your account email.";
+  return "Use Lost your passkey on the sign-in page. Another administrator reviews your request.";
+}
+
 account.get("/account", async (c) => {
   const s = await requireSession(c);
   if (s instanceof Response) return s;
@@ -88,7 +114,7 @@ account.get("/account", async (c) => {
       <div class="stack-lg">
         <ProfileSection user={s.user} canChangeEmail={await selfEmailChangeOpen(c.env)} />
 
-        <PasskeysSection creds={creds} />
+        <PasskeysSection creds={creds} recovery={await recoveryHelp(c, s)} />
 
         <SessionsSection
           sessions={sessions.results}

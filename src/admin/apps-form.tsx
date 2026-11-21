@@ -79,18 +79,18 @@ function ClientField(props: { app?: App; clients: OidcClient[] }) {
       <span class="label">Sign-in client (optional)</span>
       <select name="clientId">
         <option value="" selected={!props.app?.client_id}>
-          None: use the access grants
+          None
         </option>
         {props.clients
           .filter((c) => c.source === "admin")
           .map((c) => (
             <option key={c.id} value={c.id} selected={props.app?.client_id === c.id}>
-              Same as client “{c.name}” ({c.allowed_groups?.join(", ") || "everyone"})
+              {c.name}
             </option>
           ))}
       </select>
       <span class="hint">
-        For apps that sign in here directly: the tile then follows the client's groups.
+        Link a client to let grants on its linked apps control who can sign in.
       </span>
     </label>
   );
@@ -150,9 +150,11 @@ export function AppForm(props: {
       <ClientField app={a} clients={props.clients} />
       {a ? null : (
         <div class="field">
-          <span class="label">Who can open it (none selected means everyone)</span>
+          <span class="label">Initial groups for a tile without a sign-in client</span>
           <GroupPicker name="groups" all={props.groups} selected={null} />
-          <span class="hint">Add people, roles and more groups afterwards with Access.</span>
+          <span class="hint">
+            Leave empty for all members. For a linked client, manage grants in Access.
+          </span>
         </div>
       )}
       <Callout icon="info">

@@ -91,7 +91,7 @@ export function ProfileSection({ user, canChangeEmail }: { user: User; canChange
   );
 }
 
-export function PasskeysSection({ creds }: { creds: Credential[] }) {
+export function PasskeysSection({ creds, recovery }: { creds: Credential[]; recovery: string }) {
   return (
     <section class="card" id="passkeys">
       <div class="card-head">
@@ -106,6 +106,11 @@ export function PasskeysSection({ creds }: { creds: Credential[] }) {
             Add passkey
           </button>
         </div>
+      </div>
+      <div class="card-body stack-sm">
+        <h3>Recovery readiness</h3>
+        <p>Name your spare passkey and test it from a device you could use if you lost this one.</p>
+        <p>{recovery}</p>
       </div>
       <p id="account-status" class="status card-status" role="status" aria-live="polite"></p>
       <ul class="list">
@@ -134,6 +139,16 @@ export function PasskeysSection({ creds }: { creds: Credential[] }) {
                   "Never used"
                 )}
               </div>
+            </div>
+            <div class="stack-sm">
+              <button class="btn ghost sm" type="button" data-check-key={k.id}>
+                Test passkey
+              </button>
+              {k.checked_at ? (
+                <span class="meta">
+                  Tested <Time ts={k.checked_at} />
+                </span>
+              ) : null}
             </div>
             <button class="btn ghost sm" type="button" data-open={`rename-${k.id}`}>
               Rename

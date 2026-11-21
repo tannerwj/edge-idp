@@ -202,7 +202,7 @@ export const APP_TOOLS: ToolDef[] = [
     name: "apps_create",
     write: true,
     description:
-      "Add an app tile to the launcher. allowed_groups seeds grants (empty = everyone); refine with grants_add. Link it to a client_id to follow that client's allowed groups instead. Pass cf_app_id when the tile fronts a Cloudflare Access application so the admin UI shows it as imported.",
+      "Add an app tile to the launcher. Without client_id, allowed_groups seeds grants (empty = all members). With client_id, use grants_add or inherited app-group grants to give people access to the linked client. Pass cf_app_id when the tile fronts a Cloudflare Access application so the admin UI shows it as imported.",
     inputSchema: obj(
       {
         name: { type: "string" },

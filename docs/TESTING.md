@@ -19,9 +19,11 @@ npm run test:e2e
 
 Add `npm run test:e2e:setup` and `npm run test:security` when you touch setup,
 instance resolution (`src/instance.ts`, `src/setup.tsx`) or anything
-security-related. CI runs only typecheck, `typecheck:e2e`, `fmt:check`, unit
-tests and gates; the e2e suites need a local `cf`/`wrangler` runtime and a
-browser, so run them yourself.
+security-related. CI installs Chromium and runs both typechecks, formatting, unit tests,
+source gates, migration checks, generated asset consistency, portable bundle
+size and the local browser, API, setup, security and smoke suites. The main
+flow uses offline mode in CI. Run it without that flag to check external
+integrations before release.
 
 ## Prerequisites
 
@@ -36,14 +38,14 @@ browser, so run them yourself.
 
 ## Suites
 
-| Command                    | What it runs                                  | Target                              |
-| -------------------------- | --------------------------------------------- | ----------------------------------- |
-| `npm test`                 | `tests/unit.test.ts` (vitest)                 | none                                |
-| `npm run test:e2e`         | `tests/e2e/full.mjs`, then `api.mjs`          | throwaway local (`cf dev`)          |
-| `npm run test:e2e:setup`   | `tests/e2e/setup.mjs`                         | throwaway portable (`wrangler dev`) |
-| `npm run test:security`    | each `tests/security/*.mjs`                   | throwaway local or portable         |
-| `npm run test:e2e:staging` | `tests/e2e/full.mjs` with `E2E_STAGE=staging` | deployed staging Worker             |
-| `npm run smoke`            | `tests/smoke/**/*.e2e.ts`                     | any deployed instance               |
+| Command                    | What it runs                                           | Target                              |
+| -------------------------- | ------------------------------------------------------ | ----------------------------------- |
+| `npm test`                 | `tests/unit.test.ts` (vitest)                          | none                                |
+| `npm run test:e2e`         | `tests/e2e/full.mjs`, then `api.mjs` and `catalog.mjs` | throwaway local (`cf dev`)          |
+| `npm run test:e2e:setup`   | `tests/e2e/setup.mjs`                                  | throwaway portable (`wrangler dev`) |
+| `npm run test:security`    | each `tests/security/*.mjs`                            | throwaway local or portable         |
+| `npm run test:e2e:staging` | `tests/e2e/full.mjs` with `E2E_STAGE=staging`          | deployed staging Worker             |
+| `npm run smoke`            | `tests/smoke/**/*.e2e.ts`                              | any deployed instance               |
 
 Every script prints `ok` / `FAIL` lines and exits non-zero on any failure.
 
@@ -79,6 +81,14 @@ then minor then patch, equal is not newer, pre-release and build suffixes are
 ignored, and anything that isn't a full three-part version never reports an
 update.
 
+The catalog regression measures the server-rendered list at 16 and 64 apps
+and requires only the two shared dialogs on the initial page. It also verifies
+the admin connection form, audience preview and explicit import. The restore
+drill imports the reviewed backup into a fresh local database, signs in with
+a restored credential and verifies a restored client's signed ID token and
+role. `npm run smoke:local` exercises the deployed smoke tests against a
+configured disposable Worker.
+
 ### Full flow (`tests/e2e/full.mjs`)
 
 The main suite. It boots a throwaway `cf dev` instance on a random port in
@@ -95,7 +105,8 @@ virtual authenticator through:
   `/enroll/<token>` path is gone;
 - the admin UI, including creating an app group and an app in it, granting a
   group a role through the Access dialog, and the launcher showing the section,
-  opening tiles in a new tab and moving a favorited app under Favorites;
+  opening tiles in a new tab, showing a favorited app under Favorites and filtering
+  a seven-app launcher by name, including restoring empty sections when search is cleared;
 - the same-origin guard;
 - the OIDC authorization code flow, `prompt` and `max_age`;
 - the regression that app tokens can't drive the admin API;
