@@ -524,15 +524,18 @@ try {
     code_challenge: p2.challenge,
     code_challenge_method: "S256",
   };
-  await page.goto(`${BASE}/authorize?${new URLSearchParams(mcpAuth)}`);
+  const consentPage = await page.context().newPage();
+  await consentPage.goto(`${BASE}/authorize?${new URLSearchParams(mcpAuth)}`);
+  await consentPage.locator("form[action='/authorize/decision']").waitFor();
   check(
     "third-party client gets a consent screen",
-    !!(await page.$("form[action='/authorize/decision']")),
+    await consentPage.locator("form[action='/authorize/decision']").isVisible(),
   );
   check(
     "consent warns about a local redirect",
-    (await page.textContent("body")).includes("runs on your computer"),
+    (await consentPage.textContent("body")).includes("runs on your computer"),
   );
+  await consentPage.close();
   const denied = await authorizeInBrowser(mcpAuth, { approve: false });
   check(
     "deny → access_denied",
@@ -827,11 +830,6 @@ try {
     code_challenge: p5.challenge,
     code_challenge_method: "S256",
   };
-  for (const host of ["game", "members"]) {
-    await gpage.route(`https://${host}.example.test/cb?**`, (route) =>
-      route.fulfill({ contentType: "text/html", body: "<title>Callback</title>" }),
-    );
-  }
   await gpage.goto(`${BASE}/authorize?${new URLSearchParams(gameAuth)}`);
   check(
     "sign-in for a public app offers Create an account",
@@ -839,9 +837,11 @@ try {
   );
   await gpage.click("a:has-text('Create an account')");
   await gpage.fill("#signup-name", "Pat Player");
+  const gameCallback = gpage.waitForRequest(
+    (r) => new URL(r.url()).origin === "https://game.example.test",
+  );
   await gpage.click("#signup-btn");
-  await gpage.waitForURL("https://game.example.test/cb?**");
-  const gameCode = new URL(gpage.url()).searchParams.get("code");
+  const gameCode = new URL((await gameCallback).url()).searchParams.get("code");
   check("sign-up lands back in the app with a code", !!gameCode);
   const pt = await (
     await tokenReq(
@@ -873,10 +873,11 @@ try {
     code_challenge: p5.challenge,
     code_challenge_method: "S256",
   });
-  const refusedPub = await gpage.goto(`${BASE}/authorize?${membersAuth}`);
+  const memberPage = await gctx.newPage();
+  const refusedPub = await memberPage.goto(`${BASE}/authorize?${membersAuth}`);
   check(
     "a public account is refused at a members-only app",
-    refusedPub?.status() === 403 && (await gpage.textContent("body")).includes("members only"),
+    refusedPub?.status() === 403 && (await memberPage.textContent("body")).includes("members only"),
     String(refusedPub?.status()),
   );
   const closedSignup = await fetch(`${BASE}/webauthn/signup/options`, {
@@ -893,11 +894,15 @@ try {
   });
   check("a public account can't be made admin", promote.body?.result?.isError === true);
   await tool("users_make_member", { user_id: pub?.id, email: "pat@example.test" });
-  await gpage.goto(`${BASE}/authorize?${membersAuth}`);
-  await gpage.waitForURL("https://members.example.test/cb?**");
+  const promoted = await memberPage.request.get(`${BASE}/authorize?${membersAuth}`, {
+    maxRedirects: 0,
+  });
+  const memberCallback = new URL(promoted.headers().location);
   check(
     "after Make member the same account is admitted",
-    !!new URL(gpage.url()).searchParams.get("code"),
+    promoted.status() === 302 &&
+      memberCallback.origin === "https://members.example.test" &&
+      !!memberCallback.searchParams.get("code"),
   );
   await gctx.close();
 
