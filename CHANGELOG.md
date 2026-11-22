@@ -7,6 +7,7 @@ update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
 - Test an app connection from Onboarding, invite a member to that app, and see enrollment and first client sign-in. Sign-in failures display a searchable support reference.
 - Preview who gains or loses launcher access, app roles and sign-in eligibility before applying grant or membership changes.
+- Prevent simultaneous passkey autofill and button sign-ins from replacing the browser session twice.
 - Rotate confidential client secrets with a 24-hour overlap. See the first authentication with the replacement and retire the previous secret early. Immediate rotation remains available.
 - Mark individual apps requestable. Members can request access and admins can approve permanently or through a chosen UTC date.
 - Limit an OAuth assistant or API token to inspecting connections or inviting existing members for selected apps. The same restrictions apply inside MCP code mode.

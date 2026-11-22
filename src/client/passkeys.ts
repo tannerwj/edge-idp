@@ -74,22 +74,33 @@ const isRegOptions = (v: unknown): v is PublicKeyCredentialCreationOptionsJSON =
   isRecord(v) && typeof v.challenge === "string" && isRecord(v.rp) && isRecord(v.user);
 
 let requireUv = false;
+let loginAttempt = 0;
+let submittingLogin = false;
 
 async function attemptLogin(
   email: string | undefined,
   autofill: boolean,
   stepUp: boolean,
-): Promise<boolean> {
+): Promise<boolean | null> {
+  if (submittingLogin) return null;
+  const attempt = ++loginAttempt;
   const raw = await postJSON("/webauthn/auth/options", {
     ...(email ? { email } : {}),
     stepUp,
     requireUv,
   });
+  if (attempt !== loginAttempt) return null;
   if (!isAuthOptions(raw)) throw new Error("bad_response");
   const resp = await startAuthentication({ optionsJSON: raw, useBrowserAutofill: autofill });
+  if (attempt !== loginAttempt) return null;
   if (!resp) return false;
-  const result = await postJSON("/webauthn/auth/verify", { response: resp, email });
-  return result.ok === true;
+  submittingLogin = true;
+  try {
+    const result = await postJSON("/webauthn/auth/verify", { response: resp, email });
+    return result.ok === true;
+  } finally {
+    submittingLogin = false;
+  }
 }
 
 function setBusy(btn: Element | null, busy: boolean): void {
@@ -139,8 +150,10 @@ async function onLoginClick(btn: HTMLElement, finish: () => void, stepUp: boolea
   status("login-status", "Waiting for your device…");
   setBusy(btn, true);
   try {
-    if (await attemptLogin(email || undefined, false, stepUp)) finish();
-    else status("login-status", "Sign-in didn't complete. Try again?", "error");
+    const signedIn = await attemptLogin(email || undefined, false, stepUp);
+    if (signedIn) finish();
+    else if (signedIn === false)
+      status("login-status", "Sign-in didn't complete. Try again?", "error");
   } catch (e) {
     status("login-status", friendlyError(e), "error");
   } finally {
