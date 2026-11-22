@@ -1,3 +1,4 @@
+import { permissionSummary } from "../mcp-permissions";
 import { Hono } from "hono";
 import { listApps, audit } from "../db";
 import * as ops from "../ops";
@@ -20,7 +21,7 @@ type ApiTokenRow = {
   creator: string;
 };
 
-function TokenRow({ t, now }: { t: ApiTokenRow; now: number }) {
+function TokenRow({ t, now, summary }: { t: ApiTokenRow; now: number; summary: string }) {
   const expired = !!t.expires_at && t.expires_at < now;
   return (
     <tr key={t.id}>
@@ -34,7 +35,7 @@ function TokenRow({ t, now }: { t: ApiTokenRow; now: number }) {
         {t.scope === "admin" ? (
           <span class="badge warn">Full admin</span>
         ) : (
-          <span class="badge">{t.scope === "read" ? "Read-only" : t.scope}</span>
+          <span class="badge">{summary}</span>
         )}
       </td>
       <td class="muted small nowrap">
@@ -54,7 +55,7 @@ function TokenRow({ t, now }: { t: ApiTokenRow; now: number }) {
           action={`/admin/tokens/${t.id}/delete`}
           label="Revoke"
           class="btn ghost sm danger"
-          confirm={`Revoke “${t.name}”? Anything using it stops working.`}
+          confirm={`Revoke “${t.name}”? Remove these permissions: ${summary}.`}
         />
       </td>
     </tr>
@@ -130,6 +131,7 @@ tokensAdmin.get("/", async (c) => {
      FROM api_tokens t JOIN users u ON u.id = t.created_by ORDER BY t.created_at DESC`,
   ).all<ApiTokenRow>();
   const now = nowSec();
+  const apps = await listApps(c.env.DB);
   return await page(
     c,
     { active: "tokens", title: "API tokens" },
@@ -164,7 +166,7 @@ tokensAdmin.get("/", async (c) => {
               </thead>
               <tbody>
                 {results.map((t) => (
-                  <TokenRow key={t.id} t={t} now={now} />
+                  <TokenRow key={t.id} t={t} now={now} summary={permissionSummary(t.scope, apps)} />
                 ))}
               </tbody>
             </table>
@@ -183,7 +185,7 @@ tokensAdmin.get("/", async (c) => {
           </Empty>
         )}
       </div>
-      <NewTokenDialog apps={await listApps(c.env.DB)} />
+      <NewTokenDialog apps={apps} />
     </>,
   );
 });

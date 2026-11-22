@@ -365,6 +365,7 @@ home.get("/", async (c) => {
       />
       <div class="stack-lg">
         {summary.count < 2 ? <BackupPasskeyCallout count={summary.count} /> : null}
+        {!s.user.public && <a href="/requests">My requests</a>}
         <AppsSection l={{ apps, appGroups, favorites }} isAdmin={!!s.user.is_admin} />
         {requestable.length > 0 && (
           <section class="card card-body">

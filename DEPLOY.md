@@ -412,6 +412,8 @@ npm run deploy
 npm run smoke
 ```
 
+For 2.5 apply migrations 0024–0026 before Worker deployment. The existing hourly cron drains pending logout jobs. Rolling back to 2.4.0 pauses retries until 2.5 is restored and removes immediate MCP disconnect enforcement for outstanding tokens until their one-hour expiry. Take the Worker version and D1 bookmark before upgrading.
+
 For the 2.4 upgrade apply migrations 0021–0023 first. Before rolling back to 2.3 during a secret overlap, configure the downstream app with the replacement secret. The older Worker recognizes the current hash only. Time-limited app grants and job-scoped assistant credentials are unavailable on 2.3.
 
 **Backups.** D1 Time Travel covers 30 days. For anything longer, or to

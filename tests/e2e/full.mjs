@@ -54,6 +54,19 @@ const ctx = await browser.newContext();
 ctx.setDefaultTimeout(15000);
 const page = await ctx.newPage();
 let lastNavigation = { route: "unknown", status: 0 };
+let passkeyRetryAt = 0;
+page.on("response", (response) => {
+  const url = new URL(response.url());
+  if (
+    url.origin === BASE &&
+    url.pathname.startsWith("/webauthn/") &&
+    response.status() === 429 &&
+    response.headers()["retry-after"] === "60"
+  ) {
+    passkeyRetryAt = Date.now() + 60000;
+    console.log("  passkey endpoint returned 429 with a 60-second retry window");
+  }
+});
 page.on("response", (r) => {
   if (r.request().isNavigationRequest() && r.request().frame() === page.mainFrame()) {
     const path = new URL(r.url()).pathname;
@@ -161,6 +174,8 @@ async function stepUp(next) {
   await settledGoto(page, `${BASE}/login?reauth=1&next=${encodeURIComponent(next)}`);
   const arrived = (u) => u.pathname === next.split(/[?#]/)[0];
   for (let i = 0; i < 3; i++) {
+    const delay = passkeyRetryAt - Date.now();
+    if (delay > 0) await page.waitForTimeout(delay);
     await page.click("#passkey-btn", { timeout: 3000 }).catch(() => {});
     const ok = await page
       .waitForURL(arrived, { timeout: 5000 })
@@ -1053,6 +1068,33 @@ try {
       null,
     );
     check("refresh fails after the user disconnects the app", after.status === 400);
+    const old = mt.access_token;
+    check(
+      "disconnect rejects the issued access token",
+      (await mcpCall(old, "tools/list")).status === 401,
+    );
+    const reconnected = await authorizeInBrowser(mcpAuth, { approve: true });
+    const fresh = await (
+      await tokenReq(
+        {
+          grant_type: "authorization_code",
+          code: reconnected?.searchParams.get("code"),
+          client_id: dcr.client_id,
+          code_verifier: p2.verifier,
+          redirect_uri: redirect,
+        },
+        null,
+      )
+    ).json();
+    mt.access_token = fresh.access_token;
+    check(
+      "reconnected assistant can list tools",
+      (await mcpCall(mt.access_token, "tools/list")).status === 200,
+    );
+    check(
+      "reconnect leaves the old token revoked",
+      (await mcpCall(old, "tools/list")).status === 401,
+    );
   }
 
   step("API tokens");
@@ -1597,6 +1639,7 @@ try {
       req.on("data", (d) => (body += d));
       req.on("end", () => {
         posts.push({ type: req.headers["content-type"], body });
+        res.statusCode = posts.length === 1 ? 503 : 200;
         res.end("ok");
       });
     });
@@ -1634,6 +1677,21 @@ try {
         !!claims?.events?.["http://schemas.openid.net/event/backchannel-logout"] &&
         claims?.nonce === undefined,
       { header, claims },
+    );
+    const receipt = async () =>
+      (
+        await sql(
+          `SELECT status,attempts FROM logout_deliveries WHERE user_id='${mailed}' AND client_id='${CLIENT_ID}' ORDER BY created_at DESC LIMIT 1`,
+        )
+      )[0];
+    check("temporary logout failure is queued", (await receipt())?.status === "Pending");
+    await sql(`UPDATE logout_deliveries SET due=0 WHERE user_id='${mailed}' AND status='Pending'`);
+    await fetch(BASE + "/cdn-cgi/local/scheduled");
+    for (let i = 0; i < 30 && (await receipt())?.status !== "Acknowledged"; i++)
+      await new Promise((r) => setTimeout(r, 100));
+    check(
+      "cron retries logout and records the app receipt",
+      (await receipt())?.status === "Acknowledged" && posts.length === 2,
     );
     const left = (
       await sql(`SELECT COUNT(*) AS n FROM client_signins WHERE user_id = '${mailed}'`)

@@ -734,3 +734,11 @@ Admin → Apps → Onboarding shows client-wide authorization and token events s
 Access previews simulate a grant or membership edit against current memberships, apps, clients and active grants. They run the same access resolver and OIDC eligibility checks as sign-in. Approval applies the posted edit to current state. The preview is advisory if another admin edits access concurrently.
 
 Scoped assistants use the existing authenticated tool dispatch and Worker Loader. OAuth consent and API token creation offer connection inspection or existing-member invitations across up to 32 selected apps. API token hashes, enrollment tokens, invitation history and request history are local to the instance. Portable backups include active access configuration, including time-limited grants with their original expiry.
+
+### Requests, assistant grants and logout receipts
+
+Member requests retain the decision note and the approved cutoff. Extensions create a new request with the previous cutoff. Approval creates a successor grant so the original approval stays visible after maintenance expires its grant. Discovery and approval both check the app's requestable setting.
+
+MCP OAuth access tokens carry the generation captured at authorization. Code redemption and refresh rotation carry that same generation forward. Disconnect increments the per-user, per-client generation and clears pending codes, refresh tokens and consent in one transaction. Direct calls and sandbox calls verify the current generation.
+
+Sign-out snapshots downstream destinations into D1 in the same batch as the local revocation and consumption of recorded client sign-ins. The Worker dispatches after commit, then hourly maintenance picks up due attempts. Each dispatch leases up to 12 jobs with individual claims and a two-minute lease. Sign-in supersedes pending deliveries to that client and pending Cloudflare Access revocation for that user. A request already in flight can still reach the app.

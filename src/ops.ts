@@ -112,8 +112,8 @@ export async function setDisabled(
     stmts.push(db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(id));
     stmts.push(db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1").bind(id));
   }
-  await db.batch(stmts);
-  if (disabled) await signOutOfApps(db, id, "disabled");
+  if (disabled) await signOutOfApps(db, id, "disabled", stmts);
+  else await db.batch(stmts);
   await audit(db, disabled ? "USER_DISABLED" : "USER_ENABLED", { userId: id, detail: by(a) });
 }
 
@@ -147,19 +147,17 @@ export async function deleteUser(db: D1Database, id: string, a: Actor): Promise<
   if (id === a.adminId) throw new OpError("You can't delete your own account.");
   const user = await getUser(db, id);
   if (!user) throw new OpError("User not found.");
-  await signOutOfApps(db, id, "deleted");
-  await db.prepare("DELETE FROM users WHERE id = ?1").bind(id).run();
+  await signOutOfApps(db, id, "deleted", [db.prepare("DELETE FROM users WHERE id=?").bind(id)]);
   await audit(db, "USER_DELETED", { detail: by(a, { email: user.email }) });
 }
 
 export async function revokePasskeys(db: D1Database, id: string, a: Actor): Promise<void> {
   if (id === a.adminId) throw new OpError("Manage your own passkeys from Account & security.");
-  await db.batch([
+  await signOutOfApps(db, id, "passkeys_reset", [
     db.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?1").bind(id),
     db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(id),
     db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?1").bind(id),
   ]);
-  await signOutOfApps(db, id, "passkeys_reset");
   await audit(db, "PASSKEYS_REVOKED", { userId: id, detail: by(a) });
 }
 
@@ -175,8 +173,9 @@ export async function revokeSessions(
       .bind(sessionHash, userId)
       .run();
   } else {
-    await db.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId).run();
-    await signOutOfApps(db, userId, "signed_out_everywhere");
+    await signOutOfApps(db, userId, "signed_out_everywhere", [
+      db.prepare("DELETE FROM sessions WHERE user_id=?").bind(userId),
+    ]);
   }
   await audit(db, "SESSION_REVOKED", { userId, detail: by(a, { all: !sessionHash }) });
 }

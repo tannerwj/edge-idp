@@ -27,3 +27,30 @@ export function selectedJobScopes(job: unknown, selection: unknown[], apps: { id
     return null;
   return ids.map((id) => "mcp:" + job + ":" + encodeURIComponent(id));
 }
+
+const permissionNames: Record<string, string> = {
+  admin: "Administer this identity server",
+  mcp: "Administer this identity server",
+  read: "Read admin data",
+  "mcp:read": "Read admin data",
+  openid: "Know who you are",
+  profile: "See your name",
+  email: "See your email address",
+  groups: "See your groups",
+  offline_access: "Stay connected until disconnected",
+};
+export function permissionSummary(scope: string, apps: { id: string; name: string }[]) {
+  return scope
+    .split(" ")
+    .filter(Boolean)
+    .map((s) => {
+      if (!jobScope(s)) return permissionNames[s] ?? "Unrecognized permission";
+      const [, job, encoded] = s.split(":");
+      const app = apps.find((a) => encodeURIComponent(a.id) === encoded);
+      return (
+        (job === "invite" ? "Invite existing members to " : "Inspect connection health for ") +
+        (app?.name ?? "a removed app")
+      );
+    })
+    .join(" · ");
+}

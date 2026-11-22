@@ -72,7 +72,7 @@ const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
   WEBHOOK_ADDED: { label: "Webhook added", icon: "zap", tone: "" },
   WEBHOOK_REMOVED: { label: "Webhook removed", icon: "zap", tone: "" },
   WEBHOOK_TEST: { label: "Webhook test", icon: "zap", tone: "" },
-  BACKCHANNEL_LOGOUT: { label: "Signed out of an app", icon: "logOut", tone: "" },
+  BACKCHANNEL_LOGOUT: { label: "App sign-out delivery", icon: "logOut", tone: "" },
   ACCESS_SESSIONS_REVOKED: { label: "Signed out of Cloudflare Access", icon: "cloud", tone: "" },
   SIGNING_KEY_ROTATED: { label: "Signing key rotated", icon: "key", tone: "warn" },
   SIGNING_KEY_MOVED: { label: "Signing key moved to the database", icon: "key", tone: "warn" },

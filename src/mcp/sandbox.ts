@@ -1,3 +1,4 @@
+import { activeAssistantGrant } from "../oauth-generation";
 import { permitsJob } from "../mcp-permissions";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { withScope } from "../request-context";
@@ -9,6 +10,7 @@ import type { McpAuth, ToolDef, WaitCtx } from "./common";
 import { TOOLS } from "./tools";
 
 interface SandboxProps {
+  generation?: number;
   jobs?: string[];
   adminId: string;
   readOnly: boolean;
@@ -43,8 +45,16 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
     const props: unknown = this.ctx.props;
-    if (!isSandboxProps(props) || !(await activeAdmin(this.env.DB, props.adminId)))
-      throw new Error("credential rejected");
+    if (!isSandboxProps(props)) throw new Error("credential rejected");
+    const active = props.tokenId.startsWith("oauth:")
+      ? await activeAssistantGrant(
+          this.env.DB,
+          props.adminId,
+          props.tokenId.slice(6),
+          props.generation,
+        )
+      : await activeAdmin(this.env.DB, props.adminId);
+    if (!active) throw new Error("credential rejected");
     if (!permitsJob(props.jobs, name, args?.app ?? ""))
       throw new Error("Outside granted app permissions.");
     if (tool.write && props.readOnly)
@@ -252,6 +262,7 @@ export async function runExecute(
       readOnly: auth.readOnly,
       ...(auth.jobs ? { jobs: auth.jobs } : {}),
       tokenId: auth.tokenId,
+      generation: auth.generation,
       issuer: env.ISSUER,
     };
     const idStub: unknown = Reflect.apply(sandboxExport, undefined, [{ props }]);

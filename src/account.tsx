@@ -1,9 +1,10 @@
+import { logoutReceipts } from "./logout-receipts";
 import { getInstanceSettings } from "./settings-cache";
 import { emailStatus } from "./email";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
-import { audit, getCredentialsForUser } from "./db";
+import { listApps, audit, getCredentialsForUser } from "./db";
 import { getSession, hasRecentStepUp, SESSION_COOKIE } from "./session";
 import type { Session } from "./session";
 import * as ops from "./ops";
@@ -123,7 +124,11 @@ account.get("/account", async (c) => {
           rpName={c.env.RP_NAME}
         />
 
-        <ConnectedSection grants={grants.results} />
+        {await logoutReceipts(db, s.user.id)}
+        <ConnectedSection
+          grants={grants.results}
+          apps={s.user.is_admin ? await listApps(db) : []}
+        />
 
         <ActivitySection rows={activity.results} />
       </div>
@@ -228,6 +233,13 @@ account.post("/account/grants/revoke", async (c) => {
   const form = await c.req.parseBody();
   const clientId = field(form, "client_id");
   await c.env.DB.batch([
+    c.env.DB.prepare(
+      "INSERT INTO oauth_disconnects SELECT ?1,id,1 FROM oidc_clients WHERE id=?2 ON CONFLICT(user_id,client_id) DO UPDATE SET generation=generation+1",
+    ).bind(s.user.id, clientId),
+    c.env.DB.prepare("DELETE FROM auth_codes WHERE user_id=? AND client_id=?").bind(
+      s.user.id,
+      clientId,
+    ),
     c.env.DB.prepare("DELETE FROM oauth_grants WHERE user_id = ?1 AND client_id = ?2").bind(
       s.user.id,
       clientId,

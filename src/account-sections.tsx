@@ -1,3 +1,4 @@
+import { permissionSummary } from "./mcp-permissions";
 import { Empty, PostButton, Time } from "./ui/components";
 import { deviceLabel, Feed } from "./ui/feed";
 import type { FeedRow } from "./ui/feed";
@@ -264,7 +265,13 @@ export function SessionsSection({
   );
 }
 
-export function ConnectedSection({ grants }: { grants: GrantRow[] }) {
+export function ConnectedSection({
+  grants,
+  apps,
+}: {
+  grants: GrantRow[];
+  apps: { id: string; name: string }[];
+}) {
   return (
     <section class="card" id="connected">
       <div class="card-head">
@@ -272,8 +279,8 @@ export function ConnectedSection({ grants }: { grants: GrantRow[] }) {
         <div class="grow">
           <h2>Connected apps</h2>
           <div class="sub">
-            Third-party apps and AI tools you've approved. Disconnecting revokes their access
-            immediately.
+            Disconnecting stops assistant access and token renewal immediately. Apps manage their
+            own sessions.
           </div>
         </div>
       </div>
@@ -287,7 +294,7 @@ export function ConnectedSection({ grants }: { grants: GrantRow[] }) {
               <div class="grow">
                 <div class="title">{g.name}</div>
                 <div class="meta">
-                  {g.scope.split(" ").join(", ")} · Approved <Time ts={g.created_at} />
+                  {permissionSummary(g.scope, apps)} · Approved <Time ts={g.created_at} />
                   {g.last_used_at ? (
                     <>
                       {" "}
@@ -301,7 +308,7 @@ export function ConnectedSection({ grants }: { grants: GrantRow[] }) {
                 fields={{ client_id: g.client_id }}
                 label="Disconnect"
                 class="btn ghost sm danger"
-                confirm={`Disconnect ${g.name}? It will need your approval again.`}
+                confirm={`Disconnect ${g.name}? Remove these permissions: ${permissionSummary(g.scope, apps)}.`}
               />
             </li>
           ))}

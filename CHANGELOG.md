@@ -3,6 +3,15 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.5.0 — 2026-11-21
+
+- Follow access decisions in My requests, read the reviewer's note, open an approved app and request an extension. Admins see pending requests on Overview and can optionally email decisions.
+- View downstream sign-out receipts on Account and admin session pages. Temporary failures retry through the existing hourly cron. Receipts are retained for 30 days.
+- Connected apps and admin token management show the allowed actions and app names, including in disconnect or revoke confirmations. Changing a connection’s approved permissions also retires its previous MCP credentials.
+- Disconnect immediately revokes existing MCP OAuth access tokens, refresh tokens and outstanding authorization codes. Reconnecting issues fresh credentials.
+
+Apply migrations 0024–0026 before deploying. Assistants with a previously recorded disconnect may need to refresh an access token once.
+
 ## 2.4.0 — 2026-11-21
 
 - Test an app connection from Onboarding, invite a member to that app, and see enrollment and first client sign-in. Sign-in failures display a searchable support reference.

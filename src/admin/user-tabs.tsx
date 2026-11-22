@@ -1,3 +1,4 @@
+import { permissionSummary } from "../mcp-permissions";
 import type { inspectAccess } from "../access-inspection";
 import type { getCredentialsForUser, Group, User } from "../db";
 import { Empty, GroupPicker, PostButton, Time } from "../ui/components";
@@ -360,7 +361,7 @@ export function AppAccessTab({ user, access, apps, inspection }: TabData) {
   );
 }
 
-export function ConnectedAppsTab({ user, grants }: TabData) {
+export function ConnectedAppsTab({ user, grants, apps }: TabData) {
   return (
     <div class="card">
       {grants.length ? (
@@ -375,7 +376,8 @@ export function ConnectedAppsTab({ user, grants }: TabData) {
                   {g.name}
                 </a>
                 <div class="meta">
-                  {g.scope} · Approved <Time ts={g.created_at} />
+                  {permissionSummary(g.scope, apps)} · Approved <Time ts={g.created_at} /> · Last
+                  used <Time ts={g.last_used_at} empty="Never" />
                 </div>
               </div>
             </li>

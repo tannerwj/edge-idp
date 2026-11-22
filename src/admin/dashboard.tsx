@@ -113,9 +113,17 @@ function attentionItems(x: {
   pending: string[];
   expiringTokens: number;
   denied: number;
+  requests: number;
   recovery: number;
 }): Attention[] {
   const out: Attention[] = [];
+  if (x.requests)
+    out.push({
+      tone: "accent",
+      icon: "grid",
+      text: x.requests + " pending access " + (x.requests === 1 ? "request" : "requests"),
+      href: "/admin/requests",
+    });
   if (x.recovery) {
     out.push({
       tone: "bad",
@@ -367,6 +375,7 @@ dashboardAdmin.get("/", async (c) => {
     pending: noKeys.results.map((u) => u.name),
     expiringTokens,
     denied,
+    requests: await count(db, "SELECT count(*) AS n FROM access_requests WHERE decision IS NULL"),
     recovery: (await pendingRecovery(db)).length,
   });
 

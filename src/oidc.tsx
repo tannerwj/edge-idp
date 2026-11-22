@@ -1,3 +1,4 @@
+import { grantGeneration } from "./oauth-generation";
 import { selectedJobScopes } from "./mcp-permissions";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -189,18 +190,39 @@ async function hasGrant(db: D1Database, userId: string, req: AuthzRequest): Prom
   return req.scopes.every((s) => granted.includes(s));
 }
 
+function approveConsent(db: D1Database, user: string, req: AuthzRequest) {
+  return [
+    db
+      .prepare(`INSERT INTO oauth_disconnects(user_id,client_id,generation)
+      SELECT user_id,client_id,1 FROM oauth_grants WHERE user_id=?1 AND client_id=?2 AND scope<>?3
+      ON CONFLICT(user_id,client_id) DO UPDATE SET generation=generation+1`)
+      .bind(user, req.client.id, req.scope),
+    db
+      .prepare(`INSERT INTO oauth_grants(user_id,client_id,scope,created_at,last_used_at)
+      VALUES(?1,?2,?3,unixepoch(),unixepoch()) ON CONFLICT(user_id,client_id)
+      DO UPDATE SET scope=excluded.scope,created_at=excluded.created_at,last_used_at=excluded.last_used_at`)
+      .bind(user, req.client.id, req.scope),
+    auditStmt(db, "CONSENT_GRANTED", {
+      userId: user,
+      clientId: req.client.id,
+      detail: { scope: req.scope },
+    }),
+  ];
+}
 async function issueCode(
   c: Context<{ Bindings: Env }>,
   req: AuthzRequest,
   session: Session,
+  generation: number | null,
 ): Promise<Response> {
   const code = randomToken(32);
   const now = nowSec();
   await c.env.DB.batch([
+    ...(generation === null ? approveConsent(c.env.DB, session.user.id, req) : []),
     c.env.DB.prepare(
       `INSERT INTO auth_codes
-         (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, nonce, expires_at, resource, auth_time, method)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+         (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, nonce, expires_at, resource, auth_time, method,generation)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, coalesce(?12,(SELECT generation FROM oauth_disconnects WHERE user_id=?3 AND client_id=?2),0))`,
     ).bind(
       await sha256Hex(code),
       req.client.id,
@@ -213,6 +235,7 @@ async function issueCode(
       req.resource,
       session.authTime,
       session.method,
+      generation,
     ),
     c.env.DB.prepare("UPDATE oidc_clients SET last_used_at = ?1 WHERE id = ?2").bind(
       now,
@@ -274,6 +297,7 @@ oidc.get("/authorize", async (c) => {
     const params = new URLSearchParams({ next: resumeUrl(c), reauth: "1" });
     return c.redirect(`/login?${params.toString()}`, 302);
   }
+  const generation = await grantGeneration(c.env.DB, session.user.id, req.client.id);
   const needsConsent =
     req.prompt.includes("consent") ||
     (!req.client.skip_consent && !(await hasGrant(c.env.DB, session.user.id, req)));
@@ -293,7 +317,7 @@ oidc.get("/authorize", async (c) => {
       />,
     );
   }
-  return issueCode(c, req, session);
+  return issueCode(c, req, session, generation);
 });
 
 oidc.post("/authorize/decision", async (c) => {
@@ -334,19 +358,7 @@ oidc.post("/authorize/decision", async (c) => {
     req.scopes = [...req.scopes.filter((s) => !ADMIN_SCOPES.includes(s)), ...selected];
     req.scope = req.scopes.join(" ");
   }
-  await c.env.DB.prepare(
-    `INSERT INTO oauth_grants (user_id, client_id, scope, created_at, last_used_at)
-     VALUES (?1, ?2, ?3, ?4, ?4)
-     ON CONFLICT(user_id, client_id) DO UPDATE SET scope = ?3, last_used_at = ?4`,
-  )
-    .bind(session.user.id, req.client.id, req.scope, nowSec())
-    .run();
-  await audit(c.env.DB, "CONSENT_GRANTED", {
-    userId: session.user.id,
-    clientId: req.client.id,
-    detail: { scope: req.scope },
-  });
-  return issueCode(c, req, session);
+  return issueCode(c, req, session, null);
 });
 
 function webOrigin(raw: string): string | null {

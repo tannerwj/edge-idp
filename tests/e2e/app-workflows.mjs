@@ -119,10 +119,17 @@ export async function appWorkflows({ base, instance, request }) {
     await page.request.post(base + "/apps/tile-1/request");
     const pending = await instance.sql("SELECT id FROM access_requests WHERE app_id='tile-1'");
     assert.equal(pending.length, 1);
+    const history = async () => (await page.request.get(base + "/requests")).text();
+    assert.match(await history(), /Pending/);
+    assert.match(await (await request("/admin")).text(), /1 pending access request/);
     const approve = "/admin/requests/" + pending[0].id;
     const approvals = await Promise.all(
       Array.from({ length: 2 }, () =>
-        request(approve, { decision: "approve", until: "2099-01-01" }),
+        request(approve, {
+          decision: "approve",
+          until: "2099-01-01",
+          note: "For the January project",
+        }),
       ),
     );
     assert.deepEqual(
@@ -144,6 +151,26 @@ export async function appWorkflows({ base, instance, request }) {
       (await instance.sql("SELECT id FROM temporary_app_grants WHERE app_id='tile-1'")).length,
       1,
     );
+    const decisionPage = await history();
+    for (const label of ["2099-01-01", "For the January project", "Open app", "Request extension"])
+      assert.ok(decisionPage.includes(label), label);
+    const extend = base + "/requests/" + pending[0].id + "/extend";
+    await Promise.all([page.request.post(extend), page.request.post(extend)]);
+    const extensions = await instance.sql(
+      "SELECT id FROM access_requests WHERE previous_end IS NOT NULL",
+    );
+    assert.equal(extensions.length, 1);
+    const decideExtension = "/admin/requests/" + extensions[0].id;
+    assert.equal(
+      (await request(decideExtension, { decision: "approve", until: "2099-01-01" })).status,
+      400,
+    );
+    await request(decideExtension, { decision: "approve", until: "2099-02-01" });
+    assert.match(await history(), /2099-02-01/);
+    await page.request.post(base + "/requests/" + extensions[0].id + "/extend");
+    const denied = (await instance.sql("SELECT id FROM access_requests WHERE decision IS NULL"))[0];
+    await request("/admin/requests/" + denied.id, { decision: "deny", note: "Project complete" });
+    assert.match(await history(), /Project complete/);
     const open = () => page.request.get(base + "/open/tile-1", { maxRedirects: 0 });
     assert.equal((await open()).status(), 302);
     await instance.sql("UPDATE temporary_app_grants SET expires_at=unixepoch()-1");
@@ -245,6 +272,10 @@ async function scopedAssistant(base, request) {
   });
   assert.ok(result.access_token);
   assert.equal(result.scope, "offline_access mcp:inspect:workflow");
+  assert.match(
+    await (await request("/account")).text(),
+    /Inspect connection health for Workflow app/,
+  );
   const rpc = async (raw, method, params = {}) =>
     fetch(base + "/mcp", {
       method: "POST",
@@ -285,6 +316,25 @@ async function scopedAssistant(base, request) {
     refresh_token: result.refresh_token,
   });
   assert.equal(refreshed.scope, result.scope);
+  const changed = await request("/authorize/decision", {
+    ...params,
+    job: "inspect",
+    jobApp: "tile-1",
+    decision: "allow",
+  });
+  const changedCode = new URL(changed.headers.get("location")).searchParams.get("code");
+  const changedToken = await token({
+    grant_type: "authorization_code",
+    code: changedCode,
+    code_verifier: verifier,
+    redirect_uri: redirect,
+  });
+  assert.equal((await rpc(changedToken.access_token, "tools/list")).status, 200);
+  assert.equal((await rpc(result.access_token, "tools/list")).status, 401);
+  assert.equal(
+    (await token({ grant_type: "refresh_token", refresh_token: refreshed.refresh_token })).error,
+    "invalid_grant",
+  );
   const api = copyValue(
     await (
       await request("/admin/tokens", {
@@ -295,6 +345,7 @@ async function scopedAssistant(base, request) {
       })
     ).text(),
   );
+  assert.match(await (await request("/admin/tokens")).text(), /Invite existing members to App 2/);
   const invite = (app) =>
     rpc(api, "tools/call", {
       name: "app_invite_member",

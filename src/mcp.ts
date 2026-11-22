@@ -1,3 +1,4 @@
+import { activeAssistantGrant } from "./oauth-generation";
 import { adminScope, jobScope, permitsJob } from "./mcp-permissions";
 import { Hono } from "hono";
 import { VERSION } from "./assets.gen";
@@ -61,9 +62,24 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
     const p = await verifyAccessToken(c.env, raw, mcpResource(c.env));
     const scopes = typeof p.scope === "string" ? p.scope.split(" ") : [];
     if (!scopes.some(adminScope)) return null;
-    if (typeof p.sub !== "string" || !(await activeAdmin(c.env.DB, p.sub))) return null;
+    if (typeof p.sub !== "string") return null;
+    if (typeof p.client_id !== "string") return null;
+    const generation = p.generation ?? 0;
+    if (
+      typeof generation !== "number" ||
+      !(await activeAssistantGrant(c.env.DB, p.sub, p.client_id, generation))
+    )
+      return null;
+    c.executionCtx.waitUntil(
+      c.env.DB.prepare(
+        "UPDATE oauth_grants SET last_used_at=unixepoch() WHERE user_id=? AND client_id=? AND coalesce(last_used_at,0)<unixepoch()-60",
+      )
+        .bind(p.sub, p.client_id)
+        .run(),
+    );
     return {
-      tokenId: `oauth:${typeof p.client_id === "string" ? p.client_id : "?"}`,
+      generation,
+      tokenId: `oauth:${p.client_id}`,
       adminId: p.sub,
       jobs: scopes.some(jobScope) ? scopes.filter(jobScope) : undefined,
       readOnly: !scopes.includes("mcp") && !scopes.some((s) => s.startsWith("mcp:invite:")),

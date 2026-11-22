@@ -375,3 +375,5 @@ template".
   before any handler runs (also checked in `full.mjs › same-origin guard`).
 
 The catalog suite also runs a local relying party through a real invite, passkey enrollment and OIDC code exchange. It exercises support-reference search, duplicate invitations and requests, grant expiry, client secret rollover, and app-scoped OAuth and API tokens through direct and sandboxed tools. Browser failures include the most recent main-page navigation status and an allowlisted route. Invite failures include an allowlisted flash reason.
+
+The full browser flow checks an already-issued MCP access token after disconnect and again after reconnect. The logout receiver returns a temporary failure before accepting a scheduled retry. Catalog workflows exercise duplicate requests, decision notes, UTC expiry, extension approval and denial, and readable assistant scopes.

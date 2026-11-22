@@ -104,7 +104,7 @@ export async function mintIdToken(
 export async function mintAccessToken(
   env: Env,
   claims: TokenClaims,
-  opts: { audience: string; clientId: string; scope: string },
+  opts: { generation?: number; audience: string; clientId: string; scope: string },
 ): Promise<string> {
   const { key, kid } = await getSigningKey(env);
   const now = nowSec();
@@ -112,6 +112,7 @@ export async function mintAccessToken(
   return await new jose.SignJWT({
     scope: opts.scope,
     client_id: opts.clientId,
+    generation: opts.generation,
     ...(scopes.includes("email") && !claims.public ? { email: claims.email } : {}),
     ...(scopes.includes("profile") ? { name: claims.name } : {}),
     ...(scopes.includes("groups") ? { groups: claims.groups } : {}),

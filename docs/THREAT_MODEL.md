@@ -383,8 +383,9 @@ someone out of every app.
   where anyone who can read the database could take it and repoint Access
   (`src/ops-settings.ts › setAccessRevocation`).
 
-Both run after the response and never block or fail the action that
-triggered them.
+Local revocation and its D1 delivery records commit together. Network delivery runs asynchronously. The Worker rechecks the configured endpoint or Cloudflare account before sending. Retryable failures get up to five attempts. Pending jobs hold the destination, including the member email for Access, until completion or expiry. Receipts expire after 30 days. An acknowledgment confirms receipt at the endpoint. The downstream app controls session termination.
+
+MCP checks the active admin, client and disconnect generation on each OAuth request and inside code mode. Authorization codes and refresh families retain their original generation, including during concurrent disconnect and reconnect. Older tokens use generation zero. The upgrade invalidates outstanding MCP access tokens for pairs with a recorded prior disconnect. Existing consent and refresh credentials for a later connection can obtain fresh tokens.
 
 ## Account recovery (optional)
 
@@ -761,6 +762,6 @@ App-specific invites create a member, initial enrollment token and direct grant 
 
 A member can discover a requestable app by its name. Request submission and approval check the discovery setting server-side. Approval and its grant commit together. Temporary grants live separately from permanent grants and expire at read time. Other grants can independently allow the same app. Already-issued tokens, downstream sessions and external Cloudflare policies have independent lifetimes.
 
-OAuth consent can replace broad MCP permissions with exact action/app scopes. The code, access token and refresh family carry the approved scope. Direct tools and the sandbox entrypoint check the action and exact app ID. Scoped API tokens use a separate hash input so an older Worker cannot accept them as ordinary read tokens. Existing credentials retain their previously approved permissions. Revoke them when switching an assistant to a narrower credential.
+OAuth consent can replace broad MCP permissions with exact action/app scopes. The code, access token and refresh family carry the approved scope. Direct tools and the sandbox entrypoint check the action and exact app ID. Scoped API tokens use a separate hash input so an older Worker cannot accept them as ordinary read tokens. Approving a different scope for the same OAuth connection advances its generation in the same transaction as the consent and code. Previously issued credentials for that connection lose MCP access. Independently created API tokens retain their original permissions until revoked or expired.
 
 Overlapping client rotation retains one previous secret hash for 24 hours. Both the expiry and a matching hash are required on each authentication. Immediate rotation replaces both credentials. Support references identify audit events and grant no access to them. The audit records failure categories without submitted secrets, callbacks, codes or tokens.

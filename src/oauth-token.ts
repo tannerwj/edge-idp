@@ -23,6 +23,7 @@ function wantsRefresh(scope: string): boolean {
 }
 
 interface RefreshGrant {
+  generation: number;
   family: { id: string; expiresAt: number };
   clientId: string;
   userId: string;
@@ -39,8 +40,8 @@ async function refreshStmt(
   const raw = randomToken(32);
   const stmt = db
     .prepare(
-      `INSERT INTO refresh_tokens (token_hash, family_id, client_id, user_id, scope, resource, auth_time, created_at, expires_at, method)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+      `INSERT INTO refresh_tokens (token_hash, family_id, client_id, user_id, scope, resource, auth_time, created_at, expires_at, method,generation)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
     )
     .bind(
       await sha256Hex(raw),
@@ -53,6 +54,7 @@ async function refreshStmt(
       nowSec(),
       g.family.expiresAt,
       g.method,
+      g.generation,
     );
   return { raw, stmt };
 }
@@ -61,12 +63,13 @@ async function tokenResponse(
   c: Context<{ Bindings: Env }>,
   client: OidcClient,
   claims: TokenClaims,
-  grant: { scope: string; resource: string | null; refresh: string | null },
+  grant: { generation: number; scope: string; resource: string | null; refresh: string | null },
 ): Promise<Response> {
   const scopes = grant.scope.split(" ");
   const audience = grant.resource ?? (scopes.some(adminScope) ? mcpResource(c.env) : client.id);
   const accessToken = await mintAccessToken(c.env, claims, {
     audience,
+    generation: grant.generation,
     clientId: client.id,
     scope: grant.scope,
   });
@@ -151,8 +154,8 @@ async function codeGrant(
   const row = await c.env.DB.prepare(
     `UPDATE auth_codes SET used = 1
      WHERE code_hash = ?1 AND client_id = ?2 AND redirect_uri = ?3 AND code_challenge = ?4
-       AND used = 0 AND expires_at >= ?5
-     RETURNING user_id, scope, nonce, resource, auth_time, method`,
+       AND used = 0 AND expires_at >= ?5 AND generation=coalesce((SELECT d.generation FROM oauth_disconnects d WHERE d.user_id=auth_codes.user_id AND d.client_id=auth_codes.client_id),0)
+     RETURNING user_id, scope, nonce, resource, auth_time, method,generation`,
   )
     .bind(codeHash, client.id, candidate.redirect_uri, candidate.code_challenge, nowSec())
     .first<{
@@ -161,6 +164,7 @@ async function codeGrant(
       nonce: string | null;
       resource: string | null;
       auth_time: number | null;
+      generation: number;
       method: string | null;
     }>();
   if (!row) return tokenError(c, "invalid_grant", "code is invalid, expired, or already used");
@@ -173,6 +177,7 @@ async function codeGrant(
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = wantsRefresh(row.scope)
     ? await refreshStmt(c.env.DB, {
+        generation: row.generation,
         family: { id: newId(), expiresAt: nowSec() + REFRESH_TTL },
         clientId: client.id,
         userId: row.user_id,
@@ -183,6 +188,9 @@ async function codeGrant(
       })
     : null;
   await c.env.DB.batch([
+    c.env.DB.prepare(
+      "UPDATE logout_deliveries SET status='Signed in again',destination=NULL WHERE user_id=? AND (client_id=? OR client_id IS NULL) AND status='Pending'",
+    ).bind(row.user_id, client.id),
     ...(refresh ? [refresh.stmt] : []),
     c.env.DB.prepare(
       "UPDATE app_invitations SET first_signin_at=unixepoch() WHERE user_id=? AND first_signin_at IS NULL AND app_id IN (SELECT id FROM apps WHERE client_id=?)",
@@ -200,6 +208,7 @@ async function codeGrant(
   return tokenResponse(c, client, claims, {
     scope: row.scope,
     resource: row.resource,
+    generation: row.generation,
     refresh: refresh?.raw ?? null,
   });
 }
@@ -264,8 +273,8 @@ async function refreshGrant(
   }
   const row = await c.env.DB.prepare(
     `UPDATE refresh_tokens SET rotated_at = ?2
-     WHERE token_hash = ?1 AND client_id = ?3 AND rotated_at IS NULL AND expires_at >= ?2
-     RETURNING family_id, user_id, scope, resource, auth_time, expires_at, method`,
+     WHERE token_hash = ?1 AND client_id = ?3 AND rotated_at IS NULL AND expires_at >= ?2 AND generation=coalesce((SELECT d.generation FROM oauth_disconnects d WHERE d.user_id=refresh_tokens.user_id AND d.client_id=refresh_tokens.client_id),0)
+     RETURNING family_id, user_id, scope, resource, auth_time, expires_at, method,generation`,
   )
     .bind(hash, now, client.id)
     .first<{
@@ -275,6 +284,7 @@ async function refreshGrant(
       resource: string | null;
       auth_time: number;
       expires_at: number;
+      generation: number;
       method: string | null;
     }>();
   if (!row) return replay();
@@ -284,6 +294,7 @@ async function refreshGrant(
   });
   if (!claims) return tokenError(c, "invalid_grant", "user is disabled");
   const refresh = await refreshStmt(c.env.DB, {
+    generation: row.generation,
     family: { id: row.family_id, expiresAt: row.expires_at },
     clientId: client.id,
     userId: row.user_id,
@@ -301,7 +312,12 @@ async function refreshGrant(
       .run()
       .catch(() => {}),
   );
-  return tokenResponse(c, client, claims, { scope, resource: row.resource, refresh: refresh.raw });
+  return tokenResponse(c, client, claims, {
+    generation: row.generation,
+    scope,
+    resource: row.resource,
+    refresh: refresh.raw,
+  });
 }
 
 async function parseForm(c: Context): Promise<TokenBody> {

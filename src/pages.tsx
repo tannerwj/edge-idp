@@ -1,9 +1,10 @@
+import { JobSelection } from "./assistant-permission-picker";
 import type { OidcClient, User } from "./db";
 import { AuthLayout } from "./ui/layout";
 import { Avatar, Callout, initials } from "./ui/components";
 import type { Ui } from "./ui/layout";
-import { Icon } from "./ui/icons";
 import type { IconName } from "./ui/icons";
+import { Icon } from "./ui/icons";
 
 export function LoginPage(props: {
   ui: Ui;
@@ -236,31 +237,6 @@ const SCOPE_TEXT: Record<string, { icon: IconName; title: string; sub: string; d
     },
   };
 
-function JobSelection(props: { apps: { id: string; name: string }[]; write: boolean }) {
-  return (
-    <fieldset>
-      <legend>Assistant permissions</legend>
-      <label>
-        Allowed action{" "}
-        <select name="job">
-          <option value="full">Requested permissions shown above</option>
-          <option value="inspect">Inspect connection health only</option>
-          {props.write && <option value="invite">Invite existing members only</option>}
-        </select>
-      </label>
-      <label>
-        Apps for the selected action{" "}
-        <select name="jobApp" multiple>
-          {props.apps.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </label>
-    </fieldset>
-  );
-}
 export function ConsentPage(props: {
   ui: Ui;
   client: OidcClient;
@@ -278,9 +254,7 @@ export function ConsentPage(props: {
   return (
     <AuthLayout ui={props.ui} title={`Allow ${client.name}?`} page="consent" wide>
       <div class="consent-apps">
-        <span class="bubble">
-          {client.logo_uri ? initials(client.name) : initials(client.name)}
-        </span>
+        <span class="bubble">{initials(client.name)}</span>
         <span class="link" aria-hidden="true">
           <span></span>
           <span></span>

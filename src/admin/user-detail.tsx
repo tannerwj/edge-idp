@@ -1,3 +1,4 @@
+import { logoutReceipts } from "../logout-receipts";
 import { inspectAccess } from "../access-inspection";
 import { Hono } from "hono";
 import { getCredentialsForUser, getUser, listGroups } from "../db";
@@ -231,6 +232,7 @@ userDetailAdmin.get("/", async (c) => {
 
       {tab === "devices" ? <SessionsTab {...data} /> : null}
 
+      {tab === "devices" ? await logoutReceipts(db, id) : null}
       {tab === "apps" ? <ConnectedAppsTab {...data} /> : null}
 
       {tab === "activity" ? <ActivityTab {...data} /> : null}
