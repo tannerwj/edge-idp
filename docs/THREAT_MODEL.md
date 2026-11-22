@@ -754,3 +754,13 @@ still checked by the host.
   `cursor://` and `vscode://` that no allowlist can enumerate. All forms are
   server-rendered with escaped content, so there is no injected form for
   `form-action` to stop.
+
+## App invitations, temporary access and assistant permissions
+
+App-specific invites create a member, initial enrollment token and direct grant in one D1 batch. An existing account receives a launch link and keeps its credentials. The enrollment destination resolves an app ID against the signed-in person's current grants. Only an admin can create new members through this flow. Scoped assistants may invite existing active members to explicitly selected apps.
+
+A member can discover a requestable app by its name. Request submission and approval check the discovery setting server-side. Approval and its grant commit together. Temporary grants live separately from permanent grants and expire at read time. Other grants can independently allow the same app. Already-issued tokens, downstream sessions and external Cloudflare policies have independent lifetimes.
+
+OAuth consent can replace broad MCP permissions with exact action/app scopes. The code, access token and refresh family carry the approved scope. Direct tools and the sandbox entrypoint check the action and exact app ID. Scoped API tokens use a separate hash input so an older Worker cannot accept them as ordinary read tokens. Existing credentials retain their previously approved permissions. Revoke them when switching an assistant to a narrower credential.
+
+Overlapping client rotation retains one previous secret hash for 24 hours. Both the expiry and a matching hash are required on each authentication. Immediate rotation replaces both credentials. Support references identify audit events and grant no access to them. The audit records failure categories without submitted secrets, callbacks, codes or tokens.

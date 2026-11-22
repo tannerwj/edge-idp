@@ -19,6 +19,7 @@ let section = "";
 function check(name, cond, extra = "") {
   if (cond) console.log(`  ok   ${name}`);
   else {
+    console.error("Last main-page navigation", lastNavigation);
     failures++;
     console.error(
       `  FAIL [${section}] ${name} ${typeof extra === "string" ? extra : JSON.stringify(extra)}`,
@@ -50,7 +51,27 @@ console.log(`  ${instance.remote ? "deployed" : "cf dev"} on ${BASE} (${instance
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext();
+ctx.setDefaultTimeout(15000);
 const page = await ctx.newPage();
+let lastNavigation = { route: "unknown", status: 0 };
+page.on("response", (r) => {
+  if (r.request().isNavigationRequest() && r.request().frame() === page.mainFrame()) {
+    const path = new URL(r.url()).pathname;
+    lastNavigation = {
+      route: [
+        "/admin/users",
+        "/admin/users/invites",
+        "/login",
+        "/authorize",
+        "/enroll",
+        "/",
+      ].includes(path)
+        ? path
+        : "other route",
+      status: r.status(),
+    };
+  }
+});
 const cdp = await ctx.newCDPSession(page);
 await cdp.send("WebAuthn.enable");
 const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -118,6 +139,22 @@ async function waitForMail(match, skip = 0) {
     await new Promise((r) => setTimeout(r, 100));
   }
   return instance.outbox?.().slice(skip).find(match) ?? null;
+}
+
+async function enrollmentStatus(token) {
+  const probe = () =>
+    fetch(BASE + "/webauthn/register/options", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enrollmentToken: token }),
+    });
+  let response = await probe();
+  if (response.status === 429 && response.headers.get("retry-after") === "60") {
+    console.log("  enrollment check waiting for the rate-limit window");
+    await new Promise((resolve) => setTimeout(resolve, 60000));
+    response = await probe();
+  }
+  return response.status;
 }
 
 async function stepUp(next) {
@@ -240,9 +277,10 @@ try {
 
   await page.goto(`${BASE}/admin/users/admin-1`);
   await page.click("label.chip-toggle:has-text('family')");
-  await page.click("form[action='/admin/users/admin-1/groups'] button[type=submit]");
+  await page.click("form[action='/admin/preview/users/admin-1/groups'] button[type=submit]");
   await page.waitForLoadState();
 
+  await page.getByRole("button", { name: "Apply change" }).click();
   step("app groups, grants and the launcher");
   await page.goto(`${BASE}/admin/apps`);
   check(
@@ -268,12 +306,17 @@ try {
   await page.waitForLoadState();
   const solar = (await sql("SELECT id, slug FROM apps WHERE name = 'Solar Panel'"))[0];
   check("app gets a slug from its name", solar?.slug === "solar-panel", JSON.stringify(solar));
-  const grantForm = `#access-${solar?.id} form[action='/admin/apps/${solar?.id}/grants']`;
+  const grantForm = `#access-${solar?.id} form[action='/admin/preview/apps/${solar?.id}/grants']`;
   await page.click(`[data-open='access-${solar?.id}']`);
   await page.selectOption(`${grantForm} select[name=subject]`, { label: "family" });
   await page.fill(`${grantForm} input[name=role]`, "reader");
   await page.click(`${grantForm} button[type=submit]`);
   await page.waitForLoadState();
+  check(
+    "grant preview explains inherited access",
+    (await page.textContent("body")).includes("Keeps access"),
+  );
+  await page.getByRole("button", { name: "Apply change" }).click();
   const roles = (
     await sql(`SELECT role FROM app_grants WHERE app_id = '${solar?.id}' ORDER BY role`)
   ).map((r) => r.role);
@@ -1201,14 +1244,6 @@ try {
   step("invites by email");
   if (!instance.remote) {
     const tokenIn = (mail) => mail?.text.match(/\/enroll#([A-Za-z0-9_-]{43})/)?.[1] ?? null;
-    const linkWorks = async (t) =>
-      (
-        await fetch(`${BASE}/webauthn/register/options`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ enrollmentToken: t }),
-        })
-      ).status === 200;
     await stepUp("/admin/users");
     await page.click("[data-open='invite']");
     await page.fill("#invite input[name=name]", "Mailed Person");
@@ -1221,9 +1256,22 @@ try {
     check(
       "the reveal page says it was emailed",
       (await page.textContent("body")).includes("Emailed to"),
+      await page.locator("body").evaluate((el) => {
+        const flash = el.getAttribute("data-flash");
+        return (
+          [
+            "Enter a valid email address.",
+            "A user with that email already exists.",
+            "Confirm it's you with your passkey, then try that again.",
+          ].find((v) => v === flash) ?? (flash ? "Other notification" : "No notification")
+        );
+      }),
     );
     const first = tokenIn(await waitForMail((m) => m.to.includes("mailed@example.test")));
-    check("the invite email carries a working link", !!first && (await linkWorks(first)));
+    check(
+      "the invite email carries a working link",
+      !!first && (await enrollmentStatus(first)) === 200,
+    );
     await page.goto(`${BASE}/admin/users/invites`);
     check(
       "pending invites lists the person",
@@ -1235,13 +1283,16 @@ try {
     const second = tokenIn(resent);
     check(
       "resending emails a new link and retires the old one",
-      !!second && second !== first && (await linkWorks(second)) && !(await linkWorks(first)),
+      !!second &&
+        second !== first &&
+        (await enrollmentStatus(second)) === 200 &&
+        (await enrollmentStatus(first)) === 400,
     );
     await page.goto(`${BASE}/admin/users/invites`);
     await page.click("form[action$='/revoke'] button");
     await page.waitForSelector("#confirm-dialog[open]");
     await Promise.all([page.waitForNavigation(), page.click("#confirm-ok")]);
-    check("revoking kills the link", !(await linkWorks(second)));
+    check("revoking kills the link", (await enrollmentStatus(second)) === 400);
     await page.click("[data-open='bulk-invite']");
     await page.fill(
       "#bulk-invite textarea[name=people]",
@@ -1382,16 +1433,19 @@ try {
       (m) => m.to.includes("rita@example.test") && m.subject.includes("Add a passkey"),
     );
     const recToken = recMail?.text.match(/\/enroll#([A-Za-z0-9_-]{43})/)?.[1];
-    const recOk = recToken
+    const status = recToken ? await enrollmentStatus(recToken) : 0;
+    const lifetime = recToken
       ? (
-          await fetch(`${BASE}/webauthn/register/options`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ enrollmentToken: recToken }),
-          })
-        ).status === 200
-      : false;
-    check("approving emails a working one-hour link", recOk, recMail);
+          await sql(
+            `SELECT expires_at-created_at AS seconds FROM enrollment_tokens WHERE token_hash='${sha256Hex(recToken)}'`,
+          )
+        )[0]?.seconds
+      : 0;
+    check(
+      "approving emails a working one-hour link",
+      status === 200 && lifetime >= 3600 && lifetime <= 3601,
+      { status, lifetime },
+    );
     await page.goto(`${BASE}/admin/settings/sign-in`);
     await page.check("input[name=recoveryMode][value=auto]");
     await Promise.all([
@@ -1686,7 +1740,8 @@ try {
   check("no uncaught browser errors", pageErrors.length === 0, pageErrors);
 } catch (e) {
   failures++;
-  console.error(`  FAIL [${section}] threw:`, e);
+  console.error("Last main-page navigation", lastNavigation);
+  console.error(`  FAIL [${section}] threw:`, e instanceof Error ? e.name : "unknown error");
 } finally {
   await browser.close();
   await instance.stop();

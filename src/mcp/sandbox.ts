@@ -1,3 +1,4 @@
+import { permitsJob } from "../mcp-permissions";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { withScope } from "../request-context";
 import type { Env } from "../config";
@@ -8,6 +9,7 @@ import type { McpAuth, ToolDef, WaitCtx } from "./common";
 import { TOOLS } from "./tools";
 
 interface SandboxProps {
+  jobs?: string[];
   adminId: string;
   readOnly: boolean;
   tokenId: string;
@@ -22,6 +24,8 @@ function isSandboxProps(v: unknown): v is SandboxProps {
     isRecord(v) &&
     typeof v.adminId === "string" &&
     !!v.adminId &&
+    (v.jobs === undefined ||
+      (Array.isArray(v.jobs) && v.jobs.every((s) => typeof s === "string"))) &&
     typeof v.readOnly === "boolean" &&
     typeof v.tokenId === "string" &&
     typeof v.issuer === "string"
@@ -41,6 +45,8 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
     const props: unknown = this.ctx.props;
     if (!isSandboxProps(props) || !(await activeAdmin(this.env.DB, props.adminId)))
       throw new Error("credential rejected");
+    if (!permitsJob(props.jobs, name, args?.app ?? ""))
+      throw new Error("Outside granted app permissions.");
     if (tool.write && props.readOnly)
       throw new Error(`${name} needs write access; this token is read-only`);
     try {
@@ -244,6 +250,7 @@ export async function runExecute(
     const props: SandboxProps = {
       adminId: auth.adminId,
       readOnly: auth.readOnly,
+      ...(auth.jobs ? { jobs: auth.jobs } : {}),
       tokenId: auth.tokenId,
       issuer: env.ISSUER,
     };

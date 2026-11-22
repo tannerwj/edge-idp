@@ -1,3 +1,4 @@
+import { nowSec } from "../util";
 import type { Group, OidcClient } from "../db";
 import * as ops from "../ops";
 import { Callout, CopyField, GroupPicker, PageHead, PostButton, Time } from "../ui/components";
@@ -258,6 +259,28 @@ export function ClientDetail(props: {
                       {client.secret_prefix}••••••••••••••••••••••••••••••
                     </span>
                   </div>
+                  {client.source === "admin" &&
+                    (client.previous_secret_until && client.previous_secret_until > nowSec() ? (
+                      <form method="post" action={detailHref(client.id) + "/retire"}>
+                        <p>
+                          Previous secret expires <Time ts={client.previous_secret_until} />.
+                          Replacement first used:{" "}
+                          <Time
+                            ts={client.replacement_used_at ?? null}
+                            empty="Awaiting first use"
+                          />
+                          .
+                        </p>
+                        <input type="hidden" name="until" value={client.previous_secret_until} />
+                        <input type="hidden" name="current" value={client.secret_prefix} />
+                        <button>Retire previous secret now</button>
+                      </form>
+                    ) : (
+                      <form method="post" action={detailHref(client.id) + "/rotate"}>
+                        <input type="hidden" name="overlap" value="1" />
+                        <button>Replace with 24-hour overlap</button>
+                      </form>
+                    ))}
                   <span class="hint">Hashed at rest. Rotate to get a new one.</span>
                 </div>
               ) : (

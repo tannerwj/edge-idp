@@ -9,7 +9,7 @@ import {
 } from "@simplewebauthn/server";
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
 import type { Env } from "./config";
-import { audit, getCredentialsForUser, getUser, getUserByEmail } from "./db";
+import { signInReference, audit, getCredentialsForUser, getUser, getUserByEmail } from "./db";
 import type { User, WebAuthnCredential } from "./db";
 import {
   createSession,
@@ -352,30 +352,38 @@ async function assertionProblem(
   return null;
 }
 
+async function signInFailure(
+  c: Context<{ Bindings: Env }>,
+  error: string,
+  status: 400 | 401 = 401,
+) {
+  return c.json({ error, reference: await signInReference(c.env.DB, error) }, status);
+}
+
 webauthn.post("/auth/verify", async (c) => {
   const body = await c.req.json<{
     response: AuthenticationResponseJSON;
     email?: string;
   }>();
-  if (!body.response) return c.json({ error: "bad_request" }, 400);
+  if (!body.response) return signInFailure(c, "bad_request", 400);
 
   const challenge = challengeFromResponse(body.response);
-  if (!challenge) return c.json({ error: "invalid_challenge" }, 400);
+  if (!challenge) return signInFailure(c, "invalid_challenge", 400);
   const stored = await takeChallenge(c.env.DB, challenge);
   if (!stored || stored.type !== "authentication") {
-    return c.json({ error: "invalid_challenge" }, 400);
+    return signInFailure(c, "invalid_challenge", 400);
   }
   const stepUp = stored.data["stepUp"] === true;
 
   const user = await resolveAuthUser(c.env.DB, body.email, stored, body.response);
-  if (!user || user.disabled) return c.json({ error: "auth_failed" }, 401);
+  if (!user || user.disabled) return signInFailure(c, "auth_failed");
   if (stored.userId && stored.userId !== user.id) {
-    return c.json({ error: "auth_failed" }, 401);
+    return signInFailure(c, "auth_failed");
   }
 
   const creds = await getCredentialsForUser(c.env.DB, user.id);
   const cred = creds.find((k) => credIdB64(k) === body.response.id);
-  if (!cred) return c.json({ error: "auth_failed" }, 401);
+  if (!cred) return signInFailure(c, "auth_failed");
 
   if (stored.data.checkKey !== undefined) {
     const session = await getSession(c);
@@ -385,10 +393,10 @@ webauthn.post("/auth/verify", async (c) => {
       session.idHash !== stored.data.session ||
       session.user.id !== user.id
     )
-      return c.json({ error: "auth_failed" }, 401);
+      return signInFailure(c, "auth_failed");
   }
   const problem = await assertionProblem(c, user, cred, body.response, challenge, stored);
-  if (problem) return c.json({ error: problem }, 401);
+  if (problem) return signInFailure(c, problem);
   if (stored.data.checkKey !== undefined) {
     await c.env.DB.prepare(
       "UPDATE webauthn_credentials SET checked_at=?1 WHERE id=?2 AND user_id=?3",

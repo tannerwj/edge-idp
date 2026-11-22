@@ -160,7 +160,7 @@ function MembersCard({ id, inGroup, notIn }: { id: string; inGroup: User[]; notI
       <div class="card-head">
         <h2 class="grow">Members</h2>
         {notIn.length ? (
-          <form method="post" action={`/admin/groups/${id}/members`} class="row-sm">
+          <form method="post" action={`/admin/preview/groups/${id}/members`} class="row-sm">
             <select name="user_id" required aria-label="Person to add" class="select-sm">
               {notIn.map((x) => (
                 <option key={x.id} value={x.id}>
@@ -186,7 +186,7 @@ function MembersCard({ id, inGroup, notIn }: { id: string; inGroup: User[]; notI
                 <div class="meta">{m.email}</div>
               </div>
               <PostButton
-                action={`/admin/groups/${id}/members/${m.id}/remove`}
+                action={`/admin/preview/groups/${id}/members/${m.id}/remove`}
                 label="Remove"
                 class="btn ghost sm"
               />

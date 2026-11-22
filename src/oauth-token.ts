@@ -1,3 +1,5 @@
+import { authenticateClient } from "./client-auth";
+import { adminScope } from "./mcp-permissions";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
@@ -7,7 +9,7 @@ import type { OidcClient } from "./db";
 import { ACCESS_TOKEN_TTL, mintAccessToken, mintIdToken, verifyAccessToken } from "./crypto";
 import type { TokenClaims } from "./crypto";
 import { claimsFor, clientAccessProblem, mcpResource, accessClaimsClient } from "./oauth-shared";
-import { base64url, newId, nowSec, randomToken, sha256Hex, timingSafeEqualHex } from "./util";
+import { base64url, newId, nowSec, randomToken, sha256Hex } from "./util";
 
 const REFRESH_TTL = 30 * 86400;
 
@@ -15,38 +17,9 @@ export const tokens = new Hono<{ Bindings: Env }>();
 
 type TokenBody = Record<string, string | undefined>;
 
-async function authenticateClient(
-  c: Context<{ Bindings: Env }>,
-  body: TokenBody,
-): Promise<OidcClient | null> {
-  let clientId = body.client_id ?? "";
-  let clientSecret = body.client_secret ?? "";
-  const auth = c.req.header("authorization");
-  if (auth?.toLowerCase().startsWith("basic ")) {
-    try {
-      const decoded = atob(auth.slice(6).trim());
-      const idx = decoded.indexOf(":");
-      if (idx < 0) return null;
-      clientId = decodeURIComponent(decoded.slice(0, idx));
-      clientSecret = decodeURIComponent(decoded.slice(idx + 1));
-    } catch {
-      return null;
-    }
-  }
-  if (!clientId) return null;
-  const client = await getClient(c.env.DB, clientId);
-  if (!client) return null;
-  if (client.client_type === "public") {
-    return clientSecret ? null : client;
-  }
-  if (!clientSecret) return null;
-  const presented = await sha256Hex(clientSecret);
-  return timingSafeEqualHex(presented, client.secret_hash) ? client : null;
-}
-
 function wantsRefresh(scope: string): boolean {
   const s = scope.split(" ");
-  return s.includes("offline_access") || s.includes("mcp") || s.includes("mcp:read");
+  return s.includes("offline_access") || s.some(adminScope);
 }
 
 interface RefreshGrant {
@@ -91,9 +64,7 @@ async function tokenResponse(
   grant: { scope: string; resource: string | null; refresh: string | null },
 ): Promise<Response> {
   const scopes = grant.scope.split(" ");
-  const audience =
-    grant.resource ??
-    (scopes.includes("mcp") || scopes.includes("mcp:read") ? mcpResource(c.env) : client.id);
+  const audience = grant.resource ?? (scopes.some(adminScope) ? mcpResource(c.env) : client.id);
   const accessToken = await mintAccessToken(c.env, claims, {
     audience,
     clientId: client.id,
@@ -213,6 +184,9 @@ async function codeGrant(
     : null;
   await c.env.DB.batch([
     ...(refresh ? [refresh.stmt] : []),
+    c.env.DB.prepare(
+      "UPDATE app_invitations SET first_signin_at=unixepoch() WHERE user_id=? AND first_signin_at IS NULL AND app_id IN (SELECT id FROM apps WHERE client_id=?)",
+    ).bind(row.user_id, client.id),
     c.env.DB.prepare(
       `INSERT INTO client_signins (user_id, client_id, last_at) VALUES (?1, ?2, ?3)
        ON CONFLICT(user_id, client_id) DO UPDATE SET last_at = ?3`,

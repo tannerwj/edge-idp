@@ -1,7 +1,8 @@
+import { selectedJobScopes } from "./mcp-permissions";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./config";
-import { audit, auditStmt, getClient } from "./db";
+import { audit, auditStmt, signInReference, getClient, listApps } from "./db";
 import { loadUserContext } from "./access";
 import type { OidcClient, User } from "./db";
 import { jwksDocument, verifyIdToken } from "./crypto";
@@ -62,7 +63,17 @@ async function errorPage(
   message: string,
   status: 400 | 403 = 400,
 ) {
-  return c.html(<ErrorPage ui={await uiFor(c)} title={title} message={message} />, status);
+  const clientId = c.req.query("client_id");
+  const client = clientId && (await getClient(c.env.DB, clientId));
+  const reference = await signInReference(c.env.DB, title, client ? client.id : null);
+  return c.html(
+    <ErrorPage
+      ui={await uiFor(c)}
+      title={title}
+      message={message + " Support reference: " + reference}
+    />,
+    status,
+  );
 }
 
 function pkceOk(q: Record<string, string>, client: OidcClient): boolean {
@@ -107,6 +118,8 @@ async function validateAuthorize(
       ),
     };
   }
+  if (c.req.method === "GET" && client.source === "admin")
+    await audit(c.env.DB, "CALLBACK_MATCHED", { clientId: client.id });
   const state = q.state;
   const redirectError = (error: string, description?: string): Validated => {
     const u = new URL(redirectUri);
@@ -273,6 +286,9 @@ oidc.get("/authorize", async (c) => {
         user={session.user}
         scopes={req.scopes}
         redirectUri={req.redirectUri}
+        apps={
+          req.scopes.some((s) => ADMIN_SCOPES.includes(s)) ? await listApps(c.env.DB) : undefined
+        }
         params={c.req.query()}
       />,
     );
@@ -281,7 +297,7 @@ oidc.get("/authorize", async (c) => {
 });
 
 oidc.post("/authorize/decision", async (c) => {
-  const form = await c.req.parseBody();
+  const form = await c.req.parseBody({ all: true });
   const q: Record<string, string> = {};
   for (const [k, val] of Object.entries(form)) if (typeof val === "string") q[k] = val;
   const decision = q.decision;
@@ -301,6 +317,23 @@ oidc.post("/authorize/decision", async (c) => {
   if (problem) return errorPage(c, "Access denied", problem, 403);
   if (await needsAdminStepUp(c.env.DB, session, req))
     return errorPage(c, "Confirm it's you", "Start the sign-in again from the app.", 403);
+  const job = form.job;
+  if (job && job !== "full") {
+    if (
+      (job !== "inspect" && job !== "invite") ||
+      !req.scopes.some((s) => ADMIN_SCOPES.includes(s)) ||
+      (job === "invite" && !req.scopes.includes("mcp"))
+    )
+      return errorPage(c, "Permission unavailable", "Choose an allowed action.", 403);
+    const selected = selectedJobScopes(
+      job,
+      Array.isArray(form.jobApp) ? form.jobApp : [form.jobApp],
+      await listApps(c.env.DB),
+    );
+    if (!selected) return errorPage(c, "Select apps", "Choose between one and 32 apps.");
+    req.scopes = [...req.scopes.filter((s) => !ADMIN_SCOPES.includes(s)), ...selected];
+    req.scope = req.scopes.join(" ");
+  }
   await c.env.DB.prepare(
     `INSERT INTO oauth_grants (user_id, client_id, scope, created_at, last_used_at)
      VALUES (?1, ?2, ?3, ?4, ?4)

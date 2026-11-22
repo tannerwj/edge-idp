@@ -236,12 +236,38 @@ const SCOPE_TEXT: Record<string, { icon: IconName; title: string; sub: string; d
     },
   };
 
+function JobSelection(props: { apps: { id: string; name: string }[]; write: boolean }) {
+  return (
+    <fieldset>
+      <legend>Assistant permissions</legend>
+      <label>
+        Allowed action{" "}
+        <select name="job">
+          <option value="full">Requested permissions shown above</option>
+          <option value="inspect">Inspect connection health only</option>
+          {props.write && <option value="invite">Invite existing members only</option>}
+        </select>
+      </label>
+      <label>
+        Apps for the selected action{" "}
+        <select name="jobApp" multiple>
+          {props.apps.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </fieldset>
+  );
+}
 export function ConsentPage(props: {
   ui: Ui;
   client: OidcClient;
   user: User;
   scopes: string[];
   redirectUri: string;
+  apps?: { id: string; name: string }[];
   params: Record<string, string>;
 }) {
   const { client } = props;
@@ -316,10 +342,11 @@ export function ConsentPage(props: {
       </ul>
       <form method="post" action="/authorize/decision" class="stack-sm">
         {Object.entries(props.params)
-          .filter(([k]) => k !== "decision")
+          .filter(([k]) => !["decision", "job", "jobApp"].includes(k))
           .map(([k, v]) => (
             <input key={k} type="hidden" name={k} value={v} />
           ))}
+        {props.apps && <JobSelection apps={props.apps} write={scopes.includes("mcp")} />}
         <div class="grid-2">
           <button class="btn lg" type="submit" name="decision" value="deny">
             Cancel

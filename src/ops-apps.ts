@@ -1,4 +1,5 @@
-import { audit } from "./db";
+import { selectedJobScopes } from "./mcp-permissions";
+import { listApps, audit } from "./db";
 import type { App, OidcClient } from "./db";
 import { newId, nowSec, randomToken, sha256Hex } from "./util";
 import { by, OpError, parseGroupList, parseRedirectUris } from "./ops-core";
@@ -148,14 +149,28 @@ export async function rotateClientSecret(
   db: D1Database,
   client: OidcClient,
   a: Actor,
+  overlap = false,
 ): Promise<string> {
   if (client.client_type === "public") throw new OpError("Public clients don't have a secret.");
   const secret = randomToken(32);
-  await db
-    .prepare("UPDATE oidc_clients SET secret_hash = ?1, secret_prefix = ?2 WHERE id = ?3")
-    .bind(await sha256Hex(secret), secret.slice(0, 6), client.id)
+  const changed = await db
+    .prepare(
+      "UPDATE oidc_clients SET previous_secret_hash=CASE WHEN ?4 THEN secret_hash END, previous_secret_until=CASE WHEN ?4 THEN unixepoch()+86400 END,replacement_used_at=NULL,secret_hash=?1,secret_prefix=?2 WHERE id=?3 AND secret_hash=?5 AND (?4=0 OR COALESCE(previous_secret_until,0)<=unixepoch())",
+    )
+    .bind(
+      await sha256Hex(secret),
+      secret.slice(0, 6),
+      client.id,
+      Number(overlap),
+      client.secret_hash,
+    )
     .run();
-  await audit(db, "CLIENT_SECRET_ROTATED", { clientId: client.id, detail: by(a) });
+  if (!changed.meta.changes)
+    throw new OpError("Credentials changed or a rollover is active. Refresh the client page.");
+  await audit(db, "CLIENT_SECRET_ROTATED", {
+    clientId: client.id,
+    detail: by(a, { overlapHours: overlap ? 24 : 0 }),
+  });
   return secret;
 }
 
@@ -275,12 +290,23 @@ export async function deleteApp(db: D1Database, id: string, a: Actor): Promise<v
 
 export async function createApiToken(
   db: D1Database,
-  input: { name: string; scope: "admin" | "read"; expiresInDays: number | null },
+  input: {
+    name: string;
+    scope: "admin" | "read" | "inspect" | "invite";
+    apps?: string[];
+    expiresInDays: number | null;
+  },
   a: Actor,
 ): Promise<string> {
   const name = input.name.trim().slice(0, 60);
   if (!name) throw new OpError("Name is required.");
-  const raw = `eidp_${randomToken(32)}`;
+  const scoped = input.scope === "inspect" || input.scope === "invite";
+  const selected = scoped
+    ? selectedJobScopes(input.scope, input.apps ?? [], await listApps(db))
+    : null;
+  if (scoped && !selected) throw new OpError("Choose between one and 32 apps.");
+  const storedScope = selected?.join(" ") ?? input.scope;
+  const raw = (scoped ? "ejob_" : "eidp_") + randomToken(32);
   const now = nowSec();
   await db
     .prepare(
@@ -288,11 +314,11 @@ export async function createApiToken(
     )
     .bind(
       newId(),
-      await sha256Hex(raw),
+      await sha256Hex(scoped ? "job:" + raw : raw),
       name,
       now,
       a.adminId,
-      input.scope,
+      storedScope,
       input.expiresInDays ? now + input.expiresInDays * 86400 : null,
       raw.slice(0, 10),
     )

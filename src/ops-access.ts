@@ -151,8 +151,9 @@ export async function addGrant(db: D1Database, input: GrantInput, a: Actor): Pro
 }
 
 export async function removeGrant(db: D1Database, id: string, a: Actor): Promise<void> {
+  const table = id.startsWith("temporary:") ? "temporary_app_grants" : "app_grants";
   const row = await db
-    .prepare("DELETE FROM app_grants WHERE id = ?1 RETURNING user_id")
+    .prepare(`DELETE FROM ${table} WHERE id = ?1 RETURNING user_id`)
     .bind(id)
     .first<{ user_id: string | null }>();
   if (!row) throw new OpError("Grant not found.");

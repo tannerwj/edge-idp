@@ -173,6 +173,10 @@ const CATEGORIES: Record<string, string[]> = {
     "CLIENT_UPDATED",
     "CLIENT_DELETED",
     "CLIENT_SECRET_ROTATED",
+    "CLIENT_SECRET_RETIRED",
+    "APP_INVITED",
+    "APP_REQUESTABILITY_CHANGED",
+    "ACCESS_REQUEST_DECIDED",
     "APP_CREATED",
     "APP_UPDATED",
     "APP_DELETED",
@@ -198,6 +202,9 @@ const CATEGORIES: Record<string, string[]> = {
     "API_TOKEN_REVOKED",
   ],
   oauth: [
+    "SIGN_IN_PROBLEM",
+    "CALLBACK_MATCHED",
+    "CLIENT_AUTH_FAILED",
     "CONSENT_GRANTED",
     "CONSENT_DENIED",
     "CONSENT_REVOKED",
@@ -263,7 +270,7 @@ function AuditFilters({
             type="search"
             name="q"
             value={q}
-            placeholder="Person or app…"
+            placeholder="Person, app or ref-…"
             aria-label="Search"
           />
         </div>
@@ -302,9 +309,19 @@ auditAdmin.get("/", async (c) => {
         .join(",")})`,
     );
   } else {
-    where.push("a.event NOT IN ('CODE_ISSUED','TOKEN_ISSUED')");
+    where.push("a.event NOT IN ('CODE_ISSUED','TOKEN_ISSUED','CALLBACK_MATCHED')");
   }
-  if (q) {
+  if (/^ref-[0-9a-f]{16}$/.test(q)) {
+    where.length = 0;
+    binds.length = 0;
+    where.push("a.support_ref=?1");
+    binds.push(q);
+  } else if (/^event-\d+$/.test(q)) {
+    where.length = 0;
+    binds.length = 0;
+    where.push("a.id=?1");
+    binds.push(Number(q.slice(6)));
+  } else if (q) {
     const ids = await matchingIds(db, q);
     binds.push(ids.users, ids.clients);
     where.push(

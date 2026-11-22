@@ -58,6 +58,7 @@ export const USER_REF = {
 };
 
 export interface McpAuth {
+  jobs?: string[];
   tokenId: string;
   adminId: string;
   readOnly: boolean;

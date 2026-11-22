@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { audit } from "../db";
+import { listApps, audit } from "../db";
 import * as ops from "../ops";
 import { nowSec } from "../util";
 import type { AdminVars } from "./shell";
-import { act, actor, field, page, failBack } from "./shell";
+import { act, actor, field, fields, page, failBack } from "./shell";
 import { Callout, CopyField, Dialog, Empty, PageHead, PostButton, Time } from "../ui/components";
 import { Icon } from "../ui/icons";
 
@@ -34,7 +34,7 @@ function TokenRow({ t, now }: { t: ApiTokenRow; now: number }) {
         {t.scope === "admin" ? (
           <span class="badge warn">Full admin</span>
         ) : (
-          <span class="badge">Read-only</span>
+          <span class="badge">{t.scope === "read" ? "Read-only" : t.scope}</span>
         )}
       </td>
       <td class="muted small nowrap">
@@ -61,7 +61,7 @@ function TokenRow({ t, now }: { t: ApiTokenRow; now: number }) {
   );
 }
 
-function NewTokenDialog() {
+function NewTokenDialog({ apps }: { apps: { id: string; name: string }[] }) {
   return (
     <Dialog
       id="new-token"
@@ -91,6 +91,24 @@ function NewTokenDialog() {
           </span>
         </label>
       </div>
+      <label class="field">
+        <span>Limit to selected apps</span>
+        <label>
+          <input type="radio" name="scope" value="inspect" />
+          Inspect connection health
+        </label>
+        <label>
+          <input type="radio" name="scope" value="invite" />
+          Invite existing members
+        </label>
+        <select name="apps" multiple aria-label="Allowed apps">
+          {apps.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <label class="field">
         <span class="label">Expires</span>
         <select name="expires">
@@ -165,13 +183,14 @@ tokensAdmin.get("/", async (c) => {
           </Empty>
         )}
       </div>
-      <NewTokenDialog />
+      <NewTokenDialog apps={await listApps(c.env.DB)} />
     </>,
   );
 });
 
 tokensAdmin.post("/", async (c) => {
-  const form = await c.req.parseBody();
+  const form = await c.req.parseBody({ all: true });
+  const scope = field(form, "scope");
   const days = parseInt(field(form, "expires"), 10);
   let raw: string;
   try {
@@ -179,7 +198,8 @@ tokensAdmin.post("/", async (c) => {
       c.env.DB,
       {
         name: field(form, "name"),
-        scope: field(form, "scope") === "admin" ? "admin" : "read",
+        scope: scope === "admin" || scope === "invite" || scope === "inspect" ? scope : "read",
+        apps: fields(form, "apps"),
         expiresInDays: Number.isFinite(days) && days > 0 ? days : null,
       },
       actor(c),

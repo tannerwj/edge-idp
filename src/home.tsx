@@ -1,3 +1,4 @@
+import { newId } from "./util";
 import { Hono } from "hono";
 import type { Env } from "./config";
 import { appsForUser, listAppGroups, loadUserContext } from "./access";
@@ -14,6 +15,27 @@ import { viewerOf } from "./account";
 
 export const home = new Hono<{ Bindings: Env }>();
 
+home.get("/open/:id", async (c) => {
+  const s = await getSession(c);
+  if (!s) return c.redirect("/login?next=" + encodeURIComponent(new URL(c.req.url).pathname));
+  const app = (await appsForUser(c.env.DB, s.user.id)).find((a) => a.id === c.req.param("id"));
+  if (!app || !/^https?:\/\//i.test(app.url)) return c.notFound();
+  return c.redirect(app.url);
+});
+
+home.post("/apps/:id/request", async (c) => {
+  const s = await getSession(c);
+  if (!s || s.user.public) return c.notFound();
+  const ctx = await loadUserContext(c.env.DB, s.user.id),
+    app = ctx?.apps.find((a) => a.id === c.req.param("id") && a.requestable);
+  if (!ctx || !app || ctx.access.has(app.id)) return c.notFound();
+  await c.env.DB.prepare(
+    "INSERT OR IGNORE INTO access_requests(id,app_id,user_id,requested_at) SELECT ?,id,?,unixepoch() FROM apps WHERE id=? AND requestable=1",
+  )
+    .bind(newId(), s.user.id, app.id)
+    .run();
+  return c.redirect("/", 303);
+});
 async function favoritesOf(db: D1Database, userId: string): Promise<Set<string>> {
   const { results } = await db
     .prepare("SELECT app_id FROM app_favorites WHERE user_id = ?1")
@@ -316,6 +338,18 @@ home.get("/", async (c) => {
   const summary = passkeys ?? { count: 0, synced: 0 };
   const groups = ctx?.groups ?? [];
   const apps = ctx ? ctx.apps.filter((a) => ctx.access.has(a.id)) : [];
+  const requestable = s.user.public
+    ? []
+    : (ctx?.apps.filter((a) => a.requestable && !ctx.access.has(a.id)) ?? []);
+  const pending = requestable.length
+    ? (
+        await c.env.DB.prepare(
+          "SELECT app_id FROM access_requests WHERE user_id=? AND decision IS NULL",
+        )
+          .bind(s.user.id)
+          .all<{ app_id: string }>()
+      ).results.map((r) => r.app_id)
+    : [];
   const first = s.user.name.split(" ")[0];
   return c.html(
     <AppShell
@@ -332,6 +366,19 @@ home.get("/", async (c) => {
       <div class="stack-lg">
         {summary.count < 2 ? <BackupPasskeyCallout count={summary.count} /> : null}
         <AppsSection l={{ apps, appGroups, favorites }} isAdmin={!!s.user.is_admin} />
+        {requestable.length > 0 && (
+          <section class="card card-body">
+            <h2>Request access</h2>
+            {requestable.map((a) => (
+              <form key={a.id} method="post" action={`/apps/${a.id}/request`}>
+                <span>{a.name} </span>
+                <button disabled={pending.includes(a.id)}>
+                  {pending.includes(a.id) ? "Requested" : "Request access"}
+                </button>
+              </form>
+            ))}
+          </section>
+        )}
         <section class="grid-2">
           <RecentActivityCard rows={recent.results} />
           <SecurityCard passkeys={summary} authTime={s.authTime} />

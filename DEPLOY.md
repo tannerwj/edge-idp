@@ -412,6 +412,8 @@ npm run deploy
 npm run smoke
 ```
 
+For the 2.4 upgrade apply migrations 0021–0023 first. Before rolling back to 2.3 during a secret overlap, configure the downstream app with the replacement secret. The older Worker recognizes the current hash only. Time-limited app grants and job-scoped assistant credentials are unavailable on 2.3.
+
 **Backups.** D1 Time Travel covers 30 days. For anything longer, or to
 rebuild somewhere else, download a backup from Admin → Settings › Backup
 (people, passkeys' public keys, groups, apps, grants, clients, webhooks and

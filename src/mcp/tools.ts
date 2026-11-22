@@ -1,3 +1,4 @@
+import { onboardingTools } from "./tools-onboarding";
 import { obj } from "./common";
 import type { ToolDef } from "./common";
 import { PEOPLE_TOOLS } from "./tools-people";
@@ -83,4 +84,10 @@ const METRICS_TOOL: ToolDef = {
   },
 };
 
-export const TOOLS: ToolDef[] = [...PEOPLE_TOOLS, ...APP_TOOLS, ...ACCESS_TOOLS, METRICS_TOOL];
+export const TOOLS: ToolDef[] = [
+  ...onboardingTools,
+  ...PEOPLE_TOOLS,
+  ...APP_TOOLS,
+  ...ACCESS_TOOLS,
+  METRICS_TOOL,
+];

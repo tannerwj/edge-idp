@@ -35,6 +35,9 @@ export interface OidcClient {
   id: string;
   name: string;
   redirect_uris: string[];
+  previous_secret_hash?: string | null;
+  previous_secret_until?: number | null;
+  replacement_used_at?: number | null;
   secret_hash: string;
   secret_prefix: string;
   allowed_groups: string[] | null;
@@ -183,6 +186,9 @@ function rowToClient(r: Row): OidcClient {
     id: str(r.id),
     name: str(r.name),
     redirect_uris: strArray(str(r.redirect_uris)),
+    previous_secret_hash: strOrNull(r.previous_secret_hash ?? null),
+    previous_secret_until: numOrNull(r.previous_secret_until ?? null),
+    replacement_used_at: numOrNull(r.replacement_used_at ?? null),
     secret_hash: str(r.secret_hash),
     secret_prefix: str(r.secret_prefix),
     allowed_groups: typeof r.allowed_groups === "string" ? strArray(r.allowed_groups) : null,
@@ -248,6 +254,7 @@ export async function listGroups(db: D1Database): Promise<Group[]> {
 }
 
 export interface App {
+  requestable?: boolean;
   id: string;
   name: string;
   url: string;
@@ -265,6 +272,7 @@ export interface App {
 
 function rowToApp(r: Row): App {
   return {
+    requestable: r.requestable === 1,
     id: str(r.id),
     name: str(r.name),
     url: str(r.url),
@@ -318,6 +326,21 @@ export function auditStmt(
       (opts.userAgent ?? null)?.slice(0, 300) ?? null,
       opts.detail ? JSON.stringify(opts.detail) : null,
     );
+}
+
+export async function signInReference(
+  db: D1Database,
+  reason: string,
+  clientId: string | null = null,
+) {
+  const reference = "ref-" + crypto.randomUUID().replaceAll("-", "").slice(-16);
+  await db
+    .prepare(
+      "INSERT INTO audit_log(created_at,event,client_id,detail,support_ref) VALUES(unixepoch(),'SIGN_IN_PROBLEM',?,?,?)",
+    )
+    .bind(clientId, JSON.stringify({ reason }), reference)
+    .run();
+  return reference;
 }
 
 export type AuditOpts = NonNullable<Parameters<typeof auditStmt>[2]>;

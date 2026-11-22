@@ -4,6 +4,8 @@ import { getInstanceSettings } from "../settings-cache";
 import { setFlash } from "../ui/layout";
 import { listApps, listClients, listGroups, listUsers } from "../db";
 import type { ACtx, AdminVars } from "./shell";
+import { requestsAdmin } from "./access-requests";
+import { previews } from "./access-preview";
 import { dashboardAdmin } from "./dashboard";
 import { usersAdmin } from "./users";
 import { invitesAdmin } from "./invites";
@@ -22,6 +24,9 @@ import { settingsAdmin } from "./settings";
 export const admin = new Hono<AdminVars>();
 
 const SENSITIVE = [
+  /^\/admin\/requests\/[^/]+$/,
+  /^\/admin\/apps\/[^/]+\/requestable$/,
+  /^\/admin\/apps\/[^/]+\/invite$/,
   /^\/admin\/connect\/apply$/,
   /^\/admin\/users$/,
   /^\/admin\/users\/[^/]+\/(profile|role|member|enrollment|revoke-keys)$/,
@@ -30,7 +35,7 @@ const SENSITIVE = [
   /^\/admin\/users\/recovery\/[^/]+\/approve$/,
   /^\/admin\/tokens$/,
   /^\/admin\/clients$/,
-  /^\/admin\/clients\/[^/]+(\/rotate|\/sign-in)?$/,
+  /^\/admin\/clients\/[^/]+(\/rotate|\/retire|\/sign-in)?$/,
   /^\/admin\/settings(\/.*)?$/,
 ];
 
@@ -112,6 +117,8 @@ admin.get("/audit.csv", async (c) =>
   }),
 );
 
+admin.route("/", requestsAdmin);
+admin.route("/", previews);
 admin.route("/", dashboardAdmin);
 admin.route("/users/invites", invitesAdmin);
 admin.route("/users/recovery", recoveryAdmin);

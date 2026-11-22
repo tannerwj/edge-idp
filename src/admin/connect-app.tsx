@@ -112,6 +112,9 @@ appConnectionAdmin.post("/:operation", async (c) => {
               </button>
             </form>
           )}
+          {result.status !== "preview" && (
+            <a href={`/admin/apps/${result.app.id}/onboarding`}>Test sign-in or invite a person</a>
+          )}
           <a href="/admin/connect">Back to Connect</a>
         </div>
       </section>,

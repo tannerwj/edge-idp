@@ -34,6 +34,7 @@ const TABLES: TableSpec[] = [
   { name: "app_groups", key: ["id"], mode: "upsert" },
   { name: "oidc_clients", key: ["id"], mode: "upsert" },
   { name: "apps", key: ["id"], mode: "upsert" },
+  { name: "temporary_app_grants", key: ["id"], mode: "upsert" },
   { name: "app_grants", key: ["id"], mode: "upsert" },
   { name: "group_members", key: ["group_id", "user_id"], mode: "keep" },
   { name: "app_favorites", key: ["user_id", "app_id"], mode: "keep" },

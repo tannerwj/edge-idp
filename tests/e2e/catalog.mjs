@@ -1,3 +1,4 @@
+import { appWorkflows } from "./app-workflows.mjs";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { startLocal } from "./instances.mjs";
@@ -96,6 +97,7 @@ try {
     await (await request("/admin/connect/apply", form)).text(),
     /Use the existing app credential/,
   );
+  await appWorkflows({ base, instance, request });
   console.log("Admin connection, audience preview and on-demand editors passed");
 } finally {
   await instance.stop();

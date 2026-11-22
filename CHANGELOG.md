@@ -3,6 +3,16 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.4.0 — 2026-11-21
+
+- Test an app connection from Onboarding, invite a member to that app, and see enrollment and first client sign-in. Sign-in failures display a searchable support reference.
+- Preview who gains or loses launcher access, app roles and sign-in eligibility before applying grant or membership changes.
+- Rotate confidential client secrets with a 24-hour overlap. See the first authentication with the replacement and retire the previous secret early. Immediate rotation remains available.
+- Mark individual apps requestable. Members can request access and admins can approve permanently or through a chosen UTC date.
+- Limit an OAuth assistant or API token to inspecting connections or inviting existing members for selected apps. The same restrictions apply inside MCP code mode.
+
+**Upgrade:** Apply migrations 0021–0023 before deploying. The new features use the existing Worker and D1 bindings. Each first-party authorization request also records a callback check in the retention-limited audit log.
+
 ## 2.3.0 — 2026-11-21
 
 **Upgrade:** Apply migration 0020 before deploying to record passkey checks.

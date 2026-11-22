@@ -373,3 +373,5 @@ template".
 - A sibling subdomain counts as same-site, so `SameSite=Lax` alone would let
   it post forms here; the same-origin guard must refuse such a POST with 403
   before any handler runs (also checked in `full.mjs › same-origin guard`).
+
+The catalog suite also runs a local relying party through a real invite, passkey enrollment and OIDC code exchange. It exercises support-reference search, duplicate invitations and requests, grant expiry, client secret rollover, and app-scoped OAuth and API tokens through direct and sandboxed tools. Browser failures include the most recent main-page navigation status and an allowlisted route. Invite failures include an allowlisted flash reason.

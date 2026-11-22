@@ -115,7 +115,7 @@ export function OverviewTab({ id, self, user, creds, groups, allGroups }: TabDat
             </button>
           </div>
         </form>
-        <form class="card" method="post" action={`/admin/users/${id}/groups`}>
+        <form class="card" method="post" action={`/admin/preview/users/${id}/groups`}>
           <div class="card-head">
             <div class="grow">
               <h2>Groups</h2>

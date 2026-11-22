@@ -21,7 +21,9 @@ import {
 } from "./apps-access";
 import type { AccessData } from "./apps-access";
 
+import { onboardingAdmin } from "./app-onboarding";
 export const appsAdmin = new Hono<AdminVars>();
+appsAdmin.route("/", onboardingAdmin);
 appsAdmin.route("/", appsAccessAdmin);
 appsAdmin.route("/import", importAdmin);
 
@@ -76,6 +78,9 @@ function AppRow(props: { a: App; data: PageData }) {
           </a>
         </div>
       </div>
+      <a class="btn ghost sm" href={`/admin/apps/${a.id}/onboarding`}>
+        Onboarding
+      </a>
       <div class="hide-sm">
         <GrantChips grants={[...own, ...inherited]} d={data} />
       </div>
@@ -253,6 +258,9 @@ async function pageData(db: D1Database, editor: string): Promise<PageData> {
 function HeadActions(props: { cf: boolean; editor: string }) {
   return (
     <>
+      <a class="btn" href="/admin/requests">
+        Access requests
+      </a>
       {props.cf ? (
         <a class="btn" href="/admin/apps?cf=1#cloudflare">
           <Icon name="cloud" size="sm" />

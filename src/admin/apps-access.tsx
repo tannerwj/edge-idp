@@ -5,7 +5,7 @@ import type { AppGroup, Grant } from "../access";
 import * as ops from "../ops";
 import type { AdminVars } from "./shell";
 import { act, actor, field } from "./shell";
-import { Dialog, PostButton } from "../ui/components";
+import { Time, Dialog, PostButton } from "../ui/components";
 import { Icon } from "../ui/icons";
 
 export interface AccessData {
@@ -61,12 +61,18 @@ function GrantRow(props: { g: Grant; d: AccessData; via?: string }) {
         <div class="title">{subjectLabel(g, props.d)}</div>
         <div class="meta">
           {g.role ? `Role: ${g.role}` : "Can open it, no role"}
+          {g.expires_at && (
+            <>
+              {" "}
+              · Expires <Time ts={g.expires_at} />
+            </>
+          )}
           {props.via ? ` · via ${props.via}` : ""}
         </div>
       </div>
       {props.via ? null : (
         <PostButton
-          action={`/admin/apps/grants/${g.id}/delete`}
+          action={`/admin/preview/apps/grants/${g.id}/delete`}
           label=""
           icon="trash"
           class="btn ghost icon sm"
@@ -129,7 +135,11 @@ export function AccessDialog(props: {
         ) : (
           <p class="muted small">Nobody has access yet.</p>
         )}
-        <form method="post" action={props.action} class="stack-sm">
+        <form
+          method="post"
+          action={props.action.replace("/admin/", "/admin/preview/")}
+          class="stack-sm"
+        >
           <div class="grid-2">
             <label class="field">
               <span class="label">Who</span>
@@ -152,7 +162,7 @@ export function AccessDialog(props: {
           <div>
             <button class="btn primary sm" type="submit">
               <Icon name="plus" size="sm" />
-              Grant access
+              Preview grant
             </button>
           </div>
         </form>

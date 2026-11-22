@@ -39,6 +39,9 @@ Or clone, set a few values in `cloudflare.config.ts`, run migrations,
   match its policies on, and each app that signs in here receives only its own
   `roles`
 - Explain access for a person and app, including a hidden tile or denied sign-in
+- Open an app’s Onboarding page to test sign-in or invite a person directly. Members can request access to apps the admin makes discoverable.
+- Preview grant and group changes, approve time-limited access and rotate app credentials with a 24-hour overlap.
+- Limit assistants to connection health or member invitations for selected apps through OAuth consent or an API token.
 - Preview a backup restore and inspect the per-table receipt
 - Public sign-up per app: open one app (say, a game) to the public and anyone
   can create a name-and-passkey account for it, contained to apps you opened

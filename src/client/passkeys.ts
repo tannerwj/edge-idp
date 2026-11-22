@@ -40,6 +40,8 @@ function friendlyError(e: unknown): string {
   if (e instanceof Error && e.message === "uv_required") requireUv = true;
   if (e instanceof Error) {
     const text = ERROR_NAMES[e.name] ?? ERROR_CODES[e.message];
+    if (typeof e.cause === "string" && /^ref-[0-9a-f]{16}$/.test(e.cause))
+      return (text ?? "Sign-in failed.") + " Support reference: " + e.cause;
     if (text) return text;
   }
   return "Something went wrong — please try again.";
@@ -60,6 +62,7 @@ async function postJSON(url: string, body: unknown): Promise<Record<string, unkn
   if (!res.ok)
     throw new Error(
       isRecord(data) && typeof data.error === "string" ? data.error : "request_failed",
+      { cause: isRecord(data) ? data.reference : undefined },
     );
   if (!isRecord(data)) throw new Error("bad_response");
   return data;
@@ -175,7 +178,11 @@ async function onEnrollClick(btn: HTMLElement, token: string): Promise<void> {
     if (await register({ enrollmentToken: token }, name)) {
       status("enroll-status", "Passkey saved — you're in.", "ok");
       $$(".steps span").forEach((s) => s.classList.add("on"));
-      setTimeout(() => (window.location.href = "/?ok=key_added"), 700);
+      const app = new URLSearchParams(window.location.search).get("app");
+      setTimeout(
+        () => (window.location.href = app ? "/open/" + encodeURIComponent(app) : "/?ok=key_added"),
+        700,
+      );
     }
   } catch (e) {
     status("enroll-status", friendlyError(e), "error");

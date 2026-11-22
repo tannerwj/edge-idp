@@ -7,19 +7,37 @@ import type { Actor } from "./ops-core";
 import { getInstanceSettings } from "./settings-cache";
 import { nowSec } from "./util";
 
-export type LinkKind = "invite" | "relink" | "recovery";
+export type LinkKind = "invite" | "app" | "relink" | "recovery";
 
 export type Delivery = { emailed: true } | { emailed: false; error?: string };
 
-export function linkMail(rpName: string, name: string, link: string, kind: LinkKind): MailContent {
+export function linkMail(
+  rpName: string,
+  name: string,
+  link: string,
+  kind: LinkKind,
+  appName?: string,
+): MailContent {
   const first = name.split(" ")[0] ?? name;
+  if (kind === "app")
+    return {
+      subject: `Invitation to ${appName ?? rpName}`,
+      heading: `Hi ${first}`,
+      paragraphs: [
+        `An administrator gave your account access to ${appName ?? "an app"}. Use your existing sign-in to open it.`,
+      ],
+      button: { label: "Open app", url: link },
+      footer: "This link requires your own account.",
+    };
   if (kind === "invite")
     return {
-      subject: `You're invited to ${rpName}`,
+      subject: `You're invited to ${appName ?? rpName}`,
       heading: `Hi ${first}, you're invited`,
       paragraphs: [
         `${rpName} uses passkeys instead of passwords: Face ID, Touch ID, Windows Hello or a security key. Set yours up with the button below.`,
-        "The link works once and expires in 7 days.",
+        appName
+          ? `After setting up your passkey, you’ll continue to ${appName}. This link works once and expires in 7 days.`
+          : "The link works once and expires in 7 days.",
       ],
       button: { label: "Set up my passkey", url: link },
       footer: "If you weren't expecting this invite, you can ignore it.",
@@ -46,11 +64,17 @@ export async function deliverLink(
   user: { name: string; email: string; public: number },
   link: string,
   kind: LinkKind,
+  appName?: string,
 ): Promise<Delivery> {
   if (user.public) return { emailed: false, error: "This account has no email address." };
   const s = await getInstanceSettings(env.DB);
   if (emailStatus(env, s) !== "ready") return { emailed: false };
-  const r = await sendMail(env, s, user.email, linkMail(env.RP_NAME, user.name, link, kind));
+  const r = await sendMail(
+    env,
+    s,
+    user.email,
+    linkMail(env.RP_NAME, user.name, link, kind, appName),
+  );
   return r.ok ? { emailed: true } : { emailed: false, error: r.error };
 }
 

@@ -5,6 +5,9 @@ import { Time } from "./components";
 type Tone = "ok" | "warn" | "bad" | "accent" | "";
 
 const EVENTS: Record<string, { label: string; icon: IconName; tone: Tone }> = {
+  CALLBACK_MATCHED: { label: "Received app sign-in request", icon: "plug", tone: "" },
+  SIGN_IN_PROBLEM: { label: "Sign-in stopped", icon: "alert", tone: "warn" },
+  CLIENT_AUTH_FAILED: { label: "Client authentication failed", icon: "key", tone: "warn" },
   SIGN_IN: { label: "Signed in", icon: "logIn", tone: "ok" },
   SIGN_OUT: { label: "Signed out", icon: "logOut", tone: "" },
   PASSKEY_REGISTERED: { label: "Added a passkey", icon: "fingerprint", tone: "accent" },

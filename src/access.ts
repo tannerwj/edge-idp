@@ -9,6 +9,7 @@ export interface Grant {
   group_id: string | null;
   everyone: number;
   role: string | null;
+  expires_at?: number | null;
   created_at: number;
 }
 
@@ -86,7 +87,9 @@ export function claimsForClient(
 
 export async function listGrants(db: D1Database): Promise<Grant[]> {
   const { results } = await db
-    .prepare("SELECT * FROM app_grants ORDER BY created_at ASC")
+    .prepare(
+      "SELECT id,app_id,app_group_id,user_id,group_id,everyone,role,created_at,NULL expires_at FROM app_grants UNION ALL SELECT id,app_id,NULL,user_id,NULL,0,NULL,created_at,expires_at FROM temporary_app_grants WHERE expires_at>unixepoch() ORDER BY created_at",
+    )
     .all<Grant>();
   return results;
 }

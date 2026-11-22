@@ -207,6 +207,7 @@ async function revealSecret(
   client: { id: string; name: string },
   secret: string | null,
   rotated: boolean,
+  overlap = false,
 ) {
   return await page(
     c,
@@ -231,7 +232,11 @@ async function revealSecret(
             {secret
               ? "Copy the secret now — only its hash is stored, so it can never be shown again."
               : "Public client: no secret, it proves itself with PKCE."}
-            {rotated ? " The old secret has stopped working." : ""}
+            {overlap
+              ? " The previous secret works for up to 24 hours. Retire it after switching the app."
+              : rotated
+                ? " The old secret has stopped working."
+                : ""}
           </p>
         </div>
         <div class="field">
@@ -358,11 +363,29 @@ clientsAdmin.post("/:id/rotate", async (c) => {
   const client = await getClient(c.env.DB, c.req.param("id"));
   if (!client) return c.notFound();
   try {
-    const secret = await ops.rotateClientSecret(c.env.DB, client, actor(c));
-    return revealSecret(c, client, secret, true);
+    const overlap = field(await c.req.parseBody(), "overlap") === "1";
+    const secret = await ops.rotateClientSecret(c.env.DB, client, actor(c), overlap);
+    return revealSecret(c, client, secret, true, overlap);
   } catch (e) {
     return failBack(c, detailHref(client.id), e);
   }
+});
+
+clientsAdmin.post("/:id/retire", async (c) => {
+  const id = c.req.param("id");
+  return act(c, detailHref(id), "Previous secret retired", async () => {
+    const form = await c.req.parseBody();
+    const [updated] = await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE oidc_clients SET previous_secret_hash=NULL, previous_secret_until=NULL WHERE id=? AND previous_secret_until=? AND secret_prefix=?",
+      ).bind(id, Number(field(form, "until")), field(form, "current")),
+      c.env.DB.prepare(
+        "INSERT INTO audit_log(created_at,event,client_id,user_id) SELECT unixepoch(),'CLIENT_SECRET_RETIRED',?,? WHERE changes()=1",
+      ).bind(id, actor(c).adminId),
+    ]);
+    if (!updated?.meta.changes)
+      throw new ops.OpError("The rotation changed. Refresh the client page.");
+  });
 });
 
 clientsAdmin.post("/:id/delete", async (c) => {

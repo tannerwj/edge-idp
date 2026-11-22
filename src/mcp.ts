@@ -1,3 +1,4 @@
+import { adminScope, jobScope, permitsJob } from "./mcp-permissions";
 import { Hono } from "hono";
 import { VERSION } from "./assets.gen";
 import type { Context } from "hono";
@@ -23,7 +24,16 @@ export async function authApiToken(db: D1Database, hash: string): Promise<McpAut
   if (!row) return null;
   if (row.expires_at && row.expires_at < nowSec()) return null;
   if (!(await activeAdmin(db, row.created_by))) return null;
-  return { tokenId: row.id, adminId: row.created_by, readOnly: row.scope !== "admin" };
+  const jobs = row.scope.split(" ");
+  if (row.scope === "admin" || row.scope === "read")
+    return { tokenId: row.id, adminId: row.created_by, readOnly: row.scope === "read" };
+  if (!jobs.every(jobScope)) return null;
+  return {
+    tokenId: row.id,
+    adminId: row.created_by,
+    readOnly: !jobs.some((s) => s.startsWith("mcp:invite:")),
+    jobs,
+  };
 }
 
 async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | null> {
@@ -33,7 +43,10 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
   if (!raw) return null;
 
   if (raw.split(".").length !== 3) {
-    const auth = await authApiToken(c.env.DB, await sha256Hex(raw));
+    const auth = await authApiToken(
+      c.env.DB,
+      await sha256Hex(raw.startsWith("ejob_") ? "job:" + raw : raw),
+    );
     if (auth) {
       c.executionCtx.waitUntil(
         c.env.DB.prepare("UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2")
@@ -47,12 +60,13 @@ async function authenticate(c: Context<{ Bindings: Env }>): Promise<McpAuth | nu
   try {
     const p = await verifyAccessToken(c.env, raw, mcpResource(c.env));
     const scopes = typeof p.scope === "string" ? p.scope.split(" ") : [];
-    if (!scopes.includes("mcp") && !scopes.includes("mcp:read")) return null;
+    if (!scopes.some(adminScope)) return null;
     if (typeof p.sub !== "string" || !(await activeAdmin(c.env.DB, p.sub))) return null;
     return {
       tokenId: `oauth:${typeof p.client_id === "string" ? p.client_id : "?"}`,
       adminId: p.sub,
-      readOnly: !scopes.includes("mcp"),
+      jobs: scopes.some(jobScope) ? scopes.filter(jobScope) : undefined,
+      readOnly: !scopes.includes("mcp") && !scopes.some((s) => s.startsWith("mcp:invite:")),
     };
   } catch {
     return null;
@@ -164,8 +178,10 @@ function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
       return {};
     case "tools/list":
       return {
-        tools: TOOLS.filter((t) =>
-          t.name === "execute" ? sandbox : !auth.readOnly || !t.write,
+        tools: TOOLS.filter(
+          (t) =>
+            permitsJob(auth.jobs, t.name) &&
+            (t.name === "execute" ? sandbox : !auth.readOnly || !t.write),
         ).map((t) => ({
           name: t.name,
           description: t.description,
@@ -191,6 +207,8 @@ async function callTool(
   const args = isRecord(params.arguments) ? params.arguments : {};
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) return rpcError(c, id, -32602, `Unknown tool: ${name}`);
+  if (!permitsJob(auth.jobs, name, args.app ?? ""))
+    return rpcError(c, id, -32001, "Outside granted app permissions.", 403);
   if (tool.write && auth.readOnly) {
     return c.json(
       {

@@ -1,3 +1,4 @@
+import { adminScope } from "./mcp-permissions";
 import type { Env } from "./config";
 import { claimsForClient } from "./access";
 import type { UserContext } from "./access";
@@ -13,7 +14,7 @@ export function clientAccessProblem(
   scopes: string[],
 ): string | null {
   const { user } = ctx;
-  if (scopes.some((scope) => ADMIN_SCOPES.includes(scope)) && !user.is_admin) {
+  if (scopes.some(adminScope) && !user.is_admin) {
     return "admin access was removed";
   }
   if (user.public && !(client.source === "admin" && client.public_signup)) {
