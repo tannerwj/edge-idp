@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { server } from "./instances.mjs";
@@ -63,11 +65,27 @@ const hubConfig = config(
 );
 const wrangler = (cfg, args) =>
   execFileSync("npx", ["wrangler", ...args, "--config", cfg, "--local", "--persist-to", state], {
+    timeout: 60_000,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-const sql = (cfg, statement) =>
-  JSON.parse(wrangler(cfg, ["d1", "execute", "DB", "--command", statement, "--json"]))[0].results;
+const fixtures = new Map();
+function openFixtures() {
+  for (const file of globSync("**/*.sqlite", { cwd: state })) {
+    const db = new DatabaseSync(join(state, file), { timeout: 5000 });
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    if (tables.some((r) => r.name === "feedback")) fixtures.set(localConfig, db);
+    else if (tables.some((r) => r.name === "reports")) fixtures.set(hubConfig, db);
+    else db.close();
+  }
+  assert.equal(fixtures.size, 2);
+}
+function sql(cfg, statement) {
+  const db = fixtures.get(cfg);
+  if (statement.startsWith("SELECT ")) return db.prepare(statement).all();
+  db.exec(statement);
+  return [];
+}
 const dev = (cfg, p, url) =>
   server(
     "wrangler",
@@ -95,6 +113,8 @@ function credential(id, admin) {
 try {
   wrangler(localConfig, ["d1", "migrations", "apply", "DB"]);
   wrangler(hubConfig, ["d1", "migrations", "apply", "DB"]);
+  openFixtures();
+  console.log("Feedback fixture databases ready");
   const operator = credential("operator", 1),
     member = credential("member", 0);
   await install.start();
@@ -123,6 +143,7 @@ try {
   await operator(route, share);
   assert.match(await (await member("/feedback")).text(), /Retry scheduled/);
   await inbox.start();
+  console.log("Feedback receiver started after offline delivery");
   assert.equal(
     (
       await fetch(remote + "/v1/report", {
@@ -246,5 +267,6 @@ try {
 } finally {
   await install.stop();
   await inbox.stop();
+  for (const db of fixtures.values()) db.close();
   rmSync(dir, { recursive: true, force: true });
 }

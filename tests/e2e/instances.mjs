@@ -44,7 +44,15 @@ export function server(cmd, args, work, base) {
     const deadline = Date.now() + 90_000;
     for (;;) {
       try {
-        if ((await fetch(`${base}/healthz`, { redirect: "manual" })).ok) return;
+        if (
+          (
+            await fetch(`${base}/healthz`, {
+              redirect: "manual",
+              signal: AbortSignal.timeout(3000),
+            })
+          ).ok
+        )
+          return;
       } catch {}
       if (proc.exitCode !== null)
         throw new Error(
@@ -61,6 +69,8 @@ export function server(cmd, args, work, base) {
   const stop = async () => {
     if (!proc) return;
     await stopGroup(proc);
+    proc.stdout.destroy();
+    proc.stderr.destroy();
     proc = null;
   };
   return { start, stop, log: () => log };

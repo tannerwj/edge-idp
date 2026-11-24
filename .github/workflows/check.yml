@@ -30,6 +30,7 @@ jobs:
       - run: npm run size
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+        timeout-minutes: 12
         env:
           E2E_OFFLINE: "1"
       - run: npm run test:e2e:setup
