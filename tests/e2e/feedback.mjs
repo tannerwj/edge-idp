@@ -133,7 +133,18 @@ try {
     summary: "A local summary",
     details: "Private local detail",
   };
-  assert.equal((await member("/feedback", form)).status, 303);
+  const submitted = await member("/feedback", form);
+  assert.equal(submitted.status, 303);
+  assert.match(
+    await (await member(submitted.headers.get("location"))).text(),
+    /Sent to your local admin/,
+  );
+  const operatorInbox = await (await operator("/admin/feedback")).text();
+  assert.match(operatorInbox, /Preview what to forward/);
+  assert.doesNotMatch(
+    operatorInbox + (await (await operator("/feedback")).text()),
+    /href="\/admin\/maintainer/,
+  );
   await member("/feedback", form);
   assert.equal((await member("/feedback", { ...form, summary: "Changed" })).status, 400);
   const [row] = sql(localConfig, "SELECT id FROM feedback");
@@ -182,7 +193,7 @@ try {
         ),
     );
   }
-  await waitFor("Maintainer inbox · new");
+  await waitFor("Project feedback</strong> · new");
   const [received] = sql(hubConfig, "SELECT * FROM reports");
   assert.equal(received.summary, share.summary);
   assert.ok(!JSON.stringify(received).includes(form.details));
@@ -305,6 +316,44 @@ try {
   sql(localConfig, "DELETE FROM sessions WHERE user_id='operator'");
   assert.equal((await consoleRequest("/admin")).status, 403);
 
+  await install.stop();
+  const standalone = JSON.parse(readFileSync(hubConfig, "utf8"));
+  delete standalone.services;
+  standalone.vars = { CONSOLE_AUD: "console-test", AGENT_AUD: "agent-test" };
+  async function standaloneAs(aud) {
+    await inbox.stop();
+    standalone.access = { dev: { aud } };
+    writeFileSync(hubConfig, JSON.stringify(standalone));
+    await inbox.start();
+  }
+  await standaloneAs("agent-test");
+  const feed = await fetch(remote + "/agent/reports").then((r) => r.json());
+  assert.ok(feed.reports.some((r) => r.summary === share.summary));
+  assert.ok(!JSON.stringify(feed).includes(form.details));
+  assert.ok(!JSON.stringify(feed).includes("receipt"));
+  const next = await fetch(remote + "/agent/reports?after=" + feed.next_after).then((r) =>
+    r.json(),
+  );
+  assert.equal(next.reports.length, 0);
+  assert.equal((await consoleRequest("/admin")).status, 403);
+  assert.equal(
+    (await consoleRequest("/admin/" + received.id, { status: "done", reply: "Denied", issue: "" }))
+      .status,
+    403,
+  );
+  await standaloneAs("console-test");
+  assert.equal((await fetch(remote + "/admin")).status, 200);
+  assert.equal((await fetch(remote + "/agent/reports")).status, 403);
+  assert.equal(
+    (
+      await consoleRequest("/admin/" + received.id, {
+        status: "done",
+        reply: "Replied from standalone app",
+        issue: "",
+      })
+    ).status,
+    303,
+  );
   console.log(
     "Local feedback isolation, opt-in, failed delivery and retry, safe upstream payload, private receipts, duplicate grouping and replies passed.",
   );

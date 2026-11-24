@@ -3,7 +3,7 @@ import { feedbackDestination } from "./feedback-sharing";
 import { Hono } from "hono";
 import type { Env } from "./config";
 import { getSession } from "./session";
-import { Time } from "./ui/components";
+import { Callout, Empty, PageHead, Time } from "./ui/components";
 import { AppShell, uiFor } from "./ui/layout";
 import { viewerOf } from "./account";
 import { newId } from "./util";
@@ -13,26 +13,43 @@ import type { FeedbackRow } from "./feedback";
 import { act, field, page } from "./admin/shell";
 import type { AdminVars } from "./admin/shell";
 
+const kindLabels = {
+  bug: "Something is broken",
+  confusing: "Something is confusing",
+  missing: "Something is missing",
+  slow: "Something is slow",
+  idea: "An idea",
+  question: "A question",
+};
+
 function Report({ row }: { row: FeedbackRow }) {
   return (
-    <article class="card card-body">
-      <h2>
-        #{row.id} · {row.summary}
-      </h2>
-      <p>
-        {row.reporter} · <Time ts={row.created_at} /> · {row.status} · {row.kind} · v
-        {row.server_version}
+    <article class="stack-sm" id={"report-" + row.id}>
+      <div class="row">
+        <span class="badge">{row.status}</span>
+        <span class="muted">
+          #{row.id} · {row.kind} · <Time ts={row.created_at} />
+        </span>
+      </div>
+      <h3>{row.summary}</h3>
+      <small class="muted">
+        {row.reporter} · v{row.server_version}
         {row.tool_name && " · " + row.tool_name}
-      </p>
+      </small>
       {row.details && <p>{row.details}</p>}
-      {row.note && <p>Operator reply · {row.note}</p>}
+      {row.note && (
+        <p>
+          <strong>Your admin replied</strong> · {row.note}
+        </p>
+      )}
+      {!row.shared && <small class="muted">Only on this installation</small>}
       {!!row.shared && (
         <p>
-          Maintainer inbox · {row.remote_status ?? "Pending delivery"}{" "}
+          <strong>Project feedback</strong> · {row.remote_status ?? "Waiting for delivery"}
           {row.reply && " · " + row.reply}{" "}
           {row.issue && (
             <a href={row.issue} rel="noreferrer">
-              GitHub issue
+              View GitHub issue
             </a>
           )}
         </p>
@@ -56,47 +73,72 @@ memberFeedback.get("/feedback", async (c) => {
     Number(c.req.query("before")) || 0,
   );
   return c.html(
-    <AppShell ui={await uiFor(c)} viewer={viewerOf(session)} active="feedback" title="My feedback">
-      <h1>My feedback</h1>
-      {session.user.is_admin && (
-        <p>
-          <a href="/admin/feedback">Manage local feedback</a>
-          {c.env.MAINTAINER_CONSOLE_URL && (
-            <>
-              {" "}
-              · <a href="/admin/maintainer">Open maintainer inbox</a>
-            </>
-          )}
-        </p>
+    <AppShell
+      ui={await uiFor(c)}
+      viewer={viewerOf(session)}
+      active="feedback"
+      title="My feedback"
+      narrow
+    >
+      <PageHead
+        title="Feedback"
+        lede="Send a problem, question, or idea to the admins who run this installation."
+        actions={
+          session.user.is_admin && (
+            <a class="btn" href="/admin/feedback">
+              Review local feedback
+            </a>
+          )
+        }
+      />
+      {c.req.query("sent") && rows.some((row) => String(row.id) === c.req.query("sent")) && (
+        <Callout tone="ok">Sent to your local admin. You can follow replies below.</Callout>
       )}
-      <form class="card card-body stack" action="/feedback" method="post">
-        <h2>Send feedback to this installation</h2>
-        <input type="hidden" name="idempotency_key" value={newId()} />
-        <label>
-          Kind{" "}
-          <select name="kind">
-            {feedbackKinds.map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Summary <input required name="summary" maxLength={200} />
-        </label>
-        <label>
-          Details <textarea name="details" maxLength={4000} />
-        </label>
-        <p>
-          Describe the expected result or include a support reference. Leave out personal data,
-          credentials and sign-in links. An operator can review and share an edited summary with the
-          project maintainers.
-        </p>
-        <button>Submit feedback</button>
-      </form>
-      {rows.map((row) => (
-        <Report key={row.id} row={row} />
-      ))}
-      <Older rows={rows} status="all" />
+      <div class="stack-lg">
+        <form class="card card-body stack" action="/feedback" method="post">
+          <h2>Write to your local admin</h2>
+          <input type="hidden" name="idempotency_key" value={newId()} />
+          <label class="field">
+            What is this about?{" "}
+            <select name="kind">
+              {feedbackKinds.map((k) => (
+                <option key={k} value={k}>
+                  {kindLabels[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="field">
+            Short summary <input required name="summary" maxLength={200} />
+          </label>
+          <label class="field">
+            Details (optional) <textarea name="details" maxLength={4000} />
+          </label>
+          <p>
+            Your report goes to your local admins. Leave out passwords, sign-in links, and personal
+            details.
+            {feedbackDestination(c.env) &&
+              " If the project team can help, your admin can forward an edited summary."}
+          </p>
+          <div>
+            <button class="btn primary">Send to local admin</button>
+          </div>
+        </form>
+        <section class="stack">
+          <h2>Your reports and replies</h2>
+          {!rows.length && (
+            <Empty icon="send" title="No feedback here yet">
+              Feedback you send and replies from your admin appear here.
+            </Empty>
+          )}
+          {rows.map((row) => (
+            <div class="card card-body" key={row.id}>
+              <Report row={row} />
+            </div>
+          ))}
+        </section>
+        <Older rows={rows} status="all" />
+      </div>
     </AppShell>,
   );
 });
@@ -104,16 +146,16 @@ memberFeedback.post("/feedback", async (c) => {
   const session = await getSession(c);
   if (!session) return c.redirect("/login?next=/feedback");
   try {
-    await submitFeedback(
+    const report = await submitFeedback(
       c.env.DB,
       { user: session.user.id, credential: "member" },
       await c.req.parseBody(),
     );
+    return c.redirect("/feedback?sent=" + report.id, 303);
   } catch (e) {
     if (e instanceof OpError) return c.text(e.message, 400);
     throw e;
   }
-  return c.redirect("/feedback", 303);
 });
 export const feedbackAdmin = new Hono<AdminVars>();
 feedbackAdmin.get("/", async (c) => {
@@ -122,14 +164,25 @@ feedbackAdmin.get("/", async (c) => {
   const rows = await listFeedback(c.env.DB, null, Number(c.req.query("before")) || 0, status);
   return page(
     c,
-    { active: "metrics", title: "Feedback inbox" },
-    <>
-      <h1>Feedback inbox</h1>
-      {c.env.MAINTAINER_CONSOLE_URL && (
-        <a href="/admin/maintainer">Maintainer inbox across installations</a>
+    { active: "feedback-inbox", title: "Local feedback inbox", narrow: true },
+    <div class="stack">
+      <PageHead
+        title="Local feedback inbox"
+        lede="Reply to people on this installation and track what needs attention."
+      />
+      {feedbackDestination(c.env) ? (
+        <Callout>
+          Need help from the Edge IDP project? Choose <strong>Preview what to forward</strong> on a
+          report. You decide what the project team receives.
+        </Callout>
+      ) : (
+        <Callout>
+          Forwarding to the project is turned off for this installation. You can still reply
+          locally.
+        </Callout>
       )}
-      <form>
-        <label>
+      <form class="row">
+        <label class="field">
           Status{" "}
           <select name="status">
             {["open", "all", ...feedbackStates].map((k) => (
@@ -139,17 +192,21 @@ feedbackAdmin.get("/", async (c) => {
             ))}
           </select>
         </label>
-        <button>Filter</button>
+        <button class="btn">Filter</button>
       </form>
       {!rows.length && <p>No matching reports.</p>}
       {rows.map((row) => (
-        <section key={row.id}>
+        <section class="card card-body stack" key={row.id}>
           <Report row={row} />
           {!row.shared && feedbackDestination(c.env) && (
-            <a href={"/admin/feedback/" + row.id + "/share"}>Review for maintainer inbox</a>
+            <div>
+              <a class="btn" href={"/admin/feedback/" + row.id + "/share"}>
+                Preview what to forward
+              </a>
+            </div>
           )}
-          <form action={"/admin/feedback/" + row.id} method="post" class="card card-body">
-            <label>
+          <form action={"/admin/feedback/" + row.id} method="post" class="stack">
+            <label class="field">
               Status{" "}
               <select name="status">
                 {feedbackStates.map((k) => (
@@ -159,18 +216,20 @@ feedbackAdmin.get("/", async (c) => {
                 ))}
               </select>
             </label>
-            <label>
-              Operator reply{" "}
+            <label class="field">
+              Reply to the reporter{" "}
               <textarea name="note" maxLength={1000}>
                 {row.note}
               </textarea>
             </label>
-            <button>Update report</button>
+            <div>
+              <button class="btn primary">Save local update</button>
+            </div>
           </form>
         </section>
       ))}
       <Older rows={rows} status={status} />
-    </>,
+    </div>,
   );
 });
 feedbackAdmin.post("/:id", async (c) => {

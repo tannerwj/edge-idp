@@ -551,32 +551,78 @@ try {
 
   step("MCP via dynamic client registration (Cursor/Claude Code style)");
   await stepUp("/admin");
+  step("submit local feedback and preview forwarding");
+  const summary = "Feedback rehearsal " + now;
+  await page.goto(BASE + "/feedback");
+  await page.getByLabel("What is this about?").selectOption("idea");
+  await page.getByLabel("Short summary").fill(summary);
+  await page.getByRole("button", { name: "Send to local admin" }).click();
+  await page.getByText("Sent to your local admin.", { exact: false }).waitFor();
+  await page.getByRole("link", { name: "Review local feedback" }).click();
+  const localReport = page
+    .locator("section.card")
+    .filter({ has: page.getByRole("heading", { name: summary, exact: true }) });
+  await localReport.getByRole("link", { name: "Preview what to forward" }).click();
+  check(
+    "local admin can preview the forwarded summary",
+    (await page.getByRole("textbox", { name: /^Summary/ }).inputValue()) === summary,
+  );
   if (instance.remote) {
-    const summary = "Staging rehearsal " + now;
+    const route = new URL(page.url()).pathname;
+    const local = { id: Number(route.split("/")[3]) };
+    const destination = "https://edge-idp-feedback-staging.tannerwj.dev";
     const post = (path, form) =>
       page.request.post(BASE + path, { form, headers: { origin: BASE }, maxRedirects: 0 });
-    await post("/feedback", { summary, kind: "idea", idempotency_key: String(now) });
-    const [local] = await sql(
-      "SELECT id FROM feedback WHERE retry_key='" + now + "' AND credential='member'",
-    );
-    const route = "/admin/feedback/" + local.id + "/share";
-    const destination = "https://edge-idp-feedback-staging.tannerwj.dev";
-    const preview = await (await page.request.get(BASE + route)).text();
-    check("staging preview uses only the staging receiver", preview.includes(destination));
-    const shared = { summary, destination, tool_name: "" };
-    await post(route, shared);
-    await page.goto(BASE + "/admin/maintainer");
-    await page.getByRole("button", { name: "Open maintainer inbox" }).click();
-    await page.waitForURL(destination + "/admin");
-    const report = page.locator("article").filter({ hasText: summary });
-    await report.locator("select").selectOption("done");
-    await report.locator("textarea").fill("Verified staging reply");
-    await report.getByRole("button", { name: "Save reply" }).click();
     check(
-      "feedback app accepts the maintainer edit",
-      new URL(page.url()).pathname === "/admin" &&
-        (await report.locator("textarea").inputValue()) === "Verified staging reply",
+      "staging preview uses only the staging receiver",
+      (await page.locator("main").innerText()).includes(destination),
     );
+    const shared = { summary, destination, tool_name: "" };
+    await page.getByRole("button", { name: "Forward summary to project" }).click();
+    if (process.env.E2E_MAINTAINER_INTERACTIVE === "1") {
+      console.log(
+        `Waiting for the maintainer to mark "${summary}" done with reply "Verified staging reply" at ${destination}/admin`,
+      );
+      const until = Date.now() + 30 * 60_000;
+      let confirmed = false;
+      while (!confirmed && Date.now() < until) {
+        await sql("UPDATE feedback_shares SET next_check=0 WHERE feedback_id=" + local.id);
+        await post(route, shared);
+        const [row] = await sql(
+          "SELECT remote_status,reply FROM feedback_shares WHERE feedback_id=" + local.id,
+        );
+        confirmed = row?.remote_status === "done" && row.reply === "Verified staging reply";
+        if (!confirmed) await new Promise((resolve) => setTimeout(resolve, 15000));
+      }
+      if (!confirmed) throw new Error("Timed out waiting for the staging maintainer reply");
+      check("feedback app accepts the maintainer edit", confirmed);
+    } else {
+      if (process.env.E2E_MAINTAINER_ACCESS_JWT) {
+        await ctx.addCookies([
+          {
+            name: "CF_Authorization",
+            value: process.env.E2E_MAINTAINER_ACCESS_JWT,
+            url: destination,
+            secure: true,
+            httpOnly: true,
+          },
+        ]);
+        await page.goto(destination + "/admin");
+      } else {
+        await page.goto(BASE + "/admin/maintainer");
+        await page.getByRole("button", { name: "Open maintainer inbox" }).click();
+      }
+      await page.waitForURL(destination + "/admin");
+      const report = page.locator("article").filter({ hasText: summary });
+      await report.locator("select").selectOption("done");
+      await report.locator("textarea").fill("Verified staging reply");
+      await report.getByRole("button", { name: "Save reply" }).click();
+      check(
+        "feedback app accepts the maintainer edit",
+        new URL(page.url()).pathname === "/admin" &&
+          (await report.locator("textarea").inputValue()) === "Verified staging reply",
+      );
+    }
     await sql("UPDATE feedback_shares SET next_check=0 WHERE feedback_id=" + local.id);
     await post(route, shared);
     const history = await (await page.request.get(BASE + "/feedback")).text();
@@ -1853,6 +1899,8 @@ try {
 } catch (e) {
   failures++;
   console.error("Last main-page navigation", lastNavigation);
+  if (e instanceof Error)
+    console.error(e.stack?.split("\n").find((line) => line.includes("full.mjs:")));
   console.error(`  FAIL [${section}] threw:`, e instanceof Error ? e.name : "unknown error");
 } finally {
   await browser.close();

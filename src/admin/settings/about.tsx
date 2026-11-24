@@ -29,16 +29,18 @@ function About(props: {
           <div class="sub">
             {links ? (
               <>
-                Built from <a href={links.source}>{props.repo}</a>. Found a bug or want something?
-                Tell upstream; no fork needed.
+                Built from <a href={links.source}>{props.repo}</a>. GitHub issues are public.
               </>
             ) : (
-              "Update checks and feedback links are off (UPSTREAM_REPO=off)."
+              "Public project links and update checks are turned off."
             )}
           </div>
         </div>
       </div>
       <div class="card-body stack">
+        <p>
+          For private feedback, <a href="/feedback">write to your local admin</a>.
+        </p>
         <dl class="kv">
           <dt>Version</dt>
           <dd class="row-sm wrap">

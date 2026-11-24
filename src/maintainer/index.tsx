@@ -5,9 +5,10 @@ import { sha256Hex } from "../util";
 import { validShared } from "../feedback-format";
 import type { SharedReport, MaintainerReply } from "../feedback-format";
 
-interface Bindings {
-  DB: D1Database;
-  AUTHORITY?: Fetcher;
+import { hasAudience } from "./access";
+import type { InboxBindings } from "./access";
+
+interface Bindings extends InboxBindings {
   INTAKE_LIMITER: RateLimit;
 }
 const app = new Hono<{ Bindings: Bindings; Variables: { receipt: string } }>();
@@ -24,6 +25,17 @@ app.use("*", async (c, next) => {
 app.route("/admin", maintainerAdmin);
 app.get("/", (c) => c.redirect("/admin"));
 app.get("/healthz", (c) => c.json({ ok: true }));
+app.get("/agent/reports", async (c) => {
+  if (!hasAudience(c, c.env.AGENT_AUD)) return c.text("Agent access required", 403);
+  const after = Number(c.req.query("after") ?? 0);
+  if (!Number.isSafeInteger(after) || after < 0) return c.text("Invalid cursor", 400);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id,kind,summary,tool_name,server_version,status,reply,issue,duplicate_of FROM reports WHERE id>? ORDER BY id LIMIT 50",
+  )
+    .bind(after)
+    .all<{ id: number }>();
+  return c.json({ reports: results, next_after: results.at(-1)?.id ?? after });
+});
 app.use("/v1/*", async (c, next) => {
   const ip = c.req.header("cf-connecting-ip") ?? "local";
   if (!c.env.INTAKE_LIMITER) return c.text("Intake unavailable", 503);

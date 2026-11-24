@@ -185,6 +185,13 @@ export function navFor(isAdmin: boolean): NavItem[] {
     { id: "groups", label: "Groups", href: "/admin/groups", icon: "group", section: "Manage" },
     { id: "apps", label: "Apps", href: "/admin/apps", icon: "grid", section: "Manage" },
     { id: "clients", label: "Clients", href: "/admin/clients", icon: "plug", section: "Manage" },
+    {
+      id: "feedback-inbox",
+      label: "Local feedback inbox",
+      href: "/admin/feedback",
+      icon: "send",
+      section: "Manage",
+    },
     { id: "audit", label: "Audit log", href: "/admin/audit", icon: "list", section: "Manage" },
     {
       id: "connect",

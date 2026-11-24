@@ -5,10 +5,14 @@ import { getCookie, setCookie } from "hono/cookie";
 import type { InboxRow } from "./view";
 import { readBodyLimited } from "../http-body";
 
-export const maintainerAdmin = new Hono<{ Bindings: { DB: D1Database; AUTHORITY?: Fetcher } }>();
+import { hasAudience } from "./access";
+import type { InboxBindings } from "./access";
+
+export const maintainerAdmin = new Hono<{ Bindings: InboxBindings }>();
 const cookie = "__Host-maintainer";
 maintainerAdmin.post("/session", async (c) => {
-  if (!c.env.AUTHORITY || !c.req.header("origin")) return c.text("Sign-in unavailable", 403);
+  if (c.env.CONSOLE_AUD || !c.env.AUTHORITY || !c.req.header("origin"))
+    return c.text("Sign-in unavailable", 403);
   let token;
   try {
     const body = await readBodyLimited(c.req.raw, 256);
@@ -41,11 +45,13 @@ maintainerAdmin.use("*", async (c, next) => {
   const origin = new URL(c.req.url).origin;
   const write = c.req.method === "POST";
   if (write && c.req.header("origin") !== origin) return c.text("Invalid origin", 403);
+  if (c.env.CONSOLE_AUD) {
+    return c.env.CONSOLE_AUD !== c.env.AGENT_AUD && hasAudience(c, c.env.CONSOLE_AUD)
+      ? next()
+      : c.text("Maintainer sign-in required.", 403);
+  }
   if (!token || !c.env.AUTHORITY)
-    return c.text(
-      "In your maintainer installation, choose Feedback, then Open maintainer inbox.",
-      403,
-    );
+    return c.text("Maintainer sign-in required. Use your private sign-in bookmark.", 403);
   const response = await c.env.AUTHORITY.fetch(
     "https://authority.invalid/" + (write ? "write" : "read"),
     { method: "POST", body: JSON.stringify({ token, origin }) },

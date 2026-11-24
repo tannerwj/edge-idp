@@ -3,6 +3,11 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.7.0 — 2026-11-23
+
+- Feedback now names the local recipient and shows a confirmation and reply history. Admins can open Local feedback inbox under Manage, preview an edited summary and forward it to the project.
+- The private maintainer console has its own sign-in and a read-only feed for agents. Configure separate Cloudflare Access audiences on the receiver as described in DEPLOY.md. The legacy private sign-in bookmark continues to work during the transition.
+
 ## 2.6.2 — 2026-11-23
 
 - Open Feedback from the main navigation to submit a report or follow its replies. Maintainers review shared reports, reply and group duplicates on the feedback app.
