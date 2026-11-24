@@ -310,3 +310,5 @@ export default Sentry.withSentry(
 );
 
 export { IdCodeSandbox } from "./mcp";
+
+export { MaintainerAuthority } from "./maintainer-authority";

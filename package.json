@@ -1,6 +1,6 @@
 {
   "name": "edge-idp",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "private": true,
   "description": "Personal passkey-first OIDC identity provider on Cloudflare Workers + D1",
   "license": "MIT",

@@ -1,3 +1,4 @@
+import { maintainerAdmin } from "./console";
 import { Hono } from "hono";
 import { readBodyLimited } from "../http-body";
 import { sha256Hex } from "../util";
@@ -6,19 +7,22 @@ import type { SharedReport, MaintainerReply } from "../feedback-format";
 
 interface Bindings {
   DB: D1Database;
+  AUTHORITY?: Fetcher;
   INTAKE_LIMITER: RateLimit;
 }
 const app = new Hono<{ Bindings: Bindings; Variables: { receipt: string } }>();
 app.use("*", async (c, next) => {
   await next();
   c.header("Cache-Control", "no-store");
-  c.header("Referrer-Policy", "no-referrer");
+  c.header("Referrer-Policy", c.req.path.startsWith("/admin") ? "same-origin" : "no-referrer");
   c.header("X-Content-Type-Options", "nosniff");
   c.header(
     "Content-Security-Policy",
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
 });
+app.route("/admin", maintainerAdmin);
+app.get("/", (c) => c.redirect("/admin"));
 app.get("/healthz", (c) => c.json({ ok: true }));
 app.use("/v1/*", async (c, next) => {
   const ip = c.req.header("cf-connecting-ip") ?? "local";

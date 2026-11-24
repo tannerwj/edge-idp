@@ -174,6 +174,7 @@ export interface Viewer {
 export function navFor(isAdmin: boolean): NavItem[] {
   const nav: NavItem[] = [
     { id: "home", label: "Home", href: "/", icon: "home" },
+    { id: "feedback", label: "Feedback", href: "/feedback", icon: "send" },
     { id: "account", label: "Account & security", href: "/account", icon: "shieldCheck" },
   ];
   if (!isAdmin) return nav;

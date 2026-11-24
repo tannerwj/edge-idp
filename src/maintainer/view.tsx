@@ -18,7 +18,7 @@ export function Inbox({ rows }: { rows: InboxRow[] }) {
             {r.kind} · v{r.server_version} {r.tool_name}
           </p>
           {r.duplicate_of && <p>Follows replies to #{r.duplicate_of}</p>}
-          <form method="post" action={"/admin/maintainer/" + r.id}>
+          <form method="post" action={"/admin/" + r.id}>
             <label>
               Status{" "}
               <select name="status">

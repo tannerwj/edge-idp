@@ -1,45 +1,39 @@
 import { Hono } from "hono";
-import { feedbackStates, validIssue } from "../feedback-format";
-import { Inbox } from "../maintainer/view";
-import type { InboxRow } from "../maintainer/view";
 import { page } from "./shell";
 import type { AdminVars } from "./shell";
+import { getSession } from "../session";
+import { randomToken, sha256Hex } from "../util";
+
 export const maintainerAdmin = new Hono<AdminVars>();
 maintainerAdmin.get("/", async (c) => {
-  const db = c.env.MAINTAINER_DB;
-  if (!db) return c.notFound();
-  const before = Number(c.req.query("before")) || 0;
-  const rows = await db
-    .prepare(
-      "SELECT id,kind,summary,tool_name,server_version,status,reply,issue,duplicate_of FROM reports WHERE (?1=0 OR id<?1) ORDER BY id DESC LIMIT 50",
-    )
-    .bind(before)
-    .all<InboxRow>();
-  return page(c, { active: "metrics", title: "Maintainer inbox" }, <Inbox rows={rows.results} />);
+  if (!c.env.MAINTAINER_CONSOLE_URL) return c.notFound();
+  return page(
+    c,
+    { active: "feedback", title: "Maintainer inbox" },
+    <form action="/admin/maintainer/open" method="post">
+      <h1>Maintainer inbox</h1>
+      <p>Review shared reports and reply on the feedback app.</p>
+      <button>Open maintainer inbox</button>
+    </form>,
+  );
 });
-maintainerAdmin.post("/:id", async (c) => {
-  const db = c.env.MAINTAINER_DB;
-  if (!db) return c.notFound();
-
-  const f = await c.req.parseBody(),
-    id = Number(c.req.param("id")),
-    target = Number(f.duplicate_of) || null;
-  if (
-    !feedbackStates.some((s) => s === f.status) ||
-    typeof f.reply !== "string" ||
-    f.reply.length > 1000 ||
-    !validIssue(f.issue)
+maintainerAdmin.post("/open", async (c) => {
+  const origin = c.env.MAINTAINER_CONSOLE_URL;
+  const session = await getSession(c);
+  if (!origin || !session) return c.notFound();
+  const code = randomToken();
+  await c.env.DB.prepare(
+    "INSERT INTO maintainer_sessions(session_hash,token_hash,redeemed,expires_at) VALUES(?,?,0,unixepoch()+60) ON CONFLICT(session_hash) DO UPDATE SET token_hash=excluded.token_hash,redeemed=0,expires_at=excluded.expires_at",
   )
-    return c.text("Invalid reply or issue URL", 400);
-  if (!target && (f.status === "done" || f.status === "declined") && !f.reply.trim())
-    return c.text("Add a resolution note", 400);
-  const updated = await db
-    .prepare(
-      `UPDATE reports SET status=?1,reply=?2,issue=?3,duplicate_of=?4 WHERE id=?5 AND (?4 IS NULL OR (?4<>?5 AND EXISTS(SELECT 1 FROM reports WHERE id=?4 AND duplicate_of IS NULL) AND NOT EXISTS(SELECT 1 FROM reports WHERE duplicate_of=?5)))`,
-    )
-    .bind(f.status, f.reply.trim(), f.issue, target, id)
+    .bind(session.idHash, await sha256Hex(code))
     .run();
-  return updated.meta.changes
-    ? c.redirect("/admin/maintainer", 303)
-    : c.text("Unknown report or invalid duplicate group", 400);
+  c.header("Referrer-Policy", "origin");
+  return page(
+    c,
+    { active: "feedback", title: "Open feedback app" },
+    <form data-maintainer-launch action={origin + "/admin/session"} method="post">
+      <input type="hidden" name="code" value={code} />
+      <button>Continue to feedback app</button>
+    </form>,
+  );
 });

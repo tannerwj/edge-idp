@@ -56,8 +56,19 @@ memberFeedback.get("/feedback", async (c) => {
     Number(c.req.query("before")) || 0,
   );
   return c.html(
-    <AppShell ui={await uiFor(c)} viewer={viewerOf(session)} active="account" title="My feedback">
+    <AppShell ui={await uiFor(c)} viewer={viewerOf(session)} active="feedback" title="My feedback">
       <h1>My feedback</h1>
+      {session.user.is_admin && (
+        <p>
+          <a href="/admin/feedback">Manage local feedback</a>
+          {c.env.MAINTAINER_CONSOLE_URL && (
+            <>
+              {" "}
+              · <a href="/admin/maintainer">Open maintainer inbox</a>
+            </>
+          )}
+        </p>
+      )}
       <form class="card card-body stack" action="/feedback" method="post">
         <h2>Send feedback to this installation</h2>
         <input type="hidden" name="idempotency_key" value={newId()} />
@@ -114,7 +125,9 @@ feedbackAdmin.get("/", async (c) => {
     { active: "metrics", title: "Feedback inbox" },
     <>
       <h1>Feedback inbox</h1>
-      {c.env.MAINTAINER_DB && <a href="/admin/maintainer">Maintainer inbox across installations</a>}
+      {c.env.MAINTAINER_CONSOLE_URL && (
+        <a href="/admin/maintainer">Maintainer inbox across installations</a>
+      )}
       <form>
         <label>
           Status{" "}

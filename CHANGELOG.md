@@ -3,6 +3,11 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.6.2 — 2026-11-23
+
+- Open Feedback from the main navigation to submit a report or follow its replies. Maintainers review shared reports, reply and group duplicates on the feedback app.
+- Apply IdP migration 0029. Maintainer operators should deploy the IdP first, then bind the feedback Worker to its private `MaintainerAuthority` entrypoint as described in DEPLOY.md.
+
 ## 2.6.1 — 2026-11-23
 
 - New upstream feedback previews show the project receiver at `edge-idp-feedback.tannerwj.dev`. Existing 2.6.0 installations can keep using their original receiver. Before upgrading an installation with outstanding shares, pin its original `FEEDBACK_INBOX_URL` to continue polling those receipts.

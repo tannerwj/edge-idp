@@ -566,10 +566,17 @@ try {
     const shared = { summary, destination, tool_name: "" };
     await post(route, shared);
     await page.goto(BASE + "/admin/maintainer");
+    await page.getByRole("button", { name: "Open maintainer inbox" }).click();
+    await page.waitForURL(destination + "/admin");
     const report = page.locator("article").filter({ hasText: summary });
     await report.locator("select").selectOption("done");
     await report.locator("textarea").fill("Verified staging reply");
     await report.getByRole("button", { name: "Save reply" }).click();
+    check(
+      "feedback app accepts the maintainer edit",
+      new URL(page.url()).pathname === "/admin" &&
+        (await report.locator("textarea").inputValue()) === "Verified staging reply",
+    );
     await sql("UPDATE feedback_shares SET next_check=0 WHERE feedback_id=" + local.id);
     await post(route, shared);
     const history = await (await page.request.get(BASE + "/feedback")).text();

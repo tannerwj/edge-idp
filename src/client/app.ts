@@ -22,3 +22,4 @@ if (new URLSearchParams(location.search).has("ok")) {
   u.searchParams.delete("ok");
   history.replaceState(null, "", u.pathname + u.search + u.hash);
 }
+document.querySelector<HTMLFormElement>("form[data-maintainer-launch]")?.requestSubmit();

@@ -22,8 +22,10 @@ const STAGES = {
 } as const;
 
 export default defineConfig(({ mode }) => {
+  const staging = mode === "staging" || mode === "maintainer-staging";
+  const stageName = staging ? "staging" : "production";
+  const stage = { ...STAGES[stageName], ...deployment.stages?.[stageName] };
   if (mode === "maintainer" || mode === "maintainer-staging") {
-    const staging = mode === "maintainer-staging";
     const name = staging ? "edge-idp-feedback-staging" : "edge-idp-feedback";
     return {
       accountId: deployment.accountId ?? "00000000000000000000000000000000",
@@ -35,10 +37,14 @@ export default defineConfig(({ mode }) => {
         workersDev: false,
         domains: [
           staging ? "edge-idp-feedback-staging.tannerwj.dev" : "edge-idp-feedback.tannerwj.dev",
-          ...(deployment.receiverAliases?.[staging ? "staging" : "production"] ?? []),
+          ...(deployment.receiverAliases?.[stageName] ?? []),
         ],
         env: {
           DB: bindings.d1({ name }),
+          AUTHORITY: bindings.worker({
+            worker: stage.name,
+            exportName: "MaintainerAuthority",
+          }),
           INTAKE_LIMITER: bindings.rateLimit({
             namespace: staging ? "3002" : "3001",
             simple: { limit: 30, period: 60 },
@@ -47,8 +53,6 @@ export default defineConfig(({ mode }) => {
       },
     };
   }
-  const stageName = mode === "staging" ? "staging" : "production";
-  const stage = { ...STAGES[stageName], ...deployment.stages?.[stageName] };
   return {
     accountId: deployment.accountId ?? "00000000000000000000000000000000",
     worker: {
@@ -69,9 +73,9 @@ export default defineConfig(({ mode }) => {
         SIGNING_KEY_JWK: bindings.secret(),
         SETUP_TOKEN: bindings.secret(),
         DB: bindings.d1(stage.d1),
-        MAINTAINER_DB: bindings.d1({
-          name: mode === "staging" ? "edge-idp-feedback-staging" : "edge-idp-feedback",
-        }),
+        ...(deployment.maintainerConsole?.[stageName]
+          ? { MAINTAINER_CONSOLE_URL: bindings.text(deployment.maintainerConsole[stageName]) }
+          : {}),
         ...(mode === "staging"
           ? {
               FEEDBACK_INBOX_URL: bindings.text("https://edge-idp-feedback-staging.tannerwj.dev"),

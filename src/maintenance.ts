@@ -9,6 +9,9 @@ const DCR_UNUSED_TTL = 30 * DAY;
 export async function runMaintenance(db: D1Database): Promise<Record<string, number>> {
   const now = nowSec();
   const stmts = {
+    maintainer_sessions: db
+      .prepare("DELETE FROM maintainer_sessions WHERE expires_at<=?")
+      .bind(now),
     logout_receipts: db
       .prepare("DELETE FROM logout_deliveries WHERE created_at<?")
       .bind(now - 30 * DAY),

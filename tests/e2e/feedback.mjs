@@ -48,8 +48,14 @@ function config(name, main, databases, vars, extra = {}) {
 const localConfig = config(
   "feedback-operator",
   "src/index.tsx",
-  [identity, { ...hub, binding: "MAINTAINER_DB" }],
-  { ISSUER: base, RP_NAME: "Test", SIGNING_KEY_JWK: signer, FEEDBACK_INBOX_URL: remote },
+  [identity],
+  {
+    ISSUER: base,
+    RP_NAME: "Test",
+    SIGNING_KEY_JWK: signer,
+    FEEDBACK_INBOX_URL: remote,
+    MAINTAINER_CONSOLE_URL: remote,
+  },
   { triggers: { crons: ["17 * * * *"] } },
 );
 const hubConfig = config(
@@ -58,6 +64,9 @@ const hubConfig = config(
   [hub],
   {},
   {
+    services: [
+      { binding: "AUTHORITY", service: "feedback-operator", entrypoint: "MaintainerAuthority" },
+    ],
     ratelimits: [
       { name: "INTAKE_LIMITER", namespace_id: "3001", simple: { limit: 30, period: 60 } },
     ],
@@ -180,7 +189,7 @@ try {
   assert.ok(!JSON.stringify(received).includes("@example.test"));
   await operator(route, share);
   assert.equal(sql(hubConfig, "SELECT count(*) n FROM reports")[0].n, 1);
-  assert.equal((await fetch(remote + "/admin")).status, 404);
+  assert.equal((await fetch(remote + "/admin")).status, 403);
   assert.equal((await fetch(remote + "/v1/report")).status, 401);
   assert.equal(
     (
@@ -190,10 +199,36 @@ try {
     ).status,
     404,
   );
-  const central = await (await operator("/admin/maintainer")).text();
+  assert.match(
+    await (await member("/")).text(),
+    /<a href="\/feedback" class="nav-link">[^]*?<span>Feedback<\/span><\/a>/,
+  );
+  assert.equal((await member("/admin/maintainer/open", {})).status, 302);
+  const launch = await (await operator("/admin/maintainer/open", {})).text();
+  const code = launch.match(/name="code" value="([^"]+)"/)?.[1];
+  assert.ok(code, "maintainer launch form has a code");
+  const exchange = (origin) =>
+    fetch(remote + "/admin/session", {
+      method: "POST",
+      redirect: "manual",
+      headers: { origin },
+      body: new URLSearchParams({ code }),
+    });
+  assert.equal((await exchange(remote)).status, 403);
+  const signed = await exchange(base);
+  assert.equal(signed.status, 303, "private service binding exchanges the launch code");
+  const cookie = signed.headers.get("set-cookie").split(";")[0];
+  assert.equal((await exchange(base)).status, 403);
+  const consoleRequest = (path, form, origin = remote) =>
+    fetch(remote + path, {
+      redirect: "manual",
+      headers: { cookie, origin },
+      ...(form ? { method: "POST", body: new URLSearchParams(form) } : {}),
+    });
+  const central = await (await consoleRequest("/admin")).text();
   assert.ok(central.includes(share.summary));
-  assert.equal((await member("/admin/maintainer")).status, 302);
-  await operator("/admin/maintainer/" + received.id, {
+  assert.equal((await consoleRequest("/admin/" + received.id, {}, base)).status, 403);
+  await consoleRequest("/admin/" + received.id, {
     status: "planned",
     reply: "Planned for a release",
     issue: "https://github.com/tannerwj/edge-idp/issues/1",
@@ -222,7 +257,7 @@ try {
   assert.equal((await put(other, { ...payload, details: "Private" })).status, 400);
   assert.equal((await put(other, payload)).status, 200);
   const duplicate = sql(hubConfig, "SELECT max(id) id FROM reports")[0].id;
-  await operator("/admin/maintainer/" + duplicate, {
+  await consoleRequest("/admin/" + duplicate, {
     status: "new",
     reply: "",
     issue: "",
@@ -261,6 +296,15 @@ try {
   sql(localConfig, "UPDATE feedback_shares SET next_check=0");
   await cron();
   assert.equal(attempt(), prev);
+  sql(localConfig, "UPDATE sessions SET step_up_at=0 WHERE user_id='operator'");
+  assert.equal(
+    (await consoleRequest("/admin/" + received.id, { status: "done", reply: "Stale", issue: "" }))
+      .status,
+    403,
+  );
+  sql(localConfig, "DELETE FROM sessions WHERE user_id='operator'");
+  assert.equal((await consoleRequest("/admin")).status, 403);
+
   console.log(
     "Local feedback isolation, opt-in, failed delivery and retry, safe upstream payload, private receipts, duplicate grouping and replies passed.",
   );
