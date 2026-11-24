@@ -3,6 +3,10 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.6.1 — 2026-11-23
+
+- New upstream feedback previews show the project receiver at `edge-idp-feedback.tannerwj.dev`. Existing 2.6.0 installations can keep using their original receiver. Before upgrading an installation with outstanding shares, pin its original `FEEDBACK_INBOX_URL` to continue polling those receipts.
+
 ## 2.6.0 — 2026-11-23
 
 - Members and assistants can file local feedback, track replies and safely retry submissions. Operators can triage reports from MCP activity. Active reports stay in the inbox until addressed.

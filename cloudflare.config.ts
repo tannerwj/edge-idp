@@ -1,5 +1,7 @@
 import { bindings, defineConfig, triggers } from "cf/config";
 
+import { deployment } from "./scripts/deployment.mjs";
+
 const STAGES = {
   production: {
     name: "identity",
@@ -24,14 +26,17 @@ export default defineConfig(({ mode }) => {
     const staging = mode === "maintainer-staging";
     const name = staging ? "edge-idp-feedback-staging" : "edge-idp-feedback";
     return {
-      accountId: "83c27d7f9b8764a53148888203d434cb",
+      accountId: deployment.accountId ?? "00000000000000000000000000000000",
       worker: {
         name,
         entrypoint: "src/maintainer/index.tsx",
         compatibilityDate: "2026-10-06",
         previewUrls: false,
         workersDev: false,
-        domains: [staging ? "feedback-staging.example.com" : "feedback.example.com"],
+        domains: [
+          staging ? "edge-idp-feedback-staging.tannerwj.dev" : "edge-idp-feedback.tannerwj.dev",
+          ...(deployment.receiverAliases?.[staging ? "staging" : "production"] ?? []),
+        ],
         env: {
           DB: bindings.d1({ name }),
           INTAKE_LIMITER: bindings.rateLimit({
@@ -42,9 +47,10 @@ export default defineConfig(({ mode }) => {
       },
     };
   }
-  const stage = mode === "staging" ? STAGES.staging : STAGES.production;
+  const stageName = mode === "staging" ? "staging" : "production";
+  const stage = { ...STAGES[stageName], ...deployment.stages?.[stageName] };
   return {
-    accountId: "83c27d7f9b8764a53148888203d434cb",
+    accountId: deployment.accountId ?? "00000000000000000000000000000000",
     worker: {
       name: stage.name,
       compatibilityDate: "2026-10-06",
@@ -59,7 +65,7 @@ export default defineConfig(({ mode }) => {
       ],
       env: {
         ISSUER: bindings.text(stage.issuer),
-        RP_NAME: bindings.text("Johnson ID"),
+        RP_NAME: bindings.text(deployment.name ?? "Identity"),
         SIGNING_KEY_JWK: bindings.secret(),
         SETUP_TOKEN: bindings.secret(),
         DB: bindings.d1(stage.d1),
@@ -68,7 +74,7 @@ export default defineConfig(({ mode }) => {
         }),
         ...(mode === "staging"
           ? {
-              FEEDBACK_INBOX_URL: bindings.text("https://feedback-staging.example.com"),
+              FEEDBACK_INBOX_URL: bindings.text("https://edge-idp-feedback-staging.tannerwj.dev"),
             }
           : {}),
         AUTH_LIMITER: bindings.rateLimit({

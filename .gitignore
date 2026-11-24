@@ -12,3 +12,5 @@ dist/
 
 # cf CLI generated output/types
 .cloudflare/
+
+.deployment.local.json

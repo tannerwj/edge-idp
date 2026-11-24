@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+import { deployment } from "./deployment.mjs";
+
 export function stageConfig(stage = "production", configPath = "cloudflare.config.ts") {
   const src = readFileSync(configPath, "utf8");
   const start = src.indexOf(`\n  ${stage}: {`);
@@ -13,9 +15,9 @@ export function stageConfig(stage = "production", configPath = "cloudflare.confi
   };
   return {
     stage,
-    name: pick(/\bname:\s*"([^"]+)"/),
-    issuer: pick(/\bissuer:\s*"([^"]+)"/),
-    d1Id: pick(/\bd1:\s*\{[^}]*\bid:\s*"([^"]+)"/),
+    name: deployment.stages?.[stage]?.name ?? pick(/\bname:\s*"([^"]+)"/),
+    issuer: deployment.stages?.[stage]?.issuer ?? pick(/\bissuer:\s*"([^"]+)"/),
+    d1Id: deployment.stages?.[stage]?.d1?.id ?? pick(/\bd1:\s*\{[^}]*\bid:\s*"([^"]+)"/),
   };
 }
 
