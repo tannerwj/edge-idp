@@ -4,7 +4,7 @@ import { VERSION } from "./assets.gen";
 import { readBodyLimited } from "./http-body";
 import { nowSec } from "./util";
 
-const DEFAULT_UPSTREAM = "tannerwj/edge-idp";
+export const DEFAULT_UPSTREAM = "tannerwj/edge-idp";
 const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 const CHECK_EVERY = 86400;
 

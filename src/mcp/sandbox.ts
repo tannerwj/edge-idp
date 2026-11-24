@@ -5,7 +5,7 @@ import { withScope } from "../request-context";
 import type { Env } from "../config";
 import { resolveEnv } from "../instance";
 import * as ops from "../ops";
-import { activeAdmin, obj, trackCall } from "./common";
+import { permitsCredential, activeAdmin, obj, trackCall } from "./common";
 import type { McpAuth, ToolDef, WaitCtx } from "./common";
 import { TOOLS } from "./tools";
 
@@ -57,13 +57,18 @@ export class IdCodeSandbox extends WorkerEntrypoint<Env> {
     if (!active) throw new Error("credential rejected");
     if (!permitsJob(props.jobs, name, args?.app ?? ""))
       throw new Error("Outside granted app permissions.");
-    if (tool.write && props.readOnly)
+    if (!permitsCredential(tool, props.readOnly))
       throw new Error(`${name} needs write access; this token is read-only`);
     try {
       const env = await resolveEnv(this.env, props.issuer);
       return await withScope({ env, wait: (p) => this.ctx.waitUntil(p) }, () =>
         tool.handler(
-          { db: this.env.DB, env, actor: { adminId: props.adminId, via: "mcp" } },
+          {
+            db: this.env.DB,
+            env,
+            credential: props.tokenId,
+            actor: { adminId: props.adminId, via: "mcp" },
+          },
           args ?? {},
         ),
       );

@@ -513,3 +513,19 @@ hostname isn't the issuer and passkeys wouldn't work on it.
 
 Smoke checks work against any stage: `npm run smoke` (production issuer),
 `npm run smoke -- --stage=staging`, or `E2E_BASE_URL=https://… npm run smoke`.
+
+## Optional private maintainer inbox
+
+Apply installation migrations 0027 and 0028 before deploying the IdP. The local inbox works immediately under Account → My feedback and Admin → MCP activity → Feedback inbox.
+
+The reference deployment binds separate maintainer databases named `edge-idp-feedback` and `edge-idp-feedback-staging`. Create the matching database, apply `maintainer/migrations`, and deploy the receiver from the project root with `npx cf deploy --mode maintainer` or `--mode maintainer-staging` before deploying the corresponding IdP.
+
+For a cross-installation inbox, deploy the separate Worker once on the maintainer's Cloudflare account:
+
+1. Create a distinct D1 database with `npx wrangler d1 create edge-idp-feedback`. Set its UUID in a deployment copy of `maintainer/wrangler.jsonc` in the same directory. Pick a rate-limit namespace unused by the account. Keep the receiver database separate from identity data.
+2. With that config, run `npx wrangler d1 migrations apply DB --remote --config maintainer/wrangler.jsonc`, `npx wrangler deploy --dry-run --config maintainer/wrangler.jsonc`, then `npx wrangler deploy --config maintainer/wrangler.jsonc`. Substitute your deployment copy for the example config path. The receiver serves intake and bearer-receipt status only.
+3. On **the maintainer's IdP only**, add a second D1 binding named `MAINTAINER_DB` to the receiver database. In cf config use `bindings.d1({ name: "edge-idp-feedback", id: "<receiver UUID>" })` in the Worker env. In Wrangler config add the equivalent entry to `d1_databases`. Keep the IdP's primary DB binding. Redeploy the IdP and open Admin → MCP activity → Feedback inbox → Maintainer inbox across installations.
+4. The official upstream defaults to `https://edge-idp-feedback.twj.workers.dev`. Deploy the receiver there before releasing the default to operators. To use a different receiver, set the Worker text binding `FEEDBACK_INBOX_URL` to the trusted receiver's exact HTTPS origin, without a trailing slash. Add it to the deployed configuration. A fork can select its own endpoint. No report leaves until an operator reviews and sends its preview. Existing GitHub bug and feature links remain available as public alternatives. Setting `FEEDBACK_INBOX_URL=off` or `UPSTREAM_REPO=off` disables new sends and polling. Re-enabling the same destination resumes queued work.
+5. Send a synthetic report, update its status in the maintainer console and check My feedback after the next scheduled poll. The existing hourly cron handles up to twelve due reports at a time with up to two HTTP requests per delivery. The optional service uses one additional Worker, D1 storage and rate-limit binding. Monitor the intake quota and D1 growth, especially for unresolved reports.
+
+Before upgrading either Worker record its active version and its own D1 Time Travel bookmark. To roll back sharing, set `FEEDBACK_INBOX_URL=off` on participating installations and point the affected Worker at its previous version. The additive tables can stay in place. Disable intake separately if retiring the central service. Disabling sharing stops delivery and polling; it does not retract previously shared text.

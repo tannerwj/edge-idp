@@ -8,7 +8,7 @@ import { verifyAccessToken } from "./crypto";
 import { mcpResource } from "./oauth-shared";
 import * as ops from "./ops";
 import { nowSec, sha256Hex } from "./util";
-import { activeAdmin, str, trackCall } from "./mcp/common";
+import { permitsCredential, activeAdmin, str, trackCall } from "./mcp/common";
 import type { McpAuth } from "./mcp/common";
 import { TOOLS } from "./mcp/tools";
 import { runExecute } from "./mcp/sandbox";
@@ -94,7 +94,7 @@ const MODERN_VERSION = "2026-07-28";
 const SERVER_INFO = { name: "edge-idp", title: "edge-idp admin", version: VERSION };
 const INSTRUCTIONS =
   "Administer this identity provider: users, groups, OAuth/OIDC clients, launcher apps, audit log. " +
-  "Prefer the `execute` tool: one JS snippet against the typed `id` proxy (see its description), chaining calls and " +
+  "Use feedback_submit to report tool problems locally and feedback_list to follow replies. Prefer the `execute` tool: one JS snippet against the typed `id` proxy (see its description), chaining calls and " +
   "filtering in code — only the return value comes back. Use individual tools for single calls.";
 
 type RpcId = string | number | null;
@@ -197,7 +197,7 @@ function simpleResult(body: RpcBody, auth: McpAuth, sandbox: boolean): unknown {
         tools: TOOLS.filter(
           (t) =>
             permitsJob(auth.jobs, t.name) &&
-            (t.name === "execute" ? sandbox : !auth.readOnly || !t.write),
+            (t.name === "execute" ? sandbox : permitsCredential(t, auth.readOnly)),
         ).map((t) => ({
           name: t.name,
           description: t.description,
@@ -225,7 +225,7 @@ async function callTool(
   if (!tool) return rpcError(c, id, -32602, `Unknown tool: ${name}`);
   if (!permitsJob(auth.jobs, name, args.app ?? ""))
     return rpcError(c, id, -32001, "Outside granted app permissions.", 403);
-  if (tool.write && auth.readOnly) {
+  if (!permitsCredential(tool, auth.readOnly)) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -241,7 +241,12 @@ async function callTool(
   const started = Date.now();
   try {
     const result = await tool.handler(
-      { db: c.env.DB, env: c.env, actor: { adminId: auth.adminId, via: "mcp" } },
+      {
+        db: c.env.DB,
+        env: c.env,
+        credential: auth.tokenId,
+        actor: { adminId: auth.adminId, via: "mcp" },
+      },
       args,
     );
     trackCall(c.executionCtx, c.env.DB, name, started, null, auth.tokenId);

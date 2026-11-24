@@ -4,6 +4,8 @@ export interface Env {
   RP_NAME: string;
   SIGNING_KEY_JWK: string;
   SETUP_TOKEN?: string;
+  MAINTAINER_DB?: D1Database;
+  FEEDBACK_INBOX_URL?: string;
   UPSTREAM_REPO?: string;
   SENTRY_DSN?: string;
   LOADER?: WorkerLoader;

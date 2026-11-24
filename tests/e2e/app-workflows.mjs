@@ -286,6 +286,8 @@ async function scopedAssistant(base, request) {
   assert.deepEqual(tools.result.tools.map((t) => t.name).sort(), [
     "app_connection_status",
     "execute",
+    "feedback_list",
+    "feedback_submit",
   ]);
   const call = (name, args) => rpc(result.access_token, "tools/call", { name, arguments: args });
   assert.ok(
@@ -316,6 +318,32 @@ async function scopedAssistant(base, request) {
     refresh_token: result.refresh_token,
   });
   assert.equal(refreshed.scope, result.scope);
+  const report = {
+    kind: "bug",
+    summary: "Scoped feedback",
+    details: "Sanitized description",
+    idempotency_key: "retry-feedback",
+  };
+  const filed = await (await call("feedback_submit", report)).json();
+  const fid = filed.result.structuredContent.id;
+  assert.ok(fid);
+  const retry = await (
+    await call("execute", {
+      code: "return await id.feedback_submit(" + JSON.stringify(report) + ");",
+    })
+  ).json();
+  assert.match(JSON.stringify(retry.result), /Scoped feedback|recorded|status/);
+  assert.equal(
+    (await (await call("feedback_submit", { ...report, summary: "different" })).json()).result
+      .isError,
+    true,
+  );
+  assert.equal((await call("feedback_inbox", {})).status, 403);
+  assert.equal((await call("feedback_resolve", { id: fid, resolution: "done" })).status, 403);
+  assert.match(await (await request("/admin/feedback")).text(), /Scoped feedback/);
+  assert.doesNotMatch(await (await request("/feedback")).text(), /Scoped feedback/);
+  await request("/admin/feedback/" + fid, { status: "planned", note: "Ship in next release" });
+  assert.match(await (await call("feedback_list", {})).text(), /Ship in next release/);
   const changed = await request("/authorize/decision", {
     ...params,
     job: "inspect",
@@ -346,6 +374,10 @@ async function scopedAssistant(base, request) {
     ).text(),
   );
   assert.match(await (await request("/admin/tokens")).text(), /Invite existing members to App 2/);
+  assert.doesNotMatch(
+    await (await rpc(api, "tools/call", { name: "feedback_list", arguments: {} })).text(),
+    /Scoped feedback/,
+  );
   const invite = (app) =>
     rpc(api, "tools/call", {
       name: "app_invite_member",

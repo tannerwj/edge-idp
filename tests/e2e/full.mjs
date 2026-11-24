@@ -551,6 +551,34 @@ try {
 
   step("MCP via dynamic client registration (Cursor/Claude Code style)");
   await stepUp("/admin");
+  if (instance.remote) {
+    const summary = "Staging rehearsal " + now;
+    const post = (path, form) =>
+      page.request.post(BASE + path, { form, headers: { origin: BASE }, maxRedirects: 0 });
+    await post("/feedback", { summary, kind: "idea", idempotency_key: String(now) });
+    const [local] = await sql(
+      "SELECT id FROM feedback WHERE retry_key='" + now + "' AND credential='member'",
+    );
+    const route = "/admin/feedback/" + local.id + "/share";
+    const destination = "https://edge-idp-feedback-staging.twj.workers.dev";
+    const preview = await (await page.request.get(BASE + route)).text();
+    check("staging preview uses only the staging receiver", preview.includes(destination));
+    const shared = { summary, destination, tool_name: "" };
+    await post(route, shared);
+    await page.goto(BASE + "/admin/maintainer");
+    const report = page.locator("article").filter({ hasText: summary });
+    await report.locator("select").selectOption("done");
+    await report.locator("textarea").fill("Verified staging reply");
+    await report.getByRole("button", { name: "Save reply" }).click();
+    await sql("UPDATE feedback_shares SET next_check=0 WHERE feedback_id=" + local.id);
+    await post(route, shared);
+    const history = await (await page.request.get(BASE + "/feedback")).text();
+    check(
+      "reporter receives the deployed maintainer's reply",
+      history.includes("Verified staging reply"),
+    );
+    await page.goto(BASE + "/admin");
+  }
   const reg = await fetch(`${BASE}/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -1129,6 +1157,25 @@ try {
       "write tool → 403 insufficient_scope step-up",
       write.status === 403 && (write.www ?? "").includes("insufficient_scope"),
       write,
+    );
+    const feedback = await mcpCall(ro, "tools/call", {
+      name: "feedback_submit",
+      arguments: {
+        kind: "idea",
+        summary: "Make tool status clearer",
+        idempotency_key: "readonly-report",
+      },
+    });
+    check(
+      "read-only credential can file local feedback",
+      !!feedback.body?.result?.structuredContent?.id,
+    );
+    const inbox = await mcpCall(ro, "tools/call", { name: "feedback_inbox", arguments: {} });
+    check("read-only credential cannot read the full inbox", inbox.status === 403);
+    const recentAudit = await tool("audit_query", { limit: 1 });
+    check(
+      "audit query honors the requested limit",
+      recentAudit?.length === 1 && !!recentAudit[0].at,
     );
     const listed = await mcpCall(ro, "tools/list");
     check(

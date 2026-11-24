@@ -81,7 +81,7 @@ function NewTokenDialog({ apps }: { apps: { id: string; name: string }[] }) {
           <input type="radio" name="scope" value="read" checked />
           <span>
             Read-only
-            <span class="sub">List people, groups, apps, audit log. Can't change anything.</span>
+            <span class="sub">Read admin data. Can file and follow its own feedback.</span>
           </span>
         </label>
         <label class="check">

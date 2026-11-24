@@ -14,6 +14,7 @@ import { accountEmail } from "./account-email";
 import { recover } from "./recover";
 import { loginLink } from "./login-link";
 import { magicLinksOpen } from "./magic-link";
+import { memberFeedback } from "./feedback-pages";
 import { memberRequests } from "./member-requests";
 import { home } from "./home";
 import { pickup } from "./secret-pickup";
@@ -23,6 +24,7 @@ import { signup, signupClient } from "./signup";
 import { destroySession, getSession } from "./session";
 import { audit, getClient } from "./db";
 import { uiFor } from "./ui/layout";
+import { pollFeedback } from "./feedback-sharing";
 import { drainLogout } from "./app-logout";
 import { runMaintenance } from "./maintenance";
 import { setup, setupPending } from "./setup";
@@ -238,6 +240,7 @@ app.route("/", recover);
 app.route("/", loginLink);
 app.route("/", home);
 app.route("/", memberRequests);
+app.route("/", memberFeedback);
 app.route("/", pickup);
 
 app.notFound(async (c) =>
@@ -283,7 +286,11 @@ export default Sentry.withSentry(
       ctx.waitUntil(
         resolveEnv(env, "https://cron.invalid")
           .then(async (resolved) => {
-            const [rotation] = await Promise.all([autoRotate(resolved), drainLogout(resolved)]);
+            const [rotation] = await Promise.all([
+              autoRotate(resolved),
+              drainLogout(resolved),
+              pollFeedback(resolved),
+            ]);
             return rotation;
           })
           .then((r) => {

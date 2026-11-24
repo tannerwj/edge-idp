@@ -1,3 +1,4 @@
+import { FEEDBACK_TOOLS } from "./tools-feedback";
 import { onboardingTools } from "./tools-onboarding";
 import { obj } from "./common";
 import type { ToolDef } from "./common";
@@ -85,6 +86,7 @@ const METRICS_TOOL: ToolDef = {
 };
 
 export const TOOLS: ToolDef[] = [
+  ...FEEDBACK_TOOLS,
   ...onboardingTools,
   ...PEOPLE_TOOLS,
   ...APP_TOOLS,

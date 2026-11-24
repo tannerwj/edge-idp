@@ -3,6 +3,13 @@
 What changed in each version, for people running their own copy. How to
 update: [DEPLOY.md › Staying up to date](DEPLOY.md#staying-up-to-date).
 
+## 2.6.0 — 2026-11-23
+
+- Members and assistants can file local feedback, track replies and safely retry submissions. Operators can triage reports from MCP activity. Active reports stay in the inbox until addressed.
+- Operators can review and share individual summaries with a configured private maintainer service. Maintainer replies and linked issues appear beside the original report. The optional service groups duplicate reports across installations.
+
+Apply migrations 0027 and 0028 before updating the IdP Worker. Local feedback uses existing bindings. The optional maintainer Worker has its own database and migration.
+
 ## 2.5.0 — 2026-11-21
 
 - Follow access decisions in My requests, read the reviewer's note, open an approved app and request an extension. Admins see pending requests on Overview and can optionally email decisions.

@@ -11,6 +11,7 @@ export interface ToolCtx {
   db: D1Database;
   env: Env;
   actor: Actor;
+  credential: string;
 }
 
 export type ToolDef = {
@@ -18,8 +19,13 @@ export type ToolDef = {
   description: string;
   inputSchema: Record<string, unknown>;
   write: boolean;
+  adminOnly?: boolean;
   handler: (ctx: ToolCtx, args: Record<string, unknown>) => Promise<unknown>;
 };
+
+export function permitsCredential(tool: ToolDef, readOnly: boolean) {
+  return !readOnly || (!tool.adminOnly && (!tool.write || tool.name === "feedback_submit"));
+}
 
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
 export const strList = (v: unknown): string[] =>

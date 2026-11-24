@@ -742,3 +742,11 @@ Member requests retain the decision note and the approved cutoff. Extensions cre
 MCP OAuth access tokens carry the generation captured at authorization. Code redemption and refresh rotation carry that same generation forward. Disconnect increments the per-user, per-client generation and clears pending codes, refresh tokens and consent in one transaction. Direct calls and sandbox calls verify the current generation.
 
 Sign-out snapshots downstream destinations into D1 in the same batch as the local revocation and consumption of recorded client sign-ins. The Worker dispatches after commit, then hourly maintenance picks up due attempts. Each dispatch leases up to 12 jobs with individual claims and a two-minute lease. Sign-in supersedes pending deliveries to that client and pending Cloudflare Access revocation for that user. A request already in flight can still reach the app.
+
+### Feedback
+
+The local D1 inbox accepts member forms and MCP tool calls. An assistant's owner key combines its authenticated admin ID and API token ID or OAuth client identity. A human session uses the same user ID and a separate member namespace. An atomic insert and receipt lookup implement the per-owner quota and retry contract. Local status and maintainer status are independent.
+
+Sharing saves an immutable four-field preview and a random per-report receipt before the first network request. The unique local report key handles double submission. Immediate delivery and the hourly cron share a two-minute lease. Each claim has a sequence number so a stale completion cannot overwrite its successor. The receiver stores a hash of the receipt and accepts an identical retry. Local status polls are limited to twelve due shares per cron run. Terminal replies are checked daily so a reopened issue can be followed. Local rows closed for 180 days or outside the latest 1,000 eligible closures are pruned. Open local reports and shares awaiting a final maintainer status are exempt.
+
+The optional intake Worker reads and writes a separate D1 database. Operators use their existing passkey-protected IdP admin console with an explicit second database binding to manage that inbox. A duplicate receipt follows the canonical report's status, reply and issue link.

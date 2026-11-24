@@ -46,3 +46,8 @@ export function safeNext(raw: string | undefined): string {
   if (raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\")) return raw;
   return "/";
 }
+
+export const sinceArg = (v: unknown, defaultHours: number): number =>
+  nowSec() - Math.round((typeof v === "number" ? v : defaultHours) * 3600);
+export const limitArg = (v: unknown, fallback: number, max: number): number =>
+  Math.min(max, Math.max(1, typeof v === "number" ? Math.floor(v) : fallback));

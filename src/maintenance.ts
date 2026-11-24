@@ -12,6 +12,11 @@ export async function runMaintenance(db: D1Database): Promise<Record<string, num
     logout_receipts: db
       .prepare("DELETE FROM logout_deliveries WHERE created_at<?")
       .bind(now - 30 * DAY),
+    closed_feedback: db.prepare(`WITH eligible AS (
+      SELECT f.id,f.updated_at FROM feedback f LEFT JOIN feedback_shares s ON s.feedback_id=f.id
+      WHERE f.status IN ('done','declined') AND (s.feedback_id IS NULL OR s.remote_status IN ('done','declined'))
+    ) DELETE FROM feedback WHERE id IN (SELECT id FROM eligible WHERE updated_at<unixepoch()-15552000)
+    OR id IN (SELECT id FROM eligible ORDER BY updated_at DESC,id DESC LIMIT -1 OFFSET 1000)`),
     temporary_grants: db.prepare("DELETE FROM temporary_app_grants WHERE expires_at<=?").bind(now),
     challenges: db.prepare("DELETE FROM webauthn_challenges WHERE expires_at < ?1").bind(now),
     codes: db.prepare("DELETE FROM auth_codes WHERE expires_at < ?1").bind(now - 3600),

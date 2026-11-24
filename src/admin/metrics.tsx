@@ -45,10 +45,8 @@ function ByTool({ rows, maxCalls }: { rows: ToolRow[]; maxCalls: number }) {
 
 export const metricsAdmin = new Hono<AdminVars>();
 
-metricsAdmin.get("/", async (c) => {
-  const db = c.env.DB;
-  const dayAgo = nowSec() - 86400;
-  const [perTool, recent, totals] = await Promise.all([
+function activity(db: D1Database, dayAgo: number) {
+  return Promise.all([
     db
       .prepare(
         `SELECT tool_name, COUNT(*) AS calls, SUM(success) AS ok, AVG(duration_ms) AS avg_ms, MAX(duration_ms) AS max_ms
@@ -76,7 +74,15 @@ metricsAdmin.get("/", async (c) => {
       )
       .bind(dayAgo)
       .first<{ total: number; errors: number | null; avg_ms: number | null }>(),
+    db
+      .prepare("SELECT count(*) AS n FROM feedback WHERE status NOT IN ('done','declined')")
+      .first<number>("n"),
   ]);
+}
+metricsAdmin.get("/", async (c) => {
+  const db = c.env.DB;
+  const dayAgo = nowSec() - 86400;
+  const [perTool, recent, totals, openFeedback] = await activity(db, dayAgo);
   const total = totals?.total ?? 0;
   const errRate = total ? (((totals?.errors ?? 0) / total) * 100).toFixed(1) : "0";
   const maxCalls = Math.max(1, ...perTool.results.map((r) => r.calls));
@@ -86,6 +92,7 @@ metricsAdmin.get("/", async (c) => {
     <>
       <PageHead
         title="MCP activity"
+        actions={<a href="/admin/feedback">Feedback inbox ({openFeedback ?? 0} open)</a>}
         lede="What AI assistants did through the admin API in the last 24 hours."
       />
       <div class="stack-lg">

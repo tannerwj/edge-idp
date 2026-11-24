@@ -1,6 +1,6 @@
+import { limitArg, sinceArg } from "../util";
 import { audit, listApps, listClients, setSetting } from "../db";
 import * as ops from "../ops";
-import { nowSec } from "../util";
 import { listAppGroups } from "../access";
 import { createPickup, PICKUP_TTL } from "../secret-pickup";
 import { ACCENTS, getInstanceSettings, invalidateSettingsCache } from "../settings-cache";
@@ -297,15 +297,9 @@ export const APP_TOOLS: ToolDef[] = [
       limit: { type: "number", description: "Default 50, max 500" },
     }),
     handler: async ({ db }, args) => {
-      const since =
-        nowSec() -
-        Math.round((typeof args.since_hours === "number" ? args.since_hours : 168) * 3600);
-      const limit = Math.min(
-        500,
-        Math.max(1, typeof args.limit === "number" ? Math.floor(args.limit) : 50),
-      );
+      const limit = limitArg(args.limit, 50, 500);
       const where = ["a.created_at >= ?1"];
-      const binds: unknown[] = [since];
+      const binds: unknown[] = [sinceArg(args.since_hours, 168)];
       if (str(args.event)) {
         binds.push(str(args.event).toUpperCase());
         where.push(`a.event = ?${binds.length}`);

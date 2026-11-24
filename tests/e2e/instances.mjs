@@ -30,7 +30,7 @@ function projectCopy(prefix, config, vars) {
   return work;
 }
 
-function server(cmd, args, work, base) {
+export function server(cmd, args, work, base) {
   let proc = null;
   let log = "";
   const start = async () => {
@@ -46,6 +46,14 @@ function server(cmd, args, work, base) {
       try {
         if ((await fetch(`${base}/healthz`, { redirect: "manual" })).ok) return;
       } catch {}
+      if (proc.exitCode !== null)
+        throw new Error(
+          `${cmd} dev exited before it was ready (status ${proc.exitCode}): ${log
+            .split("\n")
+            .filter((l) => /Cannot find|Build failed|Address already in use/.test(l))
+            .slice(-3)
+            .join(" ")}`,
+        );
       if (Date.now() > deadline) throw new Error(`${cmd} dev did not start\n${log.slice(-3000)}`);
       await new Promise((r) => setTimeout(r, 300));
     }

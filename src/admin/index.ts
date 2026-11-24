@@ -1,9 +1,12 @@
+import { maintainerAdmin } from "./maintainer";
 import { Hono } from "hono";
 import { adminStepUpOk, getSession } from "../session";
 import { getInstanceSettings } from "../settings-cache";
 import { setFlash } from "../ui/layout";
 import { listApps, listClients, listGroups, listUsers } from "../db";
 import type { ACtx, AdminVars } from "./shell";
+import { shareFeedback } from "./share-feedback";
+import { feedbackAdmin } from "../feedback-pages";
 import { requestsAdmin } from "./access-requests";
 import { previews } from "./access-preview";
 import { dashboardAdmin } from "./dashboard";
@@ -24,6 +27,8 @@ import { settingsAdmin } from "./settings";
 export const admin = new Hono<AdminVars>();
 
 const SENSITIVE = [
+  /^\/admin\/maintainer\/[^/]+$/,
+  /^\/admin\/feedback\/[^/]+\/share$/,
   /^\/admin\/requests\/[^/]+$/,
   /^\/admin\/apps\/[^/]+\/requestable$/,
   /^\/admin\/apps\/[^/]+\/invite$/,
@@ -117,6 +122,9 @@ admin.get("/audit.csv", async (c) =>
   }),
 );
 
+admin.route("/maintainer", maintainerAdmin);
+admin.route("/feedback", shareFeedback);
+admin.route("/feedback", feedbackAdmin);
 admin.route("/", requestsAdmin);
 admin.route("/", previews);
 admin.route("/", dashboardAdmin);

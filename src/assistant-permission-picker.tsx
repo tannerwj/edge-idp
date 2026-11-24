@@ -25,8 +25,9 @@ export function JobSelection(props: { apps: { id: string; name: string }[]; writ
         </select>
       </label>
       <p class="muted small">
-        Choosing inspection or invitations limits this assistant to the selected apps. Changing its
-        approved permissions ends access through its earlier credentials.
+        Choosing inspection or invitations limits this assistant to the selected apps. It can also
+        file and follow its own local feedback. Changing its approved permissions ends access
+        through its earlier credentials.
       </p>
     </fieldset>
   );

@@ -130,6 +130,7 @@ account.get("/account", async (c) => {
           apps={s.user.is_admin ? await listApps(db) : []}
         />
 
+        <a href="/feedback">My feedback</a>
         <ActivitySection rows={activity.results} />
       </div>
     </AppShell>,

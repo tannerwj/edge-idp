@@ -4,7 +4,7 @@ export const adminScope = (s: string) => s === "mcp" || s === "mcp:read" || jobS
 
 export function permitsJob(scopes: string[] | undefined, tool: string, app?: unknown) {
   if (!scopes) return true;
-  if (tool === "execute") return true;
+  if (["execute", "feedback_submit", "feedback_list"].includes(tool)) return true;
   const task =
     tool === "app_connection_status" ? "inspect" : tool === "app_invite_member" ? "invite" : null;
   if (!task) return false;

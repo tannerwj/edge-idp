@@ -20,6 +20,27 @@ const STAGES = {
 } as const;
 
 export default defineConfig(({ mode }) => {
+  if (mode === "maintainer" || mode === "maintainer-staging") {
+    const staging = mode === "maintainer-staging";
+    const name = staging ? "edge-idp-feedback-staging" : "edge-idp-feedback";
+    return {
+      accountId: "83c27d7f9b8764a53148888203d434cb",
+      worker: {
+        name,
+        entrypoint: "src/maintainer/index.tsx",
+        compatibilityDate: "2026-10-06",
+        previewUrls: false,
+        workersDev: true,
+        env: {
+          DB: bindings.d1({ name }),
+          INTAKE_LIMITER: bindings.rateLimit({
+            namespace: staging ? "3002" : "3001",
+            simple: { limit: 30, period: 60 },
+          }),
+        },
+      },
+    };
+  }
   const stage = mode === "staging" ? STAGES.staging : STAGES.production;
   return {
     accountId: "83c27d7f9b8764a53148888203d434cb",
@@ -41,6 +62,16 @@ export default defineConfig(({ mode }) => {
         SIGNING_KEY_JWK: bindings.secret(),
         SETUP_TOKEN: bindings.secret(),
         DB: bindings.d1(stage.d1),
+        MAINTAINER_DB: bindings.d1({
+          name: mode === "staging" ? "edge-idp-feedback-staging" : "edge-idp-feedback",
+        }),
+        ...(mode === "staging"
+          ? {
+              FEEDBACK_INBOX_URL: bindings.text(
+                "https://edge-idp-feedback-staging.twj.workers.dev",
+              ),
+            }
+          : {}),
         AUTH_LIMITER: bindings.rateLimit({
           namespace: stage.limiters.auth,
           simple: { limit: 30, period: 60 },
