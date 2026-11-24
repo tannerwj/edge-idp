@@ -30,7 +30,8 @@ export default defineConfig(({ mode }) => {
         entrypoint: "src/maintainer/index.tsx",
         compatibilityDate: "2026-10-06",
         previewUrls: false,
-        workersDev: true,
+        workersDev: false,
+        domains: [staging ? "feedback-staging.example.com" : "feedback.example.com"],
         env: {
           DB: bindings.d1({ name }),
           INTAKE_LIMITER: bindings.rateLimit({
@@ -67,9 +68,7 @@ export default defineConfig(({ mode }) => {
         }),
         ...(mode === "staging"
           ? {
-              FEEDBACK_INBOX_URL: bindings.text(
-                "https://edge-idp-feedback-staging.twj.workers.dev",
-              ),
+              FEEDBACK_INBOX_URL: bindings.text("https://feedback-staging.example.com"),
             }
           : {}),
         AUTH_LIMITER: bindings.rateLimit({

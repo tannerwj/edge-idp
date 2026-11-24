@@ -560,7 +560,7 @@ try {
       "SELECT id FROM feedback WHERE retry_key='" + now + "' AND credential='member'",
     );
     const route = "/admin/feedback/" + local.id + "/share";
-    const destination = "https://edge-idp-feedback-staging.twj.workers.dev";
+    const destination = "https://feedback-staging.example.com";
     const preview = await (await page.request.get(BASE + route)).text();
     check("staging preview uses only the staging receiver", preview.includes(destination));
     const shared = { summary, destination, tool_name: "" };

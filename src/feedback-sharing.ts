@@ -13,7 +13,7 @@ export function feedbackDestination(env: Env) {
   if (!repo) return null;
   const raw =
     env.FEEDBACK_INBOX_URL ??
-    (repo === DEFAULT_UPSTREAM ? "https://edge-idp-feedback.twj.workers.dev" : null);
+    (repo === DEFAULT_UPSTREAM ? "https://feedback.example.com" : null);
   if (!raw || raw === "off" || outboundUrlProblem(raw, env.ISSUER)) return null;
   const url = new URL(raw);
   return url.origin === raw ? url.origin : null;
